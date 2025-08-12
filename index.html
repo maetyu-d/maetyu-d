@@ -113,9 +113,13 @@
         #hd-icon { top: 40px; right: 20px; }
         #about-icon { top: 130px; right: 20px; }
         #contact-icon { top: 220px; right: 20px; }
-        #news-icon { top: 310px; right: 20px; }
-        #other-icon { top: 400px; right: 20px; }
-        #texts-icon { top: 490px; right: 20px; }
+        #news-icon { top: 40px; right: 120px; }
+        #other-icon { top: 220px; right: 120px; }
+        #texts-icon { top: 130px; right: 120px; }
+        #game-icon { top: 310px; right: 20px; }
+        #music-icon { top: 310px; right: 120px; }
+        #places-icon { top: 40px; right: 220px; }
+        #war-game-icon { top: 400px; right: 20px; }
         #trash-icon { bottom: 20px; right: 20px; }
 
         /* --- Window Styling --- */
@@ -162,14 +166,6 @@
             flex-grow: 1;
         }
         
-        .window-content pre {
-            font-family: 'VT323', monospace;
-            font-size: 8px; /* Smaller font for ASCII art */
-            line-height: 0.8;
-            margin-top: 0;
-            margin-bottom: 15px;
-        }
-        
         h2 { font-size: 20px; margin-top: 0; margin-bottom: 10px; }
         h3 { font-size: 18px; margin-top: 15px; margin-bottom: 5px; }
 
@@ -199,6 +195,40 @@
         .folder-item:hover {
             background-color: var(--highlight-bg);
         }
+        
+        /* --- Game Canvas --- */
+        .game-canvas {
+            background-color: #FFF;
+            width: 100%;
+            height: 100%;
+        }
+        #game-window .window-content, #war-game-window .window-content {
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        #warGameControls {
+            padding: 5px;
+            text-align: center;
+            background: #fff;
+            border-bottom: 1px solid black;
+        }
+        
+        #warGameControls button {
+             font-family: 'VT323', monospace;
+             font-size: 16px;
+             background: #fff;
+             border: 1px solid #000;
+             padding: 0 5px;
+        }
+        #warGameControls button:active {
+            background: #000;
+            color: #fff;
+        }
+        #turn-indicator {
+            margin-right: 20px;
+        }
 
     </style>
 </head>
@@ -221,6 +251,10 @@
                     <div class="menu-item" data-window="news-window">News</div>
                     <div class="menu-item" data-window="other-window">Other</div>
                     <div class="menu-item" data-window="texts-window">Texts</div>
+                    <div class="menu-item" data-window="music-window">Music</div>
+                    <div class="menu-item" data-window="places-window">Places</div>
+                    <div class="menu-item" data-window="game-window">Play Pong</div>
+                    <div class="menu-item" data-window="war-game-window">Play War Game</div>
                     <div class="menu-divider"></div>
                     <div class="menu-item" data-action="close">Close Window</div>
                 </div>
@@ -260,6 +294,22 @@
             <img src="https://img.icons8.com/ios/50/000000/open-book.png" alt="Texts Icon"/>
             <div class="icon-label">Texts</div>
         </div>
+        <div class="desktop-icon" id="game-icon" tabindex="0" data-window="game-window">
+            <img src="https://img.icons8.com/ios/50/000000/tetris.png" alt="Game Icon"/>
+            <div class="icon-label">Pong</div>
+        </div>
+        <div class="desktop-icon" id="music-icon" tabindex="0" data-window="music-window">
+            <img src="https://img.icons8.com/ios/50/000000/musical-notes.png" alt="Music Icon"/>
+            <div class="icon-label">Music</div>
+        </div>
+        <div class="desktop-icon" id="places-icon" tabindex="0" data-window="places-window">
+            <img src="https://img.icons8.com/ios/50/000000/marker.png" alt="Places Icon"/>
+            <div class="icon-label">Places</div>
+        </div>
+        <div class="desktop-icon" id="war-game-icon" tabindex="0" data-window="war-game-window">
+            <img src="https://img.icons8.com/ios/50/000000/knight.png" alt="War Game Icon"/>
+            <div class="icon-label">War Game</div>
+        </div>
         <div class="desktop-icon" id="trash-icon" tabindex="0">
             <img src="https://img.icons8.com/ios/50/000000/trash--v1.png" alt="Trash Icon"/>
             <div class="icon-label">Trash</div>
@@ -283,7 +333,7 @@
             </div>
         </div>
         
-        <div class="window" id="about-window" style="top: 80px; left: 150px; width: 620px; height: 510px;">
+        <div class="window" id="about-window" style="top: 80px; left: 150px; width: 620px; height: 530px;">
             <div class="title-bar">
                 <div class="close-box"></div>
                 <span class="title-bar-text">About Me</span>
@@ -372,19 +422,28 @@
             </div>
         </div>
 
-        <div class="window" id="news-window" style="top: 180px; left: 220px;">
+        <div class="window" id="news-window" style="top: 180px; left: 220px; width: 600px; height: 450px;">
             <div class="title-bar">
                 <div class="close-box"></div>
-                <span class="title-bar-text">Today's News</span>
+                <span class="title-bar-text">News</span>
             </div>
             <div class="window-content">
-                <h2>Wolverhampton Chronicle</h2>
-                <h3>Tuesday, 12 August 2025</h3>
-                <p>
-                   - City Council announces new tech hub<br>
-                   - Wolves prepare for season opener<br>
-                   - Weather: Sunny spells expected
-                </p>
+                <h2>News</h2>
+                <p>August 2025 - On Monday September 23rd I'll be<br>
+                   presenting a talk on Modular Synthesizers and<br>
+                   (Disabled) Time at Drake Music's DMLab London,<br>
+                   held at Rich Mix London, 6-9:30pm, but also<br>
+                   (I think) streamed online.</p>
+                <p>July 2025 - Delighted to be accepted for CGVC 2025.</p>
+                <p>June 2025 - I'm looking forward to presenting<br>
+                   at INMUSIC 2025 and NIME 2025 in quick<br>
+                   succession at the end of the month. I'm also<br>
+                   pleased to announce that I'll be one of the<br>
+                   Accessibility Chairs for NIME 2026 in London.<br>
+                   Finally, I've been selected for the upcoming<br>
+                   Leonardo AI Lab, which will culminate in an<br>
+                   exhibition in November (dates TBC) - very<br>
+                   excited to be part of this!</p>
             </div>
         </div>
         
@@ -420,6 +479,86 @@
                 </div>
             </div>
         </div>
+        
+        <div class="window" id="game-window" style="top: 100px; left: 120px; width: 480px; height: 320px;">
+            <div class="title-bar">
+                <div class="close-box"></div>
+                <span class="title-bar-text">Pong</span>
+            </div>
+            <div class="window-content">
+                <canvas id="pongCanvas" class="game-canvas"></canvas>
+            </div>
+        </div>
+
+        <div class="window" id="music-window" style="top: 240px; left: 280px; width: 300px;">
+            <div class="title-bar">
+                <div class="close-box"></div>
+                <span class="title-bar-text">Music</span>
+            </div>
+            <div class="window-content">
+                <div class="folder-grid">
+                    <div class="folder-item" id="bandcamp-folder">
+                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
+                        <div class="folder-label">Bandcamp</div>
+                    </div>
+                    <div class="folder-item" id="spotify-folder">
+                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
+                        <div class="folder-label">Spotify</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="window" id="places-window" style="top: 260px; left: 300px; width: 420px;">
+            <div class="title-bar">
+                <div class="close-box"></div>
+                <span class="title-bar-text">Places</span>
+            </div>
+            <div class="window-content">
+                <p>These are some places I like:</p>
+                <div class="folder-grid">
+                    <div class="folder-item" id="one1-link">
+                        <img src="https://img.icons8.com/ios/50/000000/coffee.png" alt="Coffee Icon"/>
+                        <div class="folder-label">One1</div>
+                    </div>
+                    <div class="folder-item" id="aardvark-link">
+                        <img src="https://img.icons8.com/ios/50/000000/open-book.png" alt="Book Icon"/>
+                        <div class="folder-label">Aardvark</div>
+                    </div>
+                    <div class="folder-item" id="scarthin-link">
+                        <img src="https://img.icons8.com/ios/50/000000/open-book.png" alt="Book Icon"/>
+                        <div class="folder-label">Scarthin</div>
+                    </div>
+                    <div class="folder-item" id="chapters-link">
+                        <img src="https://img.icons8.com/ios/50/000000/restaurant.png" alt="Food Icon"/>
+                        <div class="folder-label">Chapters</div>
+                    </div>
+                    <div class="folder-item" id="inver-link">
+                        <img src="https://img.icons8.com/ios/50/000000/restaurant.png" alt="Food Icon"/>
+                        <div class="folder-label">Inver</div>
+                    </div>
+                    <div class="folder-item" id="marios-link">
+                        <img src="https://img.icons8.com/ios/50/000000/fish-food.png" alt="Fish Icon"/>
+                        <div class="folder-label">Mario's</div>
+                    </div>
+                    <div class="folder-item" id="the-bridges-link">
+                        <img src="https://img.icons8.com/ios/50/000000/restaurant.png" alt="Food Icon"/>
+                        <div class="folder-label">The Bridges</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="window" id="war-game-window" style="top: 50px; left: 60px; width: 540px; height: 640px;">
+            <div class="title-bar">
+                <div class="close-box"></div>
+                <span class="title-bar-text">The Game of War</span>
+            </div>
+            <div class="window-content">
+                <div id="warGameControls"><span id="turn-indicator"></span><button id="end-turn-btn">End Turn</button></div>
+                <canvas id="warCanvas" class="game-canvas"></canvas>
+            </div>
+        </div>
 
     </div>
 
@@ -427,6 +566,8 @@
         document.addEventListener('DOMContentLoaded', () => {
             let zIndexCounter = 100;
             let activeWindow = null;
+            let pongAnimationId = null;
+            let warGameAnimationId = null;
 
             // --- Window Management ---
             function focusWindow(windowEl) {
@@ -442,6 +583,12 @@
                 if (windowEl) {
                     windowEl.style.display = 'flex'; // Use flex for layout
                     focusWindow(windowEl);
+                    if (windowId === 'game-window') {
+                        startPongGame();
+                    }
+                    if (windowId === 'war-game-window') {
+                        startWarGame();
+                    }
                 }
             }
 
@@ -450,6 +597,12 @@
                     windowEl.style.display = 'none';
                     if(activeWindow === windowEl) {
                         activeWindow = null;
+                    }
+                    if (windowEl.id === 'game-window') {
+                        stopPongGame();
+                    }
+                    if (windowEl.id === 'war-game-window') {
+                        stopWarGame();
                     }
                 }
             }
@@ -508,6 +661,42 @@
                 window.open('https://docs.google.com/document/d/e/2PACX-1vSwIVGvniEs4MOzcTiY-9jHRZ9Viz38s4aj2zwohs_nT1LCjMNdM6BFhtD-uKCQwTi-F-p_bo-1mitA/pub', '_blank');
             });
 
+            document.getElementById('bandcamp-folder').addEventListener('dblclick', () => {
+                window.open('https://bandcamp.com/dalgleish', '_blank');
+            });
+
+            document.getElementById('spotify-folder').addEventListener('dblclick', () => {
+                window.open('https://open.spotify.com/user/31jzcxgamrfetimrf5dovclssj7u?si=5c4bbc5e339a4903', '_blank');
+            });
+            
+            document.getElementById('one1-link').addEventListener('dblclick', () => {
+                window.open('https://www.one.minimauk.com/', '_blank');
+            });
+            
+            document.getElementById('aardvark-link').addEventListener('dblclick', () => {
+                window.open('https://www.aardvark-books.com/', '_blank');
+            });
+            
+            document.getElementById('scarthin-link').addEventListener('dblclick', () => {
+                window.open('https://www.scarthinbooks.com/', '_blank');
+            });
+
+            document.getElementById('chapters-link').addEventListener('dblclick', () => {
+                window.open('https://chaptershayonwye.co.uk/', '_blank');
+            });
+
+            document.getElementById('inver-link').addEventListener('dblclick', () => {
+                window.open('https://inverrestaurant.co.uk/', '_blank');
+            });
+
+            document.getElementById('marios-link').addEventListener('dblclick', () => {
+                window.open('https://www.facebook.com/mariosotherplaice/?locale=en_GB', '_blank');
+            });
+
+            document.getElementById('the-bridges-link').addEventListener('dblclick', () => {
+                window.open('https://www.thebridgespub.co.uk/', '_blank');
+            });
+
             // --- Menu Bar Functionality ---
             const menus = document.querySelectorAll('.menu');
             menus.forEach(menu => {
@@ -563,12 +752,20 @@
                         document.getElementById('about-icon').style.right = '20px';
                         document.getElementById('contact-icon').style.top = '220px';
                         document.getElementById('contact-icon').style.right = '20px';
-                        document.getElementById('news-icon').style.top = '310px';
-                        document.getElementById('news-icon').style.right = '20px';
-                        document.getElementById('other-icon').style.top = '400px';
-                        document.getElementById('other-icon').style.right = '20px';
-                        document.getElementById('texts-icon').style.top = '490px';
-                        document.getElementById('texts-icon').style.right = '20px';
+                        document.getElementById('news-icon').style.top = '40px';
+                        document.getElementById('news-icon').style.right = '120px';
+                        document.getElementById('other-icon').style.top = '220px';
+                        document.getElementById('other-icon').style.right = '120px';
+                        document.getElementById('texts-icon').style.top = '130px';
+                        document.getElementById('texts-icon').style.right = '120px';
+                        document.getElementById('game-icon').style.top = '310px';
+                        document.getElementById('game-icon').style.right = '20px';
+                        document.getElementById('music-icon').style.top = '310px';
+                        document.getElementById('music-icon').style.right = '120px';
+                        document.getElementById('places-icon').style.top = '40px';
+                        document.getElementById('places-icon').style.right = '220px';
+                        document.getElementById('war-game-icon').style.top = '400px';
+                        document.getElementById('war-game-icon').style.right = '20px';
                     }
                     
                     // Hide dropdown after click
@@ -576,10 +773,352 @@
                 });
             });
 
+            // --- PONG GAME LOGIC ---
+            const pongCanvas = document.getElementById('pongCanvas');
+            const pongContext = pongCanvas.getContext('2d');
+            
+            let ball, player, computer;
+
+            function initPongGameObjects() {
+                pongCanvas.width = pongCanvas.offsetWidth;
+                pongCanvas.height = pongCanvas.offsetHeight;
+                
+                ball = { x: pongCanvas.width / 2, y: pongCanvas.height / 2, radius: 5, speed: 4, velX: 4, velY: 4 };
+                player = { x: 10, y: (pongCanvas.height - 80) / 2, width: 8, height: 80, score: 0 };
+                computer = { x: pongCanvas.width - 18, y: (pongCanvas.height - 80) / 2, width: 8, height: 80, score: 0 };
+            }
+
+            function drawPongRect(x, y, w, h, color) {
+                pongContext.fillStyle = color;
+                pongContext.fillRect(x, y, w, h);
+            }
+
+            function drawPongCircle(x, y, r, color) {
+                pongContext.fillStyle = color;
+                pongContext.beginPath();
+                pongContext.arc(x, y, r, 0, Math.PI * 2, false);
+                pongContext.closePath();
+                pongContext.fill();
+            }
+
+            function drawPongText(text, x, y, color) {
+                pongContext.fillStyle = color;
+                pongContext.font = '30px VT323';
+                pongContext.fillText(text, x, y);
+            }
+
+            function renderPong() {
+                drawPongRect(0, 0, pongCanvas.width, pongCanvas.height, '#000');
+                drawPongText(player.score, pongCanvas.width / 4, pongCanvas.height / 5, '#FFF');
+                drawPongText(computer.score, 3 * pongCanvas.width / 4, pongCanvas.height / 5, '#FFF');
+                drawPongRect(player.x, player.y, player.width, player.height, '#FFF');
+                drawPongRect(computer.x, computer.y, computer.width, computer.height, '#FFF');
+                drawPongCircle(ball.x, ball.y, ball.radius, '#FFF');
+            }
+
+            function updatePong() {
+                ball.x += ball.velX;
+                ball.y += ball.velY;
+
+                if (ball.y + ball.radius > pongCanvas.height || ball.y - ball.radius < 0) {
+                    ball.velY = -ball.velY;
+                }
+
+                computer.y += ((ball.y - (computer.y + computer.height / 2))) * 0.1;
+
+                let currentPaddle = (ball.x < pongCanvas.width / 2) ? player : computer;
+                if (pongCollision(ball, currentPaddle)) {
+                    ball.velX = -ball.velX;
+                }
+
+                if (ball.x - ball.radius < 0) {
+                    computer.score++;
+                    resetPongBall();
+                } else if (ball.x + ball.radius > pongCanvas.width) {
+                    player.score++;
+                    resetPongBall();
+                }
+            }
+
+            function pongCollision(b, p) {
+                p.top = p.y;
+                p.bottom = p.y + p.height;
+                p.left = p.x;
+                p.right = p.x + p.width;
+                b.top = b.y - b.radius;
+                b.bottom = b.y + b.radius;
+                b.left = b.x - b.radius;
+                b.right = b.x + b.radius;
+                return p.left < b.right && p.top < b.bottom && p.right > b.left && p.bottom > b.top;
+            }
+
+            function resetPongBall() {
+                ball.x = pongCanvas.width / 2;
+                ball.y = pongCanvas.height / 2;
+                ball.velX = -ball.velX;
+            }
+
+            pongCanvas.addEventListener('mousemove', (evt) => {
+                let rect = pongCanvas.getBoundingClientRect();
+                player.y = evt.clientY - rect.top - player.height / 2;
+            });
+
+            function pongGameLoop() {
+                updatePong();
+                renderPong();
+                pongAnimationId = requestAnimationFrame(pongGameLoop);
+            }
+
+            function startPongGame() {
+                if (!pongAnimationId) {
+                    initPongGameObjects();
+                    pongGameLoop();
+                }
+            }
+
+            function stopPongGame() {
+                if (pongAnimationId) {
+                    cancelAnimationFrame(pongAnimationId);
+                    pongAnimationId = null;
+                }
+            }
+
+            // --- WAR GAME LOGIC ---
+            const warCanvas = document.getElementById('warCanvas');
+            const warContext = warCanvas.getContext('2d');
+            const turnIndicator = document.getElementById('turn-indicator');
+            const endTurnBtn = document.getElementById('end-turn-btn');
+            
+            const ROWS = 22;
+            const COLS = 20;
+            let tileSize = 25;
+            let units = [];
+            let currentPlayer = 'North'; // North starts
+            let selectedUnit = null;
+            let validMoves = [];
+            let unitMovedThisTurn = false;
+
+            function startWarGame() {
+                 if (!warGameAnimationId) {
+                    initWarGame();
+                    warGameLoop();
+                }
+            }
+
+            function stopWarGame() {
+                if (warGameAnimationId) {
+                    cancelAnimationFrame(warGameAnimationId);
+                    warGameAnimationId = null;
+                }
+            }
+            
+            endTurnBtn.addEventListener('click', () => {
+                currentPlayer = (currentPlayer === 'North') ? 'South' : 'North';
+                selectedUnit = null;
+                validMoves = [];
+                unitMovedThisTurn = false;
+                updateTurnIndicator();
+            });
+
+            function updateTurnIndicator() {
+                turnIndicator.textContent = `${currentPlayer}'s Turn`;
+                turnIndicator.style.color = '#000';
+            }
+
+            class Unit {
+                constructor(x, y, owner, type) {
+                    this.x = x;
+                    this.y = y;
+                    this.owner = owner; // 'North' or 'South'
+                    this.type = type; // 'Infantry', 'Cavalry', 'Arsenal'
+                    this.moves = type === 'Cavalry' ? 5 : 3;
+                    if (type === 'Arsenal') this.moves = 0;
+                }
+
+                draw(ctx) {
+                    const xPos = this.x * tileSize + tileSize / 2;
+                    const yPos = this.y * tileSize + tileSize / 2;
+                    
+                    if (this.owner === 'North') {
+                        ctx.fillStyle = '#000';
+                        ctx.strokeStyle = '#000';
+                    } else {
+                        ctx.fillStyle = '#FFF';
+                        ctx.strokeStyle = '#000';
+                    }
+                    
+                    if (this.type === 'Infantry') {
+                        ctx.fillRect(xPos - 8, yPos - 8, 16, 16);
+                        if(this.owner === 'South') ctx.strokeRect(xPos - 8, yPos - 8, 16, 16);
+                    } else if (this.type === 'Cavalry') {
+                        ctx.beginPath();
+                        ctx.moveTo(xPos, yPos - 8);
+                        ctx.lineTo(xPos + 8, yPos);
+                        ctx.lineTo(xPos, yPos + 8);
+                        ctx.lineTo(xPos - 8, yPos);
+                        ctx.closePath();
+                        ctx.fill();
+                        if(this.owner === 'South') ctx.stroke();
+                    } else if (this.type === 'Arsenal') {
+                        ctx.beginPath();
+                        ctx.arc(xPos, yPos, 10, 0, Math.PI * 2);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.arc(xPos, yPos, 5, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+            }
+
+            function initWarGame() {
+                warCanvas.width = warCanvas.parentElement.offsetWidth;
+                tileSize = warCanvas.width / COLS;
+                warCanvas.height = tileSize * ROWS;
+                
+                units = [];
+                // North setup
+                units.push(new Unit(9, 0, 'North', 'Arsenal'));
+                units.push(new Unit(10, 0, 'North', 'Arsenal'));
+                [6,7,8,9,10,11,12,13].forEach(x => units.push(new Unit(x, 1, 'North', 'Infantry')));
+                [8,9,10,11].forEach(x => units.push(new Unit(x, 2, 'North', 'Infantry')));
+                [8,11].forEach(x => units.push(new Unit(x, 3, 'North', 'Cavalry')));
+                
+                // South setup
+                units.push(new Unit(9, ROWS - 1, 'South', 'Arsenal'));
+                units.push(new Unit(10, ROWS - 1, 'South', 'Arsenal'));
+                [6,7,8,9,10,11,12,13].forEach(x => units.push(new Unit(x, ROWS - 2, 'South', 'Infantry')));
+                [8,9,10,11].forEach(x => units.push(new Unit(x, ROWS - 3, 'South', 'Infantry')));
+                [8,11].forEach(x => units.push(new Unit(x, ROWS - 4, 'South', 'Cavalry')));
+                
+                updateTurnIndicator();
+                warCanvas.addEventListener('click', onWarCanvasClick);
+            }
+            
+            function onWarCanvasClick(e) {
+                const rect = warCanvas.getBoundingClientRect();
+                const x = Math.floor((e.clientX - rect.left) / tileSize);
+                const y = Math.floor((e.clientY - rect.top) / tileSize);
+
+                if (selectedUnit) {
+                    const move = validMoves.find(m => m.x === x && m.y === y);
+                    if (move) {
+                        const targetUnit = units.find(u => u.x === x && u.y === y);
+                        if (targetUnit) {
+                            units = units.filter(u => u !== targetUnit);
+                        }
+                        selectedUnit.x = x;
+                        selectedUnit.y = y;
+                        unitMovedThisTurn = true;
+                        selectedUnit = null;
+                        validMoves = [];
+                    } else {
+                        selectedUnit = null;
+                        validMoves = [];
+                    }
+                } else {
+                    const unit = units.find(u => u.x === x && u.y === y && u.owner === currentPlayer);
+                    if (unit && !unitMovedThisTurn) {
+                        selectedUnit = unit;
+                        validMoves = getValidMoves(unit);
+                    }
+                }
+            }
+            
+            function getValidMoves(unit) {
+                const moves = [];
+                if (unit.type === 'Arsenal' || !checkLineOfCommunication(unit)) return [];
+
+                for (let i = -unit.moves; i <= unit.moves; i++) {
+                    for (let j = -unit.moves; j <= unit.moves; j++) {
+                        if (Math.abs(i) + Math.abs(j) > unit.moves) continue;
+                        const newX = unit.x + i;
+                        const newY = unit.y + j;
+                        if (newX >= 0 && newX < COLS && newY >= 0 && newY < ROWS) {
+                           const targetUnit = units.find(u => u.x === newX && u.y === newY);
+                           if (!targetUnit || targetUnit.owner !== unit.owner) {
+                                moves.push({x: newX, y: newY});
+                           }
+                        }
+                    }
+                }
+                return moves;
+            }
+            
+            function checkLineOfCommunication(unit) {
+                const q = [{x: unit.x, y: unit.y}];
+                const visited = new Set([`${unit.x},${unit.y}`]);
+                
+                while(q.length > 0) {
+                    const curr = q.shift();
+                    const currentUnit = units.find(u => u.x === curr.x && u.y === curr.y);
+                    if(currentUnit && currentUnit.type === 'Arsenal' && currentUnit.owner === unit.owner) {
+                        return true;
+                    }
+                    
+                    [[0,1], [0,-1], [1,0], [-1,0]].forEach(([dx, dy]) => {
+                        const nx = curr.x + dx;
+                        const ny = curr.y + dy;
+                        const key = `${nx},${ny}`;
+                        
+                        if(nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS && !visited.has(key)) {
+                            const neighborUnit = units.find(u => u.x === nx && u.y === ny);
+                            if(neighborUnit && neighborUnit.owner === unit.owner) {
+                                visited.add(key);
+                                q.push({x: nx, y: ny});
+                            }
+                        }
+                    });
+                }
+                return false;
+            }
+
+            function drawWarGame() {
+                warContext.clearRect(0, 0, warCanvas.width, warCanvas.height);
+                
+                // Draw dithered background
+                for(let i = 0; i < warCanvas.width; i+=2) {
+                    for(let j = 0; j < warCanvas.height; j+=2) {
+                        if ((i/2 + j/2) % 2 === 0) {
+                            warContext.fillStyle = '#FFF';
+                        } else {
+                            warContext.fillStyle = '#B5B5B5';
+                        }
+                        warContext.fillRect(i, j, 2, 2);
+                    }
+                }
+
+                warContext.strokeStyle = '#000';
+                for (let i = 0; i < COLS; i++) {
+                    for (let j = 0; j < ROWS; j++) {
+                        warContext.strokeRect(i * tileSize, j * tileSize, tileSize, tileSize);
+                    }
+                }
+                
+                // Draw valid moves
+                validMoves.forEach(move => {
+                    warContext.fillStyle = 'rgba(128, 128, 128, 0.5)';
+                    warContext.fillRect(move.x * tileSize, move.y * tileSize, tileSize, tileSize);
+                });
+
+                units.forEach(unit => unit.draw(warContext));
+                
+                if (selectedUnit) {
+                    warContext.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                    warContext.fillRect(selectedUnit.x * tileSize, selectedUnit.y * tileSize, tileSize, tileSize);
+                }
+            }
+
+            function warGameLoop() {
+                drawWarGame();
+                warGameAnimationId = requestAnimationFrame(warGameLoop);
+            }
+
+
             // --- Initial State ---
             openWindow('welcome-window');
         });
     </script>
 </body>
 </html>
+
 
