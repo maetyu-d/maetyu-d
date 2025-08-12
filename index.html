@@ -120,13 +120,14 @@
 
         /* --- Window Styling --- */
         .window {
-            display: none;
+            display: none; /* Windows are hidden by default */
             position: absolute;
             background: var(--window-bg);
             border: 1px solid var(--border-color);
             box-shadow: 3px 3px 0px rgba(0,0,0,0.5);
             min-width: 300px;
             min-height: 150px;
+            flex-direction: column;
         }
 
         .title-bar {
@@ -138,6 +139,7 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
+            flex-shrink: 0;
         }
         
         .title-bar-text {
@@ -156,6 +158,16 @@
         .window-content {
             padding: 15px;
             color: var(--text-color);
+            overflow: auto;
+            flex-grow: 1;
+        }
+        
+        .window-content pre {
+            font-family: 'VT323', monospace;
+            font-size: 8px; /* Smaller font for ASCII art */
+            line-height: 0.8;
+            margin-top: 0;
+            margin-bottom: 15px;
         }
         
         h2 { font-size: 20px; margin-top: 0; margin-bottom: 10px; }
@@ -271,30 +283,34 @@
             </div>
         </div>
         
-        <div class="window" id="about-window" style="top: 120px; left: 150px;">
+        <div class="window" id="about-window" style="top: 80px; left: 150px; width: 620px; height: 510px;">
             <div class="title-bar">
                 <div class="close-box"></div>
                 <span class="title-bar-text">About Me</span>
             </div>
             <div class="window-content">
-                <h2>Dr. Mat Dalgleish</h2>
                 <p>
-                    Dr. Mat Dalgleish is a Senior Lecturer<br>
-                    in Game Audio and Technical Design at<br>
-                    the University of Staffordshire, a<br>
-                    Leonardo AI Lab fellow, and a<br>
-                    trustee of The OHMI Trust. Before<br>
-                    this, he studied fine art (sculpture)<br>
-                    and interactive media, completed a PhD<br>
-                    (2013) that explored David Tudor-<br>
-                    inspired approaches to digital<br>
-                    instrument design, was a visiting<br>
-                    researcher at The OU Music Computing<br>
-                    Lab (2009-11), and was Course Leader<br>
-                    for MSc Audio Technology and<br>
-                    Postgraduate Subject Leader (Performing<br>
-                    Arts) at the University of<br>
-                    Wolverhampton (2013-2023).
+                    I am a researcher and educator specialising<br>
+                    in the convergence of arts and technology,<br>
+                    with a focus on the intersection of music,<br>
+                    Human-Computer Interaction, and video games.<br>
+                    Alongside my longstanding interest in<br>
+                    experimental electronic music, my teaching<br>
+                    and research encompass areas such as sound<br>
+                    for games and film (technical, creative,<br>
+                    and theoretical aspects), musical interface<br>
+                    and controller design, sound and video<br>
+                    synthesis (especially modular synthesizers),<br>
+                    and the design of assistive technologies.<br>
+                    I am currently a Senior Lecturer in Game<br>
+                    Audio and Technical Design at Staffordshire<br>
+                    University, a Leonardo AI Lab fellow, a<br>
+                    trustee of The OHMI Trust, Accessibility<br>
+                    Chair for NIME 2026, a reviewer for various<br>
+                    sound and interaction-related conferences<br>
+                    and journals, and EE for MSc Music<br>
+                    Engineering and Production at the<br>
+                    University of South Wales.
                 </p>
             </div>
         </div>
@@ -350,9 +366,9 @@
             <div class="window-content">
                 <h2>Get In Touch</h2>
                 <p>Email:<br>
-                   mat.dalgleish@example.com</p>
+                   mathewdalgleish@gmail.com</p>
                 <p>Social:<br>
-                   @MatDalgleishAudio</p>
+                   @drd@mstdn.social</p>
             </div>
         </div>
 
@@ -386,17 +402,22 @@
             </div>
         </div>
 
-        <div class="window" id="texts-window" style="top: 220px; left: 260px;">
+        <div class="window" id="texts-window" style="top: 220px; left: 260px; width: 300px;">
             <div class="title-bar">
                 <div class="close-box"></div>
                 <span class="title-bar-text">Texts</span>
             </div>
             <div class="window-content">
-                <h2>Publications & Writings</h2>
-                <h3>Journal of Sonic Studies</h3>
-                <p>"Tudor-Inspired Approaches to Digital<br>Instrument Design" (2013)</p>
-                <h3>Leonardo Music Journal</h3>
-                <p>"Notes on Accessible Interfaces" (2018)</p>
+                <div class="folder-grid">
+                    <div class="folder-item" id="publications-folder">
+                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
+                        <div class="folder-label">Publications</div>
+                    </div>
+                    <div class="folder-item" id="other-texts-folder">
+                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
+                        <div class="folder-label">Other</div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -419,7 +440,7 @@
             function openWindow(windowId) {
                 const windowEl = document.getElementById(windowId);
                 if (windowEl) {
-                    windowEl.style.display = 'block';
+                    windowEl.style.display = 'flex'; // Use flex for layout
                     focusWindow(windowEl);
                 }
             }
@@ -478,6 +499,15 @@
                 });
             });
             
+            // --- Special Folder Item Functionality ---
+            document.getElementById('publications-folder').addEventListener('dblclick', () => {
+                window.open('https://docs.google.com/document/d/e/2PACX-1vTNOwfFbUrv_nqlR6ShIRcVnj5GEn1ZFPu_fGBX59fz_2sOvSxgLoEaA9-HjJCEg0bTqz58g6V2cN5z/pub', '_blank');
+            });
+            
+            document.getElementById('other-texts-folder').addEventListener('dblclick', () => {
+                window.open('https://docs.google.com/document/d/e/2PACX-1vSwIVGvniEs4MOzcTiY-9jHRZ9Viz38s4aj2zwohs_nT1LCjMNdM6BFhtD-uKCQwTi-F-p_bo-1mitA/pub', '_blank');
+            });
+
             // --- Menu Bar Functionality ---
             const menus = document.querySelectorAll('.menu');
             menus.forEach(menu => {
