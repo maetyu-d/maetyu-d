@@ -1,0 +1,570 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta http-equiv="Content-Style-Type" content="text/css">
+  <title></title>
+  <meta name="Generator" content="Cocoa HTML Writer">
+  <meta name="CocoaVersion" content="2299.77">
+  <style type="text/css">
+    p.p1 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Helvetica}
+    p.p2 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Helvetica; min-height: 14.0px}
+  </style>
+</head>
+<body>
+<p class="p1">&lt;!DOCTYPE html&gt;</p>
+<p class="p1">&lt;html lang="en"&gt;</p>
+<p class="p1">&lt;head&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;meta charset="UTF-8"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;meta name="viewport" content="width=device-width, initial-scale=1.0"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;title&gt;Welcome to Macintosh&lt;/title&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;link rel="preconnect" href="https://fonts.googleapis.com"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;link rel="preconnect" href="https://fonts.gstatic.com" crossorigin&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;link href="https://fonts.googleapis.com/css2?family=VT323&amp;display=swap" rel="stylesheet"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;style&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>/* --- Basic Setup &amp; System Font --- */</p>
+<p class="p1"><span class="Apple-converted-space">        </span>:root {</p>
+<p class="p1"><span class="Apple-converted-space">            </span>--bg-pattern: repeating-conic-gradient(#B5B5B5 0% 25%, #FFFFFF 0% 50%) 50% / 2px 2px;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>--window-bg: #FFFFFF;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>--text-color: #000000;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>--border-color: #000000;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>--highlight-bg: #e0e0e0;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>html, body {</p>
+<p class="p1"><span class="Apple-converted-space">            </span>height: 100%;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>margin: 0;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>padding: 0;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>overflow: hidden;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>font-family: 'VT323', monospace;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>font-size: 18px;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>background: var(--bg-pattern);</p>
+<p class="p1"><span class="Apple-converted-space">            </span>user-select: none;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>/* --- Desktop &amp; Menu Bar --- */</p>
+<p class="p1"><span class="Apple-converted-space">        </span>#desktop {</p>
+<p class="p1"><span class="Apple-converted-space">            </span>position: relative;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>width: 100%;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>height: 100%;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>#menu-bar {</p>
+<p class="p1"><span class="Apple-converted-space">            </span>position: fixed;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>top: 0;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>left: 0;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>width: 100%;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>height: 22px;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>background: var(--window-bg);</p>
+<p class="p1"><span class="Apple-converted-space">            </span>border-bottom: 1px solid var(--border-color);</p>
+<p class="p1"><span class="Apple-converted-space">            </span>display: flex;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>align-items: center;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>padding: 0 10px;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>box-sizing: border-box;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>z-index: 1000;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p2"><span class="Apple-converted-space">        </span></p>
+<p class="p1"><span class="Apple-converted-space">        </span>.menu {</p>
+<p class="p1"><span class="Apple-converted-space">            </span>position: relative;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>padding: 0 10px;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>cursor: default;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p2"><span class="Apple-converted-space">        </span></p>
+<p class="p1"><span class="Apple-converted-space">        </span>.menu-dropdown {</p>
+<p class="p1"><span class="Apple-converted-space">            </span>display: none;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>position: absolute;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>top: 21px;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>left: 0;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>background: var(--window-bg);</p>
+<p class="p1"><span class="Apple-converted-space">            </span>border: 1px solid var(--border-color);</p>
+<p class="p1"><span class="Apple-converted-space">            </span>box-shadow: 2px 2px 0px var(--border-color);</p>
+<p class="p1"><span class="Apple-converted-space">            </span>padding: 5px 0;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>min-width: 150px;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>.menu-item {</p>
+<p class="p1"><span class="Apple-converted-space">            </span>padding: 2px 20px;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p2"><span class="Apple-converted-space">        </span></p>
+<p class="p1"><span class="Apple-converted-space">        </span>.menu-item:hover {</p>
+<p class="p1"><span class="Apple-converted-space">            </span>background-color: var(--border-color);</p>
+<p class="p1"><span class="Apple-converted-space">            </span>color: var(--window-bg);</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>.menu-divider {</p>
+<p class="p1"><span class="Apple-converted-space">            </span>height: 1px;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>background: var(--border-color);</p>
+<p class="p1"><span class="Apple-converted-space">            </span>margin: 5px;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p2"><span class="Apple-converted-space">        </span></p>
+<p class="p1"><span class="Apple-converted-space">        </span>#apple-logo {</p>
+<p class="p1"><span class="Apple-converted-space">            </span>font-size: 16px;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>/* --- Desktop Icons --- */</p>
+<p class="p1"><span class="Apple-converted-space">        </span>.desktop-icon {</p>
+<p class="p1"><span class="Apple-converted-space">            </span>position: absolute;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>width: 80px;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>text-align: center;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>cursor: pointer;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>padding: 5px;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p2"><span class="Apple-converted-space">        </span></p>
+<p class="p1"><span class="Apple-converted-space">        </span>.desktop-icon:focus {</p>
+<p class="p1"><span class="Apple-converted-space">            </span>background-color: #000;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>color: #fff;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p2"><span class="Apple-converted-space">        </span></p>
+<p class="p1"><span class="Apple-converted-space">        </span>.desktop-icon img {</p>
+<p class="p1"><span class="Apple-converted-space">            </span>width: 48px;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>height: 48px;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p2"><span class="Apple-converted-space">        </span></p>
+<p class="p1"><span class="Apple-converted-space">        </span>.icon-label {</p>
+<p class="p1"><span class="Apple-converted-space">            </span>margin-top: 5px;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>#hd-icon { top: 40px; right: 20px; }</p>
+<p class="p1"><span class="Apple-converted-space">        </span>#about-icon { top: 130px; right: 20px; }</p>
+<p class="p1"><span class="Apple-converted-space">        </span>#contact-icon { top: 220px; right: 20px; }</p>
+<p class="p1"><span class="Apple-converted-space">        </span>#news-icon { top: 310px; right: 20px; }</p>
+<p class="p1"><span class="Apple-converted-space">        </span>#other-icon { top: 400px; right: 20px; }</p>
+<p class="p1"><span class="Apple-converted-space">        </span>#texts-icon { top: 490px; right: 20px; }</p>
+<p class="p1"><span class="Apple-converted-space">        </span>#trash-icon { bottom: 20px; right: 20px; }</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>/* --- Window Styling --- */</p>
+<p class="p1"><span class="Apple-converted-space">        </span>.window {</p>
+<p class="p1"><span class="Apple-converted-space">            </span>display: none;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>position: absolute;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>background: var(--window-bg);</p>
+<p class="p1"><span class="Apple-converted-space">            </span>border: 1px solid var(--border-color);</p>
+<p class="p1"><span class="Apple-converted-space">            </span>box-shadow: 3px 3px 0px rgba(0,0,0,0.5);</p>
+<p class="p1"><span class="Apple-converted-space">            </span>min-width: 300px;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>min-height: 150px;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>.title-bar {</p>
+<p class="p1"><span class="Apple-converted-space">            </span>height: 20px;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>background: var(--window-bg);</p>
+<p class="p1"><span class="Apple-converted-space">            </span>border-bottom: 1px solid var(--border-color);</p>
+<p class="p1"><span class="Apple-converted-space">            </span>padding: 0 5px;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>cursor: grab;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>display: flex;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>align-items: center;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>justify-content: space-between;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p2"><span class="Apple-converted-space">        </span></p>
+<p class="p1"><span class="Apple-converted-space">        </span>.title-bar-text {</p>
+<p class="p1"><span class="Apple-converted-space">            </span>padding: 0 10px;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>color: var(--text-color);</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>.close-box {</p>
+<p class="p1"><span class="Apple-converted-space">            </span>width: 10px;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>height: 10px;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>border: 1px solid var(--border-color);</p>
+<p class="p1"><span class="Apple-converted-space">            </span>cursor: pointer;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p1"><span class="Apple-converted-space">        </span>.close-box:hover { background: var(--border-color); }</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>.window-content {</p>
+<p class="p1"><span class="Apple-converted-space">            </span>padding: 15px;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>color: var(--text-color);</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p2"><span class="Apple-converted-space">        </span></p>
+<p class="p1"><span class="Apple-converted-space">        </span>h2 { font-size: 20px; margin-top: 0; margin-bottom: 10px; }</p>
+<p class="p1"><span class="Apple-converted-space">        </span>h3 { font-size: 18px; margin-top: 15px; margin-bottom: 5px; }</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>/* --- Folder Grid inside Window --- */</p>
+<p class="p1"><span class="Apple-converted-space">        </span>.folder-grid {</p>
+<p class="p1"><span class="Apple-converted-space">            </span>display: flex;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>flex-wrap: wrap;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>gap: 20px;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>.folder-item {</p>
+<p class="p1"><span class="Apple-converted-space">            </span>width: 80px;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>text-align: center;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>cursor: pointer;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>padding: 5px;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p2"><span class="Apple-converted-space">        </span></p>
+<p class="p1"><span class="Apple-converted-space">        </span>.folder-item img {</p>
+<p class="p1"><span class="Apple-converted-space">            </span>width: 48px;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>height: 48px;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>.folder-label {</p>
+<p class="p1"><span class="Apple-converted-space">             </span>margin-top: 5px;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>.folder-item:hover {</p>
+<p class="p1"><span class="Apple-converted-space">            </span>background-color: var(--highlight-bg);</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/style&gt;</p>
+<p class="p1">&lt;/head&gt;</p>
+<p class="p1">&lt;body&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div id="desktop"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;!-- Menu Bar --&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div id="menu-bar"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="menu" id="apple-menu"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;span id="apple-logo"&gt;&lt;/span&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;div class="menu-dropdown"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;div class="menu-item" data-window="about-window"&gt;About This Website...&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="menu" id="file-menu"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>File</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;div class="menu-dropdown"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;div class="menu-item" data-window="projects-window"&gt;Open Projects&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;div class="menu-item" data-window="contact-window"&gt;Contact&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;div class="menu-item" data-window="news-window"&gt;News&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;div class="menu-item" data-window="other-window"&gt;Other&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;div class="menu-item" data-window="texts-window"&gt;Texts&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;div class="menu-divider"&gt;&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;div class="menu-item" data-action="close"&gt;Close Window&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="menu" id="special-menu"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>Special</p>
+<p class="p1"><span class="Apple-converted-space">                 </span>&lt;div class="menu-dropdown"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;div class="menu-item" data-action="clear"&gt;Clean Up&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;div class="menu-divider"&gt;&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;div class="menu-item" data-action="reboot"&gt;Restart&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;!-- Desktop Icons --&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div class="desktop-icon" id="hd-icon" tabindex="0" data-window="projects-window"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;img src="https://img.icons8.com/ios/50/000000/workstation.png" alt="Hard Drive Icon"/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="icon-label"&gt;Projects&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div class="desktop-icon" id="about-icon" tabindex="0" data-window="about-window"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;img src="https://img.icons8.com/ios/50/000000/user-male-circle.png" alt="About Me Icon"/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="icon-label"&gt;About Me&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div class="desktop-icon" id="contact-icon" tabindex="0" data-window="contact-window"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;img src="https://img.icons8.com/ios/50/000000/new-post.png" alt="Contact Icon"/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="icon-label"&gt;Contact&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div class="desktop-icon" id="news-icon" tabindex="0" data-window="news-window"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;img src="https://img.icons8.com/ios/50/000000/news.png" alt="News Icon"/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="icon-label"&gt;News&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div class="desktop-icon" id="other-icon" tabindex="0" data-window="other-window"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Other Icon"/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="icon-label"&gt;Other&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div class="desktop-icon" id="texts-icon" tabindex="0" data-window="texts-window"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;img src="https://img.icons8.com/ios/50/000000/open-book.png" alt="Texts Icon"/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="icon-label"&gt;Texts&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div class="desktop-icon" id="trash-icon" tabindex="0"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;img src="https://img.icons8.com/ios/50/000000/trash--v1.png" alt="Trash Icon"/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="icon-label"&gt;Trash&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;!-- Windows (initially hidden) --&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div class="window" id="welcome-window" style="top: 60px; left: 40px;"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="title-bar"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;div class="close-box"&gt;&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;span class="title-bar-text"&gt;Welcome!&lt;/span&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="window-content"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;h2&gt;Welcome!&lt;/h2&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;p&gt;Hello and welcome to the website of Mat Dalgleish.&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;p&gt;The design of this website is a tribute&lt;br&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                   </span>to the classic Apple Macintosh System 1&lt;br&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                   </span>GUI from 1984.</p>
+<p class="p1"><span class="Apple-converted-space">                   </span>&lt;br&gt;&lt;br&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                   </span>Double-click the icons on the right&lt;br&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                   </span>to explore.&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p2"><span class="Apple-converted-space">        </span></p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div class="window" id="about-window" style="top: 120px; left: 150px;"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="title-bar"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;div class="close-box"&gt;&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;span class="title-bar-text"&gt;About Me&lt;/span&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="window-content"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;h2&gt;Dr. Mat Dalgleish&lt;/h2&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>Dr. Mat Dalgleish is a Senior Lecturer&lt;br&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>in Game Audio and Technical Design at&lt;br&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>the University of Staffordshire, a&lt;br&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>Leonardo CripLab AI Fellow, and a&lt;br&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>trustee of The OHMI Trust. Before&lt;br&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>this, he studied fine art (sculpture)&lt;br&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>and interactive media, completed a PhD&lt;br&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>(2013) that explored David Tudor-&lt;br&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>inspired approaches to digital&lt;br&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>instrument design, was a visiting&lt;br&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>researcher at The OU Music Computing&lt;br&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>Lab (2009-11), and was Course Leader&lt;br&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>for MSc Audio Technology and&lt;br&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>Postgraduate Subject Leader (Performing&lt;br&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>Arts) at the University of&lt;br&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>Wolverhampton (2013-2023).</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p2"><span class="Apple-converted-space">        </span></p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div class="window" id="projects-window" style="top: 80px; left: 100px; width: 400px;"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="title-bar"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;div class="close-box"&gt;&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;span class="title-bar-text"&gt;Projects&lt;/span&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="window-content"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                 </span>&lt;div class="folder-grid"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;div class="folder-item"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;div class="folder-label"&gt;2004-2009&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;div class="folder-item"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;div class="folder-label"&gt;2010-2015&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;div class="folder-item"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;div class="folder-label"&gt;2016-2020&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;div class="folder-item"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;div class="folder-label"&gt;2021&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;div class="folder-item"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;div class="folder-label"&gt;2022&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;div class="folder-item"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;div class="folder-label"&gt;2023&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                     </span>&lt;div class="folder-item"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;div class="folder-label"&gt;2024&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                     </span>&lt;div class="folder-item"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;div class="folder-label"&gt;2025&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p2"><span class="Apple-converted-space">        </span></p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div class="window" id="contact-window" style="top: 160px; left: 200px;"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="title-bar"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;div class="close-box"&gt;&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;span class="title-bar-text"&gt;Contact&lt;/span&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="window-content"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;h2&gt;Get In Touch&lt;/h2&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;p&gt;Email:&lt;br&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                   </span>mat.dalgleish@example.com&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;p&gt;Social:&lt;br&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                   </span>@MatDalgleishAudio&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div class="window" id="news-window" style="top: 180px; left: 220px;"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="title-bar"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;div class="close-box"&gt;&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;span class="title-bar-text"&gt;Today's News&lt;/span&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="window-content"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;h2&gt;Wolverhampton Chronicle&lt;/h2&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;h3&gt;Tuesday, 12 August 2025&lt;/h3&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                   </span>- City Council announces new tech hub&lt;br&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                   </span>- Wolves prepare for season opener&lt;br&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                   </span>- Weather: Sunny spells expected</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p2"><span class="Apple-converted-space">        </span></p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div class="window" id="other-window" style="top: 200px; left: 240px;"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="title-bar"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;div class="close-box"&gt;&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;span class="title-bar-text"&gt;Other&lt;/span&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="window-content"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;h2&gt;Miscellaneous&lt;/h2&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                   </span>- A collection of various notes,&lt;br&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                   </span>ideas, and other unsorted files.</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div class="window" id="texts-window" style="top: 220px; left: 260px;"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="title-bar"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;div class="close-box"&gt;&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;span class="title-bar-text"&gt;Texts&lt;/span&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="window-content"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;h2&gt;Publications &amp; Writings&lt;/h2&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;h3&gt;Journal of Sonic Studies&lt;/h3&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;p&gt;"Tudor-Inspired Approaches to Digital&lt;br&gt;Instrument Design" (2013)&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;h3&gt;Leonardo Music Journal&lt;/h3&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;p&gt;"Notes on Accessible Interfaces" (2018)&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;script&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>document.addEventListener('DOMContentLoaded', () =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">            </span>let zIndexCounter = 100;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>let activeWindow = null;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">            </span>// --- Window Management ---</p>
+<p class="p1"><span class="Apple-converted-space">            </span>function focusWindow(windowEl) {</p>
+<p class="p1"><span class="Apple-converted-space">                </span>if (windowEl) {</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>zIndexCounter++;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>windowEl.style.zIndex = zIndexCounter;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>activeWindow = windowEl;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>}</p>
+<p class="p1"><span class="Apple-converted-space">            </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">            </span>function openWindow(windowId) {</p>
+<p class="p1"><span class="Apple-converted-space">                </span>const windowEl = document.getElementById(windowId);</p>
+<p class="p1"><span class="Apple-converted-space">                </span>if (windowEl) {</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>windowEl.style.display = 'block';</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>focusWindow(windowEl);</p>
+<p class="p1"><span class="Apple-converted-space">                </span>}</p>
+<p class="p1"><span class="Apple-converted-space">            </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">            </span>function closeWindow(windowEl) {</p>
+<p class="p1"><span class="Apple-converted-space">                </span>if(windowEl) {</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>windowEl.style.display = 'none';</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>if(activeWindow === windowEl) {</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>activeWindow = null;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>}</p>
+<p class="p1"><span class="Apple-converted-space">                </span>}</p>
+<p class="p1"><span class="Apple-converted-space">            </span>}</p>
+<p class="p2"><span class="Apple-converted-space">            </span></p>
+<p class="p1"><span class="Apple-converted-space">            </span>// Make all windows draggable</p>
+<p class="p1"><span class="Apple-converted-space">            </span>document.querySelectorAll('.window').forEach(windowEl =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">                </span>const titleBar = windowEl.querySelector('.title-bar');</p>
+<p class="p2"><span class="Apple-converted-space">                </span></p>
+<p class="p1"><span class="Apple-converted-space">                </span>windowEl.addEventListener('mousedown', () =&gt; focusWindow(windowEl));</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">                </span>titleBar.addEventListener('mousedown', (e) =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>e.preventDefault();</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>focusWindow(windowEl);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">                    </span>let offsetX = e.clientX - windowEl.offsetLeft;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>let offsetY = e.clientY - windowEl.offsetTop;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">                    </span>function onMouseMove(e) {</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>windowEl.style.left = `${e.clientX - offsetX}px`;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>windowEl.style.top = `${e.clientY - offsetY}px`;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">                    </span>function onMouseUp() {</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>document.removeEventListener('mousemove', onMouseMove);</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>document.removeEventListener('mouseup', onMouseUp);</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">                    </span>document.addEventListener('mousemove', onMouseMove);</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>document.addEventListener('mouseup', onMouseUp);</p>
+<p class="p1"><span class="Apple-converted-space">                </span>});</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">                </span>// Close button functionality</p>
+<p class="p1"><span class="Apple-converted-space">                </span>const closeBox = windowEl.querySelector('.close-box');</p>
+<p class="p1"><span class="Apple-converted-space">                </span>closeBox.addEventListener('click', (e) =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>e.stopPropagation();</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>closeWindow(windowEl);</p>
+<p class="p1"><span class="Apple-converted-space">                </span>});</p>
+<p class="p1"><span class="Apple-converted-space">            </span>});</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">            </span>// --- Icon Functionality ---</p>
+<p class="p1"><span class="Apple-converted-space">            </span>document.querySelectorAll('.desktop-icon').forEach(icon =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">                </span>icon.addEventListener('dblclick', () =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>const windowId = icon.dataset.window;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>if (windowId) {</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>openWindow(windowId);</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>}</p>
+<p class="p1"><span class="Apple-converted-space">                </span>});</p>
+<p class="p1"><span class="Apple-converted-space">            </span>});</p>
+<p class="p2"><span class="Apple-converted-space">            </span></p>
+<p class="p1"><span class="Apple-converted-space">            </span>// --- Menu Bar Functionality ---</p>
+<p class="p1"><span class="Apple-converted-space">            </span>const menus = document.querySelectorAll('.menu');</p>
+<p class="p1"><span class="Apple-converted-space">            </span>menus.forEach(menu =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">                </span>const dropdown = menu.querySelector('.menu-dropdown');</p>
+<p class="p1"><span class="Apple-converted-space">                </span>menu.addEventListener('click', (e) =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>// Hide other menus</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>menus.forEach(m =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>if (m !== menu) {</p>
+<p class="p1"><span class="Apple-converted-space">                           </span>const otherDropdown = m.querySelector('.menu-dropdown');</p>
+<p class="p1"><span class="Apple-converted-space">                           </span>if(otherDropdown) otherDropdown.style.display = 'none';</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>}</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>});</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>// Toggle current menu</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>if(dropdown) {</p>
+<p class="p1"><span class="Apple-converted-space">                       </span>dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>}</p>
+<p class="p1"><span class="Apple-converted-space">                </span>});</p>
+<p class="p1"><span class="Apple-converted-space">            </span>});</p>
+<p class="p2"><span class="Apple-converted-space">            </span></p>
+<p class="p1"><span class="Apple-converted-space">            </span>// Hide menus when clicking elsewhere</p>
+<p class="p1"><span class="Apple-converted-space">            </span>document.addEventListener('click', (e) =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">                </span>if (!e.target.closest('.menu')) {</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>menus.forEach(menu =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">                       </span>const dropdown = menu.querySelector('.menu-dropdown');</p>
+<p class="p1"><span class="Apple-converted-space">                       </span>if(dropdown) dropdown.style.display = 'none';</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>});</p>
+<p class="p1"><span class="Apple-converted-space">                </span>}</p>
+<p class="p1"><span class="Apple-converted-space">            </span>});</p>
+<p class="p2"><span class="Apple-converted-space">            </span></p>
+<p class="p1"><span class="Apple-converted-space">            </span>// Menu item actions</p>
+<p class="p1"><span class="Apple-converted-space">            </span>document.querySelectorAll('.menu-item').forEach(item =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">                </span>item.addEventListener('click', () =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>const windowId = item.dataset.window;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>const action = item.dataset.action;</p>
+<p class="p2"><span class="Apple-converted-space">                    </span></p>
+<p class="p1"><span class="Apple-converted-space">                    </span>if (windowId) {</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>openWindow(windowId);</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>}</p>
+<p class="p2"><span class="Apple-converted-space">                    </span></p>
+<p class="p1"><span class="Apple-converted-space">                    </span>if (action === 'close' &amp;&amp; activeWindow) {</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>closeWindow(activeWindow);</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>}</p>
+<p class="p2"><span class="Apple-converted-space">                    </span></p>
+<p class="p1"><span class="Apple-converted-space">                    </span>if (action === 'reboot') {</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>location.reload();</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>}</p>
+<p class="p2"><span class="Apple-converted-space">                    </span></p>
+<p class="p1"><span class="Apple-converted-space">                    </span>if (action === 'clear') {</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>// A simple "clean up" just repositions icons for effect</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>document.getElementById('hd-icon').style.top = '40px';</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>document.getElementById('hd-icon').style.right = '20px';</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>document.getElementById('about-icon').style.top = '130px';</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>document.getElementById('about-icon').style.right = '20px';</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>document.getElementById('contact-icon').style.top = '220px';</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>document.getElementById('contact-icon').style.right = '20px';</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>document.getElementById('news-icon').style.top = '310px';</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>document.getElementById('news-icon').style.right = '20px';</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>document.getElementById('other-icon').style.top = '400px';</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>document.getElementById('other-icon').style.right = '20px';</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>document.getElementById('texts-icon').style.top = '490px';</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>document.getElementById('texts-icon').style.right = '20px';</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>}</p>
+<p class="p2"><span class="Apple-converted-space">                    </span></p>
+<p class="p1"><span class="Apple-converted-space">                    </span>// Hide dropdown after click</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>item.closest('.menu-dropdown').style.display = 'none';</p>
+<p class="p1"><span class="Apple-converted-space">                </span>});</p>
+<p class="p1"><span class="Apple-converted-space">            </span>});</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">            </span>// --- Initial State ---</p>
+<p class="p1"><span class="Apple-converted-space">            </span>openWindow('welcome-window');</p>
+<p class="p1"><span class="Apple-converted-space">        </span>});</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/script&gt;</p>
+<p class="p1">&lt;/body&gt;</p>
+<p class="p1">&lt;/html&gt;</p>
+</body>
+</html>
