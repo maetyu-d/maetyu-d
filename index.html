@@ -92,8 +92,12 @@
             position: absolute;
             width: 80px;
             text-align: center;
-            cursor: pointer;
+            cursor: grab;
             padding: 5px;
+        }
+
+        .desktop-icon:active {
+            cursor: grabbing;
         }
         
         .desktop-icon:focus {
@@ -104,6 +108,7 @@
         .desktop-icon img {
             width: 48px;
             height: 48px;
+            pointer-events: none; /* Prevent image from being dragged alone */
         }
         
         .icon-label {
@@ -644,13 +649,47 @@
 
             // --- Icon Functionality ---
             document.querySelectorAll('.desktop-icon').forEach(icon => {
-                icon.addEventListener('dblclick', () => {
+                // Make icons draggable
+                makeIconDraggable(icon);
+
+                icon.addEventListener('dblclick', (e) => {
+                    // Prevent dblclick from triggering drag
+                    e.preventDefault(); 
                     const windowId = icon.dataset.window;
                     if (windowId) {
                         openWindow(windowId);
                     }
                 });
             });
+
+            function makeIconDraggable(icon) {
+                 let offsetX, offsetY;
+
+                icon.addEventListener('mousedown', (e) => {
+                    // Don't drag on dblclick
+                    if (e.detail > 1) {
+                        return;
+                    }
+                    e.preventDefault();
+                    
+                    offsetX = e.clientX - icon.offsetLeft;
+                    offsetY = e.clientY - icon.offsetTop;
+
+                    document.addEventListener('mousemove', onMouseMove);
+                    document.addEventListener('mouseup', onMouseUp);
+                });
+
+                function onMouseMove(e) {
+                    icon.style.left = `${e.clientX - offsetX}px`;
+                    icon.style.top = `${e.clientY - offsetY}px`;
+                    icon.style.right = 'auto'; // override the css 'right' property
+                }
+
+                function onMouseUp() {
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                }
+            }
             
             // --- Special Folder Item Functionality ---
             document.getElementById('publications-folder').addEventListener('dblclick', () => {
@@ -745,27 +784,11 @@
                     }
                     
                     if (action === 'clear') {
-                        // A simple "clean up" just repositions icons for effect
-                        document.getElementById('hd-icon').style.top = '40px';
-                        document.getElementById('hd-icon').style.right = '20px';
-                        document.getElementById('about-icon').style.top = '130px';
-                        document.getElementById('about-icon').style.right = '20px';
-                        document.getElementById('contact-icon').style.top = '220px';
-                        document.getElementById('contact-icon').style.right = '20px';
-                        document.getElementById('news-icon').style.top = '40px';
-                        document.getElementById('news-icon').style.right = '120px';
-                        document.getElementById('other-icon').style.top = '220px';
-                        document.getElementById('other-icon').style.right = '120px';
-                        document.getElementById('texts-icon').style.top = '130px';
-                        document.getElementById('texts-icon').style.right = '120px';
-                        document.getElementById('game-icon').style.top = '310px';
-                        document.getElementById('game-icon').style.right = '20px';
-                        document.getElementById('music-icon').style.top = '310px';
-                        document.getElementById('music-icon').style.right = '120px';
-                        document.getElementById('places-icon').style.top = '40px';
-                        document.getElementById('places-icon').style.right = '220px';
-                        document.getElementById('war-game-icon').style.top = '400px';
-                        document.getElementById('war-game-icon').style.right = '20px';
+                        document.querySelectorAll('.desktop-icon').forEach(icon => {
+                            icon.style.left = '';
+                            icon.style.top = '';
+                            icon.style.right = '';
+                        });
                     }
                     
                     // Hide dropdown after click
@@ -1120,5 +1143,6 @@
     </script>
 </body>
 </html>
+
 
 
