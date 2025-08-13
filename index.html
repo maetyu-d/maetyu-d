@@ -115,17 +115,13 @@
             margin-top: 5px;
         }
 
-        #hd-icon { top: 40px; right: 20px; }
+        #work-icon { top: 40px; right: 20px; }
         #about-icon { top: 130px; right: 20px; }
         #contact-icon { top: 220px; right: 20px; }
         #news-icon { top: 40px; right: 120px; }
-        #other-icon { top: 220px; right: 120px; }
-        #texts-icon { top: 130px; right: 120px; }
-        #game-icon { top: 310px; right: 20px; }
-        #music-icon { top: 310px; right: 120px; }
-        #places-icon { top: 40px; right: 220px; }
-        #war-game-icon { top: 400px; right: 20px; }
+        #not-work-icon { top: 130px; right: 120px; }
         #trash-icon { bottom: 20px; right: 20px; }
+
 
         /* --- Window Styling --- */
         .window {
@@ -251,15 +247,10 @@
             <div class="menu" id="file-menu">
                 File
                 <div class="menu-dropdown">
-                    <div class="menu-item" data-window="projects-window">Open Projects</div>
+                    <div class="menu-item" data-window="work-window">Work</div>
+                    <div class="menu-item" data-window="not-work-window">Not Work</div>
                     <div class="menu-item" data-window="contact-window">Contact</div>
                     <div class="menu-item" data-window="news-window">News</div>
-                    <div class="menu-item" data-window="other-window">Other</div>
-                    <div class="menu-item" data-window="texts-window">Texts</div>
-                    <div class="menu-item" data-window="music-window">Music</div>
-                    <div class="menu-item" data-window="places-window">Places</div>
-                    <div class="menu-item" data-window="game-window">Play Pong</div>
-                    <div class="menu-item" data-window="war-game-window">Play War Game</div>
                     <div class="menu-divider"></div>
                     <div class="menu-item" data-action="close">Close Window</div>
                 </div>
@@ -275,9 +266,9 @@
         </div>
 
         <!-- Desktop Icons -->
-        <div class="desktop-icon" id="hd-icon" tabindex="0" data-window="projects-window">
-            <img src="https://img.icons8.com/ios/50/000000/workstation.png" alt="Hard Drive Icon"/>
-            <div class="icon-label">Projects</div>
+        <div class="desktop-icon" id="work-icon" tabindex="0" data-window="work-window">
+            <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Work Folder Icon"/>
+            <div class="icon-label">Work</div>
         </div>
         <div class="desktop-icon" id="about-icon" tabindex="0" data-window="about-window">
             <img src="https://img.icons8.com/ios/50/000000/user-male-circle.png" alt="About Me Icon"/>
@@ -291,29 +282,9 @@
             <img src="https://img.icons8.com/ios/50/000000/news.png" alt="News Icon"/>
             <div class="icon-label">News</div>
         </div>
-        <div class="desktop-icon" id="other-icon" tabindex="0" data-window="other-window">
-            <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Other Icon"/>
-            <div class="icon-label">Other</div>
-        </div>
-        <div class="desktop-icon" id="texts-icon" tabindex="0" data-window="texts-window">
-            <img src="https://img.icons8.com/ios/50/000000/open-book.png" alt="Texts Icon"/>
-            <div class="icon-label">Texts</div>
-        </div>
-        <div class="desktop-icon" id="game-icon" tabindex="0" data-window="game-window">
-            <img src="https://img.icons8.com/ios/50/000000/tetris.png" alt="Game Icon"/>
-            <div class="icon-label">Pong</div>
-        </div>
-        <div class="desktop-icon" id="music-icon" tabindex="0" data-window="music-window">
-            <img src="https://img.icons8.com/ios/50/000000/musical-notes.png" alt="Music Icon"/>
-            <div class="icon-label">Music</div>
-        </div>
-        <div class="desktop-icon" id="places-icon" tabindex="0" data-window="places-window">
-            <img src="https://img.icons8.com/ios/50/000000/marker.png" alt="Places Icon"/>
-            <div class="icon-label">Places</div>
-        </div>
-        <div class="desktop-icon" id="war-game-icon" tabindex="0" data-window="war-game-window">
-            <img src="https://img.icons8.com/ios/50/000000/knight.png" alt="War Game Icon"/>
-            <div class="icon-label">War Game</div>
+        <div class="desktop-icon" id="not-work-icon" tabindex="0" data-window="not-work-window">
+            <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Not Work Icon"/>
+            <div class="icon-label">Not Work</div>
         </div>
         <div class="desktop-icon" id="trash-icon" tabindex="0">
             <img src="https://img.icons8.com/ios/50/000000/trash--v1.png" alt="Trash Icon"/>
@@ -401,11 +372,11 @@
                         <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
                         <div class="folder-label">2023</div>
                     </div>
-                     <div class="folder-item">
+                     <div class="folder-item" id="projects-2024-link">
                         <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
                         <div class="folder-label">2024</div>
                     </div>
-                     <div class="folder-item">
+                     <div class="folder-item" id="projects-2025-link">
                         <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
                         <div class="folder-label">2025</div>
                     </div>
@@ -485,6 +456,25 @@
             </div>
         </div>
         
+        <div class="window" id="games-window" style="top: 100px; left: 120px; width: 300px;">
+            <div class="title-bar">
+                <div class="close-box"></div>
+                <span class="title-bar-text">Games</span>
+            </div>
+            <div class="window-content">
+                 <div class="folder-grid">
+                    <div class="folder-item" data-window="game-window">
+                        <img src="https://img.icons8.com/ios/50/000000/tetris.png" alt="Game Icon"/>
+                        <div class="folder-label">Pong</div>
+                    </div>
+                    <div class="folder-item" data-window="war-game-window">
+                        <img src="https://img.icons8.com/ios/50/000000/knight.png" alt="War Game Icon"/>
+                        <div class="folder-label">War Game</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
         <div class="window" id="game-window" style="top: 100px; left: 120px; width: 480px; height: 320px;">
             <div class="title-bar">
                 <div class="close-box"></div>
@@ -503,12 +493,31 @@
             <div class="window-content">
                 <div class="folder-grid">
                     <div class="folder-item" id="bandcamp-folder">
-                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
+                        <img src="https://img.icons8.com/ios/50/000000/musical-notes.png" alt="Music Icon"/>
                         <div class="folder-label">Bandcamp</div>
                     </div>
                     <div class="folder-item" id="spotify-folder">
-                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
+                        <img src="https://img.icons8.com/ios/50/000000/musical-notes.png" alt="Music Icon"/>
                         <div class="folder-label">Spotify</div>
+                    </div>
+                    <div class="folder-item" data-window="playlists-window">
+                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
+                        <div class="folder-label">Playlists</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="window" id="playlists-window" style="top: 260px; left: 300px;">
+             <div class="title-bar">
+                <div class="close-box"></div>
+                <span class="title-bar-text">Playlists</span>
+            </div>
+            <div class="window-content">
+                <div class="folder-grid">
+                    <div class="folder-item" id="nww-list-link">
+                        <img src="https://img.icons8.com/ios/50/000000/document--v1.png" alt="Document Icon"/>
+                        <div class="folder-label">NWW List</div>
                     </div>
                 </div>
             </div>
@@ -562,6 +571,187 @@
             <div class="window-content">
                 <div id="warGameControls"><span id="turn-indicator"></span><button id="end-turn-btn">End Turn</button></div>
                 <canvas id="warCanvas" class="game-canvas"></canvas>
+            </div>
+        </div>
+        
+        <div class="window" id="tools-window" style="top: 280px; left: 320px; width: 320px;">
+            <div class="title-bar">
+                <div class="close-box"></div>
+                <span class="title-bar-text">Tools</span>
+            </div>
+            <div class="window-content">
+                <div class="folder-grid">
+                    <div class="folder-item" data-window="hardware-window">
+                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
+                        <div class="folder-label">Hardware</div>
+                    </div>
+                    <div class="folder-item" data-window="software-window">
+                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
+                        <div class="folder-label">Software</div>
+                    </div>
+                     <div class="folder-item" data-window="ai-window">
+                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
+                        <div class="folder-label">AI</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="window" id="hardware-window" style="top: 300px; left: 340px;">
+            <div class="title-bar">
+                <div class="close-box"></div>
+                <span class="title-bar-text">Hardware</span>
+            </div>
+            <div class="window-content">
+                <h2>My Gear</h2>
+                <p>Content about hardware to be added.</p>
+            </div>
+        </div>
+
+        <div class="window" id="software-window" style="top: 320px; left: 360px; width: 420px;">
+            <div class="title-bar">
+                <div class="close-box"></div>
+                <span class="title-bar-text">Software</span>
+            </div>
+            <div class="window-content">
+                <div class="folder-grid">
+                    <div class="folder-item" id="puredata-link">
+                        <img src="https://img.icons8.com/ios/50/000000/document--v1.png" alt="App Icon"/>
+                        <div class="folder-label">Pure Data</div>
+                    </div>
+                    <div class="folder-item" id="supercollider-link">
+                        <img src="https://img.icons8.com/ios/50/000000/document--v1.png" alt="App Icon"/>
+                        <div class="folder-label">SuperCollider</div>
+                    </div>
+                    <div class="folder-item" id="processing-link">
+                        <img src="https://img.icons8.com/ios/50/000000/document--v1.png" alt="App Icon"/>
+                        <div class="folder-label">Processing</div>
+                    </div>
+                     <div class="folder-item" id="arduino-link">
+                        <img src="https://img.icons8.com/ios/50/000000/document--v1.png" alt="App Icon"/>
+                        <div class="folder-label">Arduino</div>
+                    </div>
+                     <div class="folder-item" id="audacity-link">
+                        <img src="https://img.icons8.com/ios/50/000000/document--v1.png" alt="App Icon"/>
+                        <div class="folder-label">Audacity</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="window" id="ai-window" style="top: 340px; left: 380px; width: 300px;">
+            <div class="title-bar">
+                <div class="close-box"></div>
+                <span class="title-bar-text">AI</span>
+            </div>
+            <div class="window-content">
+                 <div class="folder-grid">
+                    <div class="folder-item" id="ollama-link">
+                        <img src="https://img.icons8.com/ios/50/000000/document--v1.png" alt="App Icon"/>
+                        <div class="folder-label">Ollama</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="window" id="teaching-window" style="top: 360px; left: 400px; width: 400px;">
+            <div class="title-bar">
+                <div class="close-box"></div>
+                <span class="title-bar-text">Teaching</span>
+            </div>
+            <div class="window-content">
+                 <div class="folder-grid">
+                    <div class="folder-item" data-window="modules-window">
+                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
+                        <div class="folder-label">Modules</div>
+                    </div>
+                     <div class="folder-item" data-window="non-module-window">
+                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
+                        <div class="folder-label">Non-module</div>
+                    </div>
+                     <div class="folder-item" data-window="resources-window">
+                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
+                        <div class="folder-label">Resources</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="window" id="modules-window" style="top: 380px; left: 420px;">
+             <div class="title-bar">
+                <div class="close-box"></div>
+                <span class="title-bar-text">Modules</span>
+            </div>
+            <div class="window-content">
+                <p>Content to be added.</p>
+            </div>
+        </div>
+        <div class="window" id="non-module-window" style="top: 400px; left: 440px;">
+             <div class="title-bar">
+                <div class="close-box"></div>
+                <span class="title-bar-text">Non-module</span>
+            </div>
+            <div class="window-content">
+                <p>Content to be added.</p>
+            </div>
+        </div>
+        <div class="window" id="resources-window" style="top: 420px; left: 460px;">
+             <div class="title-bar">
+                <div class="close-box"></div>
+                <span class="title-bar-text">Resources</span>
+            </div>
+            <div class="window-content">
+                <p>Content to be added.</p>
+            </div>
+        </div>
+        
+        <div class="window" id="not-work-window" style="top: 100px; left: 120px; width: 300px;">
+            <div class="title-bar">
+                <div class="close-box"></div>
+                <span class="title-bar-text">Not Work</span>
+            </div>
+            <div class="window-content">
+                 <div class="folder-grid">
+                    <div class="folder-item" data-window="places-window">
+                        <img src="https://img.icons8.com/ios/50/000000/marker.png" alt="Places Icon"/>
+                        <div class="folder-label">Places</div>
+                    </div>
+                    <div class="folder-item" data-window="music-window">
+                        <img src="https://img.icons8.com/ios/50/000000/musical-notes.png" alt="Music Icon"/>
+                        <div class="folder-label">Music</div>
+                    </div>
+                    <div class="folder-item" data-window="games-window">
+                        <img src="https://img.icons8.com/ios/50/000000/joystick.png" alt="Games Icon"/>
+                        <div class="folder-label">Games</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="window" id="work-window" style="top: 100px; left: 120px; width: 420px;">
+            <div class="title-bar">
+                <div class="close-box"></div>
+                <span class="title-bar-text">Work</span>
+            </div>
+            <div class="window-content">
+                 <div class="folder-grid">
+                    <div class="folder-item" data-window="projects-window">
+                        <img src="https://img.icons8.com/ios/50/000000/workstation.png" alt="Projects Icon"/>
+                        <div class="folder-label">Projects</div>
+                    </div>
+                    <div class="folder-item" data-window="tools-window">
+                        <img src="https://img.icons8.com/ios/50/000000/toolbox.png" alt="Tools Icon"/>
+                        <div class="folder-label">Tools</div>
+                    </div>
+                    <div class="folder-item" data-window="texts-window">
+                        <img src="https://img.icons8.com/ios/50/000000/open-book.png" alt="Texts Icon"/>
+                        <div class="folder-label">Texts</div>
+                    </div>
+                    <div class="folder-item" data-window="teaching-window">
+                        <img src="https://img.icons8.com/ios/50/000000/open-book.png" alt="Teaching Icon"/>
+                        <div class="folder-label">Teaching</div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -692,6 +882,15 @@
             }
             
             // --- Special Folder Item Functionality ---
+            document.querySelectorAll('.folder-item[data-window]').forEach(item => {
+                item.addEventListener('dblclick', (e) => {
+                    const windowId = item.dataset.window;
+                    if(windowId) {
+                        openWindow(windowId);
+                    }
+                });
+            });
+
             document.getElementById('publications-folder').addEventListener('dblclick', () => {
                 window.open('https://docs.google.com/document/d/e/2PACX-1vTNOwfFbUrv_nqlR6ShIRcVnj5GEn1ZFPu_fGBX59fz_2sOvSxgLoEaA9-HjJCEg0bTqz58g6V2cN5z/pub', '_blank');
             });
@@ -734,6 +933,28 @@
 
             document.getElementById('the-bridges-link').addEventListener('dblclick', () => {
                 window.open('https://www.thebridgespub.co.uk/', '_blank');
+            });
+            
+            document.getElementById('puredata-link').addEventListener('dblclick', () => {
+                window.open('https://puredata.info/', '_blank');
+            });
+            document.getElementById('supercollider-link').addEventListener('dblclick', () => {
+                window.open('https://supercollider.github.io/', '_blank');
+            });
+            document.getElementById('processing-link').addEventListener('dblclick', () => {
+                window.open('https://processing.org/', '_blank');
+            });
+            document.getElementById('arduino-link').addEventListener('dblclick', () => {
+                window.open('https://www.arduino.cc/', '_blank');
+            });
+            document.getElementById('audacity-link').addEventListener('dblclick', () => {
+                window.open('https://www.audacityteam.org/', '_blank');
+            });
+            document.getElementById('ollama-link').addEventListener('dblclick', () => {
+                window.open('https://ollama.com/', '_blank');
+            });
+             document.getElementById('nww-list-link').addEventListener('dblclick', () => {
+                window.open('http://www.ultimathulerecords.com/nwwlist.html', '_blank');
             });
 
             // --- Menu Bar Functionality ---
@@ -1143,6 +1364,7 @@
     </script>
 </body>
 </html>
+
 
 
 
