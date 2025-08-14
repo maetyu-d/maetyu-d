@@ -3,1364 +3,467 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome to Macintosh</title>
+    <title>Analog Portfolio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Roboto+Mono:wght@400;500&family=Playfair+Display:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        /* --- Basic Setup & System Font --- */
         :root {
-            --bg-pattern: repeating-conic-gradient(#B5B5B5 0% 25%, #FFFFFF 0% 50%) 50% / 2px 2px;
-            --window-bg: #FFFFFF;
-            --text-color: #000000;
-            --border-color: #000000;
-            --highlight-bg: #e0e0e0;
+            --cable-colors: #facc15, #6b7280, #fb923c;
+            --screen-tint-color: transparent;
         }
-
-        html, body {
-            height: 100%;
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            font-family: 'VT323', monospace;
-            font-size: 18px;
-            background: var(--bg-pattern);
-            user-select: none;
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827;
         }
-
-        /* --- Desktop & Menu Bar --- */
-        #desktop {
+        .font-mono-custom { font-family: 'Roboto Mono', monospace; }
+        .font-serif-custom { font-family: 'Playfair Display', serif; }
+        .analog-bg { background-color: #e5e7eb; }
+        .module-border { border: 1px solid #9ca3af; }
+        .jack {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .jack-output-yellow {
+             background: radial-gradient(circle, #fde047 40%, #facc15 100%);
+             border: 2px solid #eab308;
+        }
+        .jack-output-modulation {
+             background: radial-gradient(circle, #6b7280 40%, #374151 100%);
+             border: 2px solid #9ca3af;
+        }
+        .jack-input {
+            background: radial-gradient(circle, #1f2937 40%, #000 100%);
+            border: 2px solid #374151;
+        }
+        .jack-input-red {
+             background: radial-gradient(circle, #ef4444 40%, #b91c1c 100%);
+             border: 2px solid #dc2626;
+        }
+        .jack-input-purple {
+            background: radial-gradient(circle, #a78bfa 40%, #7c3aed 100%);
+            border: 2px solid #8b5cf6;
+        }
+        .jack:hover, .jack.selected {
+            transform: scale(1.1);
+            border-color: #f59e0b;
+        }
+        .jack-label {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 10px;
+            text-transform: uppercase;
+            color: #4b5563;
+            text-align: center;
+        }
+        .knob {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: linear-gradient(145deg, #262626, #1a1a1a);
+            border: 2px solid #404040;
             position: relative;
-            width: 100%;
-            height: 100%;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.4), inset 0 2px 2px rgba(255,255,255,0.1);
         }
-
-        #menu-bar {
-            position: fixed;
+        .knob::after {
+            content: '';
+            position: absolute;
+            width: 4px;
+            height: 12px;
+            background-color: #d1d5db;
+            top: 6px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-radius: 2px;
+        }
+        .screen {
+            background-color: #a3b18a;
+            border: 4px solid #344e41;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.5);
+            color: #3a5a40;
+            height: 300px;
+            overflow-y: auto;
+            transition: filter 0.1s linear, font-family 0.1s linear;
+            position: relative;
+        }
+        .screen a {
+            text-decoration: underline;
+            color: #2c422f;
+        }
+        .screen a:hover {
+            color: #1a2a1c;
+        }
+        .screen::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: var(--screen-tint-color);
+            transition: background-color 0.1s linear;
+            z-index: 1;
+            pointer-events: none;
+        }
+        .screen > * {
+            position: relative;
+            z-index: 2;
+        }
+        #patching-area {
+            position: absolute;
             top: 0;
             left: 0;
             width: 100%;
-            height: 22px;
-            background: var(--window-bg);
-            border-bottom: 1px solid var(--border-color);
-            display: flex;
-            align-items: center;
-            padding: 0 10px;
-            box-sizing: border-box;
-            z-index: 1000;
-        }
-        
-        .menu {
-            position: relative;
-            padding: 0 10px;
-            cursor: default;
-        }
-        
-        .menu-dropdown {
-            display: none;
-            position: absolute;
-            top: 21px;
-            left: 0;
-            background: var(--window-bg);
-            border: 1px solid var(--border-color);
-            box-shadow: 2px 2px 0px var(--border-color);
-            padding: 5px 0;
-            min-width: 150px;
-        }
-
-        .menu-item {
-            padding: 2px 20px;
-        }
-        
-        .menu-item:hover {
-            background-color: var(--border-color);
-            color: var(--window-bg);
-        }
-
-        .menu-divider {
-            height: 1px;
-            background: var(--border-color);
-            margin: 5px;
-        }
-        
-        #apple-logo {
-            font-size: 16px;
-        }
-
-        /* --- Desktop Icons --- */
-        .desktop-icon {
-            position: absolute;
-            width: 80px;
-            text-align: center;
-            cursor: grab;
-            padding: 5px;
-        }
-
-        .desktop-icon:active {
-            cursor: grabbing;
-        }
-        
-        .desktop-icon:focus {
-            background-color: #000;
-            color: #fff;
-        }
-        
-        .desktop-icon img {
-            width: 48px;
-            height: 48px;
-            pointer-events: none; /* Prevent image from being dragged alone */
-        }
-        
-        .icon-label {
-            margin-top: 5px;
-        }
-
-        #work-icon { top: 40px; right: 20px; }
-        #about-icon { top: 130px; right: 20px; }
-        #contact-icon { top: 220px; right: 20px; }
-        #news-icon { top: 40px; right: 120px; }
-        #not-work-icon { top: 130px; right: 120px; }
-        #trash-icon { bottom: 20px; right: 20px; }
-
-
-        /* --- Window Styling --- */
-        .window {
-            display: none; /* Windows are hidden by default */
-            position: absolute;
-            background: var(--window-bg);
-            border: 1px solid var(--border-color);
-            box-shadow: 3px 3px 0px rgba(0,0,0,0.5);
-            min-width: 300px;
-            min-height: 150px;
-            flex-direction: column;
-        }
-
-        .title-bar {
-            height: 20px;
-            background: var(--window-bg);
-            border-bottom: 1px solid var(--border-color);
-            padding: 0 5px;
-            cursor: grab;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-shrink: 0;
-        }
-        
-        .title-bar-text {
-            padding: 0 10px;
-            color: var(--text-color);
-        }
-
-        .close-box {
-            width: 10px;
-            height: 10px;
-            border: 1px solid var(--border-color);
-            cursor: pointer;
-        }
-        .close-box:hover { background: var(--border-color); }
-
-        .window-content {
-            padding: 15px;
-            color: var(--text-color);
-            overflow: auto;
-            flex-grow: 1;
-        }
-        
-        h2 { font-size: 20px; margin-top: 0; margin-bottom: 10px; }
-        h3 { font-size: 18px; margin-top: 15px; margin-bottom: 5px; }
-
-        /* --- Folder Grid inside Window --- */
-        .folder-grid {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 20px;
-        }
-
-        .folder-item {
-            width: 80px;
-            text-align: center;
-            cursor: pointer;
-            padding: 5px;
-        }
-        
-        .folder-item img {
-            width: 48px;
-            height: 48px;
-        }
-
-        .folder-label {
-             margin-top: 5px;
-        }
-
-        .folder-item:hover {
-            background-color: var(--highlight-bg);
-        }
-        
-        /* --- Game Canvas --- */
-        .game-canvas {
-            background-color: #FFF;
-            width: 100%;
             height: 100%;
+            pointer-events: none;
+            z-index: 10;
         }
-        #game-window .window-content, #war-game-window .window-content {
-            padding: 0;
-            display: flex;
-            flex-direction: column;
+        .patch-cable {
+            stroke-width: 5;
+            fill: none;
+            filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.4));
+            pointer-events: auto;
+            cursor: pointer;
+            transition: stroke-width 0.1s ease;
         }
-        
-        #warGameControls {
-            padding: 5px;
-            text-align: center;
-            background: #fff;
-            border-bottom: 1px solid black;
+        .patch-cable:hover {
+            stroke-width: 8;
         }
-        
-        #warGameControls button {
-             font-family: 'VT323', monospace;
-             font-size: 16px;
-             background: #fff;
-             border: 1px solid #000;
-             padding: 0 5px;
-        }
-        #warGameControls button:active {
-            background: #000;
-            color: #fff;
-        }
-        #turn-indicator {
-            margin-right: 20px;
-        }
-
     </style>
 </head>
-<body>
+<body class="flex items-center justify-center min-h-screen p-4">
 
-    <div id="desktop">
-        <!-- Menu Bar -->
-        <div id="menu-bar">
-            <div class="menu" id="apple-menu">
-                <span id="apple-logo"></span>
-                <div class="menu-dropdown">
-                    <div class="menu-item" data-window="about-window">About This Website...</div>
-                </div>
-            </div>
-            <div class="menu" id="file-menu">
-                File
-                <div class="menu-dropdown">
-                    <div class="menu-item" data-window="work-window">Work</div>
-                    <div class="menu-item" data-window="not-work-window">Not Work</div>
-                    <div class="menu-item" data-window="contact-window">Contact</div>
-                    <div class="menu-item" data-window="news-window">News</div>
-                    <div class="menu-divider"></div>
-                    <div class="menu-item" data-action="close">Close Window</div>
-                </div>
-            </div>
-            <div class="menu" id="special-menu">
-                Special
-                 <div class="menu-dropdown">
-                    <div class="menu-item" data-action="clear">Clean Up</div>
-                    <div class="menu-divider"></div>
-                    <div class="menu-item" data-action="reboot">Restart</div>
+    <div id="analog-computer" class="analog-bg rounded-lg shadow-2xl w-full max-w-4xl p-4 sm:p-6 relative">
+        <svg id="patching-area"></svg>
+
+        <div class="flex justify-between items-center pb-4 border-b-2 border-gray-400 relative z-1">
+            <h1 class="text-xl sm:text-2xl font-bold text-gray-700 tracking-wider">Mat Dalgleish</h1>
+            <div class="flex items-center space-x-4">
+                <div class="text-center">
+                    <span class="font-mono-custom text-xs text-gray-600">MASTER IN</span>
+                    <div id="master-in" class="jack jack-input jack-input-red" data-name="master-in" data-type="content"></div>
                 </div>
             </div>
         </div>
 
-        <!-- Desktop Icons -->
-        <div class="desktop-icon" id="work-icon" tabindex="0" data-window="work-window">
-            <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Work Folder Icon"/>
-            <div class="icon-label">Work</div>
-        </div>
-        <div class="desktop-icon" id="about-icon" tabindex="0" data-window="about-window">
-            <img src="https://img.icons8.com/ios/50/000000/user-male-circle.png" alt="About Me Icon"/>
-            <div class="icon-label">About Me</div>
-        </div>
-        <div class="desktop-icon" id="contact-icon" tabindex="0" data-window="contact-window">
-            <img src="https://img.icons8.com/ios/50/000000/new-post.png" alt="Contact Icon"/>
-            <div class="icon-label">Contact</div>
-        </div>
-        <div class="desktop-icon" id="news-icon" tabindex="0" data-window="news-window">
-            <img src="https://img.icons8.com/ios/50/000000/news.png" alt="News Icon"/>
-            <div class="icon-label">News</div>
-        </div>
-        <div class="desktop-icon" id="not-work-icon" tabindex="0" data-window="not-work-window">
-            <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Not Work Icon"/>
-            <div class="icon-label">Not Work</div>
-        </div>
-        <div class="desktop-icon" id="trash-icon" tabindex="0">
-            <img src="https://img.icons8.com/ios/50/000000/trash--v1.png" alt="Trash Icon"/>
-            <div class="icon-label">Trash</div>
-        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4 relative z-1">
+            <div class="lg:col-span-1 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 gap-4">
+                
+                <div class="module-border rounded p-3 text-center"><h2 class="font-mono-custom font-bold text-gray-600 text-sm">ABOUT</h2><div class="flex justify-center mt-3"><div class="jack jack-output-yellow" data-type="content-source" data-color="#facc15" data-content="about"></div></div><p class="jack-label mt-2">OUT</p></div>
+                <div class="module-border rounded p-3 text-center"><h2 class="font-mono-custom font-bold text-gray-600 text-sm">PROJECTS</h2><div class="flex justify-center mt-3"><div class="jack jack-output-yellow" data-type="content-source" data-color="#facc15" data-content="projects"></div></div><p class="jack-label mt-2">OUT</p></div>
+                <div class="module-border rounded p-3 text-center"><h2 class="font-mono-custom font-bold text-gray-600 text-sm">WRITING</h2><div class="flex justify-center mt-3"><div class="jack jack-output-yellow" data-type="content-source" data-color="#facc15" data-content="writing"></div></div><p class="jack-label mt-2">OUT</p></div>
+                <div class="module-border rounded p-3 text-center"><h2 class="font-mono-custom font-bold text-gray-600 text-sm">SKILLS</h2><div class="flex justify-center mt-3"><div class="jack jack-output-yellow" data-type="content-source" data-color="#facc15" data-content="skills"></div></div><p class="jack-label mt-2">OUT</p></div>
+                <div class="module-border rounded p-3 text-center"><h2 class="font-mono-custom font-bold text-gray-600 text-sm">CONTACT</h2><div class="flex justify-center mt-3"><div class="jack jack-output-yellow" data-type="content-source" data-color="#facc15" data-content="contact"></div></div><p class="jack-label mt-2">OUT</p></div>
+                <div class="module-border rounded p-3 text-center bg-gray-300"><h2 class="font-mono-custom font-bold text-gray-600 text-sm">SEQUENCER</h2><div class="flex justify-center mt-3"><div id="sequencer-in" class="jack jack-input jack-input-red" data-name="sequencer-in" data-type="sequencer-in"></div></div><p class="jack-label mt-2">STEP</p></div>
 
-        <!-- Windows (initially hidden) -->
-        <div class="window" id="welcome-window" style="top: 60px; left: 40px;">
-            <div class="title-bar">
-                <div class="close-box"></div>
-                <span class="title-bar-text">Welcome!</span>
             </div>
-            <div class="window-content">
-                <h2>Welcome!</h2>
-                <p>Hello and welcome to the website of Mat Dalgleish.</p>
-                <p>The design of this website is a tribute<br>
-                   to the classic Apple Macintosh System 1<br>
-                   GUI from 1984.
-                   <br><br>
-                   Double-click the icons on the right<br>
-                   to explore.</p>
-            </div>
-        </div>
-        
-        <div class="window" id="about-window" style="top: 80px; left: 150px; width: 620px; height: 530px;">
-            <div class="title-bar">
-                <div class="close-box"></div>
-                <span class="title-bar-text">About Me</span>
-            </div>
-            <div class="window-content">
-                <p>
-                    I am a researcher and educator specialising<br>
-                    in the convergence of arts and technology,<br>
-                    with a focus on the intersection of music,<br>
-                    Human-Computer Interaction, and video games.<br>
-                    Alongside my longstanding interest in<br>
-                    experimental electronic music, my teaching<br>
-                    and research encompass areas such as sound<br>
-                    for games and film (technical, creative,<br>
-                    and theoretical aspects), musical interface<br>
-                    and controller design, sound and video<br>
-                    synthesis (especially modular synthesizers),<br>
-                    and the design of assistive technologies.<br>
-                    I am currently a Senior Lecturer in Game<br>
-                    Audio and Technical Design at Staffordshire<br>
-                    University, a Leonardo AI Lab fellow, a<br>
-                    trustee of The OHMI Trust, Accessibility<br>
-                    Chair for NIME 2026, a reviewer for various<br>
-                    sound and interaction-related conferences<br>
-                    and journals, and EE for MSc Music<br>
-                    Engineering and Production at the<br>
-                    University of South Wales.
-                </p>
-            </div>
-        </div>
-        
-        <div class="window" id="projects-window" style="top: 80px; left: 100px; width: 400px;">
-            <div class="title-bar">
-                <div class="close-box"></div>
-                <span class="title-bar-text">Projects</span>
-            </div>
-            <div class="window-content">
-                 <div class="folder-grid">
-                    <div class="folder-item">
-                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
-                        <div class="folder-label">2004-2009</div>
-                    </div>
-                    <div class="folder-item">
-                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
-                        <div class="folder-label">2010-2015</div>
-                    </div>
-                    <div class="folder-item">
-                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
-                        <div class="folder-label">2016-2020</div>
-                    </div>
-                    <div class="folder-item">
-                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
-                        <div class="folder-label">2021</div>
-                    </div>
-                    <div class="folder-item">
-                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
-                        <div class="folder-label">2022</div>
-                    </div>
-                    <div class="folder-item">
-                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
-                        <div class="folder-label">2023</div>
-                    </div>
-                     <div class="folder-item" id="projects-2024-link">
-                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
-                        <div class="folder-label">2024</div>
-                    </div>
-                     <div class="folder-item" id="projects-2025-link">
-                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
-                        <div class="folder-label">2025</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="window" id="contact-window" style="top: 160px; left: 200px;">
-            <div class="title-bar">
-                <div class="close-box"></div>
-                <span class="title-bar-text">Contact</span>
-            </div>
-            <div class="window-content">
-                <h2>Get In Touch</h2>
-                <p>Email:<br>
-                   mathewdalgleish@gmail.com</p>
-                <p>Social:<br>
-                   @drd@mstdn.social</p>
-            </div>
-        </div>
 
-        <div class="window" id="news-window" style="top: 180px; left: 220px; width: 600px; height: 450px;">
-            <div class="title-bar">
-                <div class="close-box"></div>
-                <span class="title-bar-text">News</span>
-            </div>
-            <div class="window-content">
-                <h2>News</h2>
-                <p>August 2025 - On Monday September 23rd I'll be<br>
-                   presenting a talk on Modular Synthesizers and<br>
-                   (Disabled) Time at Drake Music's DMLab London,<br>
-                   held at Rich Mix London, 6-9:30pm, but also<br>
-                   (I think) streamed online.</p>
-                <p>July 2025 - Delighted to be accepted for CGVC 2025.</p>
-                <p>June 2025 - I'm looking forward to presenting<br>
-                   at INMUSIC 2025 and NIME 2025 in quick<br>
-                   succession at the end of the month. I'm also<br>
-                   pleased to announce that I'll be one of the<br>
-                   Accessibility Chairs for NIME 2026 in London.<br>
-                   Finally, I've been selected for the upcoming<br>
-                   Leonardo AI Lab, which will culminate in an<br>
-                   exhibition in November (dates TBC) - very<br>
-                   excited to be part of this!</p>
-            </div>
-        </div>
-        
-        <div class="window" id="other-window" style="top: 200px; left: 240px;">
-            <div class="title-bar">
-                <div class="close-box"></div>
-                <span class="title-bar-text">Other</span>
-            </div>
-            <div class="window-content">
-                <h2>Miscellaneous</h2>
-                <p>
-                   - A collection of various notes,<br>
-                   ideas, and other unsorted files.
-                </p>
-            </div>
-        </div>
-
-        <div class="window" id="texts-window" style="top: 220px; left: 260px; width: 300px;">
-            <div class="title-bar">
-                <div class="close-box"></div>
-                <span class="title-bar-text">Texts</span>
-            </div>
-            <div class="window-content">
-                <div class="folder-grid">
-                    <div class="folder-item" id="publications-folder">
-                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
-                        <div class="folder-label">Publications</div>
-                    </div>
-                    <div class="folder-item" id="other-texts-folder">
-                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
-                        <div class="folder-label">Other</div>
-                    </div>
+            <div class="lg:col-span-2">
+                <div id="content-screen" class="screen font-mono-custom rounded-lg p-6 text-lg leading-relaxed">
+                    <p class="text-2xl font-bold animate-pulse">> WAITING FOR INPUT...</p>
+                    <p class="mt-4">Patch a module's <span class="font-bold">OUTPUT</span> to the <span class="font-bold">MASTER IN</span> jack to display content.</p>
                 </div>
-            </div>
-        </div>
-        
-        <div class="window" id="games-window" style="top: 100px; left: 120px; width: 300px;">
-            <div class="title-bar">
-                <div class="close-box"></div>
-                <span class="title-bar-text">Games</span>
-            </div>
-            <div class="window-content">
-                 <div class="folder-grid">
-                    <div class="folder-item" data-window="game-window">
-                        <img src="https://img.icons8.com/ios/50/000000/tetris.png" alt="Game Icon"/>
-                        <div class="folder-label">Pong</div>
-                    </div>
-                    <div class="folder-item" data-window="war-game-window">
-                        <img src="https://img.icons8.com/ios/50/000000/knight.png" alt="War Game Icon"/>
-                        <div class="folder-label">War Game</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="window" id="game-window" style="top: 100px; left: 120px; width: 480px; height: 320px;">
-            <div class="title-bar">
-                <div class="close-box"></div>
-                <span class="title-bar-text">Pong</span>
-            </div>
-            <div class="window-content">
-                <canvas id="pongCanvas" class="game-canvas"></canvas>
-            </div>
-        </div>
-
-        <div class="window" id="music-window" style="top: 240px; left: 280px; width: 300px;">
-            <div class="title-bar">
-                <div class="close-box"></div>
-                <span class="title-bar-text">Music</span>
-            </div>
-            <div class="window-content">
-                <div class="folder-grid">
-                    <div class="folder-item" id="bandcamp-folder">
-                        <img src="https://img.icons8.com/ios/50/000000/musical-notes.png" alt="Music Icon"/>
-                        <div class="folder-label">Bandcamp</div>
-                    </div>
-                    <div class="folder-item" id="spotify-folder">
-                        <img src="https://img.icons8.com/ios/50/000000/musical-notes.png" alt="Music Icon"/>
-                        <div class="folder-label">Spotify</div>
-                    </div>
-                    <div class="folder-item" data-window="playlists-window">
-                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
-                        <div class="folder-label">Playlists</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="window" id="playlists-window" style="top: 260px; left: 300px;">
-             <div class="title-bar">
-                <div class="close-box"></div>
-                <span class="title-bar-text">Playlists</span>
-            </div>
-            <div class="window-content">
-                <div class="folder-grid">
-                    <div class="folder-item" id="nww-list-link">
-                        <img src="https://img.icons8.com/ios/50/000000/document--v1.png" alt="Document Icon"/>
-                        <div class="folder-label">NWW List</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="window" id="places-window" style="top: 260px; left: 300px; width: 420px;">
-            <div class="title-bar">
-                <div class="close-box"></div>
-                <span class="title-bar-text">Places</span>
-            </div>
-            <div class="window-content">
-                <p>These are some places I like:</p>
-                <div class="folder-grid">
-                    <div class="folder-item" id="one1-link">
-                        <img src="https://img.icons8.com/ios/50/000000/coffee.png" alt="Coffee Icon"/>
-                        <div class="folder-label">One1</div>
-                    </div>
-                    <div class="folder-item" id="aardvark-link">
-                        <img src="https://img.icons8.com/ios/50/000000/open-book.png" alt="Book Icon"/>
-                        <div class="folder-label">Aardvark</div>
-                    </div>
-                    <div class="folder-item" id="scarthin-link">
-                        <img src="https://img.icons8.com/ios/50/000000/open-book.png" alt="Book Icon"/>
-                        <div class="folder-label">Scarthin</div>
-                    </div>
-                    <div class="folder-item" id="chapters-link">
-                        <img src="https://img.icons8.com/ios/50/000000/restaurant.png" alt="Food Icon"/>
-                        <div class="folder-label">Chapters</div>
-                    </div>
-                    <div class="folder-item" id="inver-link">
-                        <img src="https://img.icons8.com/ios/50/000000/restaurant.png" alt="Food Icon"/>
-                        <div class="folder-label">Inver</div>
-                    </div>
-                    <div class="folder-item" id="marios-link">
-                        <img src="https://img.icons8.com/ios/50/000000/fish-food.png" alt="Fish Icon"/>
-                        <div class="folder-label">Mario's</div>
-                    </div>
-                    <div class="folder-item" id="the-bridges-link">
-                        <img src="https://img.icons8.com/ios/50/000000/restaurant.png" alt="Food Icon"/>
-                        <div class="folder-label">The Bridges</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="window" id="war-game-window" style="top: 50px; left: 60px; width: 540px; height: 640px;">
-            <div class="title-bar">
-                <div class="close-box"></div>
-                <span class="title-bar-text">The Game of War</span>
-            </div>
-            <div class="window-content">
-                <div id="warGameControls"><span id="turn-indicator"></span><button id="end-turn-btn">End Turn</button></div>
-                <canvas id="warCanvas" class="game-canvas"></canvas>
-            </div>
-        </div>
-        
-        <div class="window" id="tools-window" style="top: 280px; left: 320px; width: 320px;">
-            <div class="title-bar">
-                <div class="close-box"></div>
-                <span class="title-bar-text">Tools</span>
-            </div>
-            <div class="window-content">
-                <div class="folder-grid">
-                    <div class="folder-item" data-window="hardware-window">
-                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
-                        <div class="folder-label">Hardware</div>
-                    </div>
-                    <div class="folder-item" data-window="software-window">
-                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
-                        <div class="folder-label">Software</div>
-                    </div>
-                     <div class="folder-item" data-window="ai-window">
-                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
-                        <div class="folder-label">AI</div>
+                 <div class="module-border rounded p-3 mt-4">
+                    <div class="flex justify-around items-center">
+                         <div class="text-center"><span class="font-mono-custom text-xs text-gray-600">FONT</span><div id="font-in" class="jack jack-input jack-input-purple" data-name="font-in" data-type="font"></div></div>
+                         <div class="text-center"><span class="font-mono-custom text-xs text-gray-600">COLOR</span><div id="color-in" class="jack jack-input jack-input-purple" data-name="color-in" data-type="color"></div></div>
+                         <div class="text-center"><span class="font-mono-custom text-xs text-gray-600">CONTRAST</span><div id="contrast-in" class="jack jack-input jack-input-purple" data-name="contrast-in" data-type="contrast"></div></div>
+                         <div class="text-center"><span class="font-mono-custom text-xs text-gray-600">BRIGHTNESS</span><div id="brightness-in" class="jack jack-input jack-input-purple" data-name="brightness-in" data-type="brightness"></div></div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="window" id="hardware-window" style="top: 300px; left: 340px;">
-            <div class="title-bar">
-                <div class="close-box"></div>
-                <span class="title-bar-text">Hardware</span>
-            </div>
-            <div class="window-content">
-                <h2>My Gear</h2>
-                <p>Content about hardware to be added.</p>
-            </div>
-        </div>
-
-        <div class="window" id="software-window" style="top: 320px; left: 360px; width: 420px;">
-            <div class="title-bar">
-                <div class="close-box"></div>
-                <span class="title-bar-text">Software</span>
-            </div>
-            <div class="window-content">
-                <div class="folder-grid">
-                    <div class="folder-item" id="puredata-link">
-                        <img src="https://img.icons8.com/ios/50/000000/document--v1.png" alt="App Icon"/>
-                        <div class="folder-label">Pure Data</div>
-                    </div>
-                    <div class="folder-item" id="supercollider-link">
-                        <img src="https://img.icons8.com/ios/50/000000/document--v1.png" alt="App Icon"/>
-                        <div class="folder-label">SuperCollider</div>
-                    </div>
-                    <div class="folder-item" id="processing-link">
-                        <img src="https://img.icons8.com/ios/50/000000/document--v1.png" alt="App Icon"/>
-                        <div class="folder-label">Processing</div>
-                    </div>
-                     <div class="folder-item" id="arduino-link">
-                        <img src="https://img.icons8.com/ios/50/000000/document--v1.png" alt="App Icon"/>
-                        <div class="folder-label">Arduino</div>
-                    </div>
-                     <div class="folder-item" id="audacity-link">
-                        <img src="https://img.icons8.com/ios/50/000000/document--v1.png" alt="App Icon"/>
-                        <div class="folder-label">Audacity</div>
+        <div class="mt-6 pt-4 border-t-2 border-gray-400">
+             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div class="module-border rounded p-3 flex flex-col justify-between"><h2 class="font-mono-custom font-bold text-gray-600 text-sm text-center">LFO 1</h2><div class="flex justify-around items-center my-auto"><div class="text-center"><div class="jack jack-output-modulation" data-type="lfo-source" data-effect="lfo1Sine" data-color="#6b7280"></div><p class="jack-label mt-2">SINE</p></div><div class="text-center"><div class="jack jack-output-modulation" data-type="lfo-source" data-effect="lfo1Square" data-color="#6b7280"></div><p class="jack-label mt-2">SQUARE</p></div></div><div class="border-t border-gray-400 mt-3 pt-3 flex justify-around items-center"><div class="knob-container"><div class="knob" id="lfo1-rate-knob"></div><p class="jack-label mt-2">RATE</p></div></div></div>
+                <div class="module-border rounded p-3 flex flex-col justify-between"><h2 class="font-mono-custom font-bold text-gray-600 text-sm text-center">LFO 2</h2><div class="flex justify-around items-center my-auto"><div class="text-center"><div class="jack jack-output-modulation" data-type="lfo-source" data-effect="lfo2Sine" data-color="#6b7280"></div><p class="jack-label mt-2">SINE</p></div><div class="text-center"><div class="jack jack-output-modulation" data-type="lfo-source" data-effect="lfo2Square" data-color="#6b7280"></div><p class="jack-label mt-2">SQUARE</p></div></div><div class="border-t border-gray-400 mt-3 pt-3 flex justify-around items-center"><div class="knob-container"><div class="knob" id="lfo2-rate-knob"></div><p class="jack-label mt-2">RATE</p></div></div></div>
+                <div class="module-border rounded p-3 flex flex-col justify-between"><h2 class="font-mono-custom font-bold text-gray-600 text-sm text-center">LFO 3</h2><div class="flex justify-around items-center my-auto"><div class="text-center"><div class="jack jack-output-modulation" data-type="lfo-source" data-effect="lfo3Sine" data-color="#6b7280"></div><p class="jack-label mt-2">SINE</p></div><div class="text-center"><div class="jack jack-output-modulation" data-type="lfo-source" data-effect="lfo3Square" data-color="#6b7280"></div><p class="jack-label mt-2">SQUARE</p></div></div><div class="border-t border-gray-400 mt-3 pt-3 flex justify-around items-center"><div class="knob-container"><div class="knob" id="lfo3-rate-knob"></div><p class="jack-label mt-2">RATE</p></div></div></div>
+                <div class="module-border rounded p-3">
+                    <h2 class="font-mono-custom font-bold text-gray-600 text-sm text-center">CLOCK DIVIDER</h2>
+                    <div class="flex justify-around items-center mt-3">
+                        <div class="text-center"><p class="jack-label mb-2">IN</p><div class="jack jack-input" data-name="clock-in" data-type="clock-in"></div></div>
+                        <div class="text-center"><div class="jack jack-output-modulation" data-type="logic-output" data-effect="div2" data-color="#fb923c"></div><p class="jack-label mt-2">/2</p></div>
+                        <div class="text-center"><div class="jack jack-output-modulation" data-type="logic-output" data-effect="div4" data-color="#fb923c"></div><p class="jack-label mt-2">/4</p></div>
+                        <div class="text-center"><div class="jack jack-output-modulation" data-type="logic-output" data-effect="div8" data-color="#fb923c"></div><p class="jack-label mt-2">/8</p></div>
                     </div>
                 </div>
-            </div>
+             </div>
         </div>
-        
-        <div class="window" id="ai-window" style="top: 340px; left: 380px; width: 300px;">
-            <div class="title-bar">
-                <div class="close-box"></div>
-                <span class="title-bar-text">AI</span>
-            </div>
-            <div class="window-content">
-                 <div class="folder-grid">
-                    <div class="folder-item" id="ollama-link">
-                        <img src="https://img.icons8.com/ios/50/000000/document--v1.png" alt="App Icon"/>
-                        <div class="folder-label">Ollama</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="window" id="teaching-window" style="top: 360px; left: 400px; width: 400px;">
-            <div class="title-bar">
-                <div class="close-box"></div>
-                <span class="title-bar-text">Teaching</span>
-            </div>
-            <div class="window-content">
-                 <div class="folder-grid">
-                    <div class="folder-item" data-window="modules-window">
-                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
-                        <div class="folder-label">Modules</div>
-                    </div>
-                     <div class="folder-item" data-window="non-module-window">
-                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
-                        <div class="folder-label">Non-module</div>
-                    </div>
-                     <div class="folder-item" data-window="resources-window">
-                        <img src="https://img.icons8.com/ios/50/000000/folder-invoices.png" alt="Folder Icon"/>
-                        <div class="folder-label">Resources</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="window" id="modules-window" style="top: 380px; left: 420px;">
-             <div class="title-bar">
-                <div class="close-box"></div>
-                <span class="title-bar-text">Modules</span>
-            </div>
-            <div class="window-content">
-                <p>Content to be added.</p>
-            </div>
-        </div>
-        <div class="window" id="non-module-window" style="top: 400px; left: 440px;">
-             <div class="title-bar">
-                <div class="close-box"></div>
-                <span class="title-bar-text">Non-module</span>
-            </div>
-            <div class="window-content">
-                <p>Content to be added.</p>
-            </div>
-        </div>
-        <div class="window" id="resources-window" style="top: 420px; left: 460px;">
-             <div class="title-bar">
-                <div class="close-box"></div>
-                <span class="title-bar-text">Resources</span>
-            </div>
-            <div class="window-content">
-                <p>Content to be added.</p>
-            </div>
-        </div>
-        
-        <div class="window" id="not-work-window" style="top: 100px; left: 120px; width: 300px;">
-            <div class="title-bar">
-                <div class="close-box"></div>
-                <span class="title-bar-text">Not Work</span>
-            </div>
-            <div class="window-content">
-                 <div class="folder-grid">
-                    <div class="folder-item" data-window="places-window">
-                        <img src="https://img.icons8.com/ios/50/000000/marker.png" alt="Places Icon"/>
-                        <div class="folder-label">Places</div>
-                    </div>
-                    <div class="folder-item" data-window="music-window">
-                        <img src="https://img.icons8.com/ios/50/000000/musical-notes.png" alt="Music Icon"/>
-                        <div class="folder-label">Music</div>
-                    </div>
-                    <div class="folder-item" data-window="games-window">
-                        <img src="https://img.icons8.com/ios/50/000000/joystick.png" alt="Games Icon"/>
-                        <div class="folder-label">Games</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="window" id="work-window" style="top: 100px; left: 120px; width: 420px;">
-            <div class="title-bar">
-                <div class="close-box"></div>
-                <span class="title-bar-text">Work</span>
-            </div>
-            <div class="window-content">
-                 <div class="folder-grid">
-                    <div class="folder-item" data-window="projects-window">
-                        <img src="https://img.icons8.com/ios/50/000000/workstation.png" alt="Projects Icon"/>
-                        <div class="folder-label">Projects</div>
-                    </div>
-                    <div class="folder-item" data-window="tools-window">
-                        <img src="https://img.icons8.com/ios/50/000000/toolbox.png" alt="Tools Icon"/>
-                        <div class="folder-label">Tools</div>
-                    </div>
-                    <div class="folder-item" data-window="texts-window">
-                        <img src="https://img.icons8.com/ios/50/000000/open-book.png" alt="Texts Icon"/>
-                        <div class="folder-label">Texts</div>
-                    </div>
-                    <div class="folder-item" data-window="teaching-window">
-                        <img src="https://img.icons8.com/ios/50/000000/open-book.png" alt="Teaching Icon"/>
-                        <div class="folder-label">Teaching</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
     </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            let zIndexCounter = 100;
-            let activeWindow = null;
-            let pongAnimationId = null;
-            let warGameAnimationId = null;
+        const contentData = {
+            about: { title: "ABOUT", body: "Dr. Mat Dalgleish is a researcher, educator, and artist-designer working at the intersection of people, music and audiovisual technology, and accessibility. He is also a congenitally one-handed musician. Mat has previously worked at The OU Music Computing Lab and led postgraduate performing arts provision at the University of Wolverhampton. He is currently Senior Lecturer in Game Audio at the University of Staffordshire, a Leonardo CripTech AI Lab fellow, an Accessibility Chair of NIME 2026, and a trustee of The OHMI Trust." },
+            projects: { title: "PROJECTS", body: `My individual and collaborative projects include The Accessible Modular, TYG, Beyond Audio Description for Theatre, Postrum, the Haptic Dum Kit/Haptic Bracelets, Song Walker Harmony Space, and Eden3. For more details see <a href="https://docs.google.com/document/d/e/2PACX-1vQBKxhNHR22llVVyb7lFHR8Jngwx01rJS5nBMP2wVCuKoUxUsCw1RFh_qu_4S1yt9-BjqgZliCZgn-v/pub" target="_blank">HERE</a>.` },
+            writing: { title: "WRITING", body: `I write about audio/sound/music, technology, and accessibility, with a particular focus on instrument design. You can find an up-to-date Publications list <a href="https://docs.google.com/document/d/e/2PACX-1vTNOwfFbUrv_nqlR6ShIRcVnj5GEn1ZFPu_fGBX59fz_2sOvSxgLoEaA9-HjJCEg0bTqz58g6V2cN5z/pub" target="_blank">HERE</a>.` },
+            skills: { title: "SKILLS", body: "I am an experienced educator and since 2007 I have taught music/audio technology, game design, programming, interactive media, musical theatre, and fine art (film) students at levels 3-7. I have also successfully supervised 2 PhD students and more than 130 other postgraduate projects. I am also experienced in course design and (re)validation, having designed and successfully validated 9 courses (levels 4-7) for several UK and international institutions.\n\nI am fluent in the use of a variety of specialist software, including Pure Data, Max, SuperCollider, Logic Pro, Ableton, Pro Tools, Audacity, Processing, Unreal Engine (MetaSounds), and hardware, including Arduino, Beaglebone, Bela, and Raspberry Pi platforms. Where possible, I use and support open source hardware and software." },
+            contact: { title: "CONTACT", body: "You can reach me via:\n\nEMAIL: mathewdalgleish@gmail.com" },
+        };
 
-            // --- Window Management ---
-            function focusWindow(windowEl) {
-                if (windowEl) {
-                    zIndexCounter++;
-                    windowEl.style.zIndex = zIndexCounter;
-                    activeWindow = windowEl;
-                }
+        const computer = document.getElementById('analog-computer');
+        const svgArea = document.getElementById('patching-area');
+        const contentScreen = document.getElementById('content-screen');
+        const outputJacks = document.querySelectorAll('.jack-output-yellow, .jack-output-modulation');
+        const inputJacks = document.querySelectorAll('.jack-input');
+
+        let selectedOutput = null;
+        let activeCables = [];
+
+        const systemState = {
+            lfo1: { rate: 5 },
+            lfo2: { rate: 5 },
+            lfo3: { rate: 5 },
+            clockDivider: { in: null, counter: 0, prevClockState: false, out: { div2: false, div4: false, div8: false } },
+            sequencer: { in: null, step: 0, contentOrder: ['about', 'projects', 'writing', 'skills', 'contact'], prevClockState: false },
+            brightnessSource: null,
+            colorSource: null,
+            contrastSource: null,
+            fontSource: null,
+            time: 0
+        };
+
+        function getJackCenter(element) {
+            const rect = element.getBoundingClientRect();
+            const computerRect = computer.getBoundingClientRect();
+            return { x: rect.left - computerRect.left + rect.width / 2, y: rect.top - computerRect.top + rect.height / 2 };
+        }
+
+        function drawCable(startPoint, endPoint, color) {
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            const sag = Math.max(Math.abs(startPoint.y - endPoint.y) * 0.8, Math.abs(startPoint.x - endPoint.x) * 0.3, 80);
+            const pathData = `M ${startPoint.x} ${startPoint.y} C ${startPoint.x} ${startPoint.y + sag}, ${endPoint.x} ${endPoint.y + sag}, ${endPoint.x} ${endPoint.y}`;
+            path.setAttribute('d', pathData);
+            path.setAttribute('stroke', color);
+            path.classList.add('patch-cable');
+            svgArea.appendChild(path);
+            return path;
+        }
+        
+        function updateContent(contentKey) {
+            const content = contentData[contentKey];
+            if (content) {
+                contentScreen.innerHTML = `<h2 class="text-2xl font-bold mb-4 border-b-2 border-green-800/30 pb-2">${content.title}</h2><p class="whitespace-pre-wrap">${content.body}</p>`;
             }
+        }
+        
+        function resetScreen() {
+             contentScreen.innerHTML = `<p class="text-2xl font-bold animate-pulse">> WAITING FOR INPUT...</p><p class="mt-4">Patch a module's <span class="font-bold">OUTPUT</span> to the <span class="font-bold">MASTER IN</span> jack to display content. Click a cable to remove it.</p>`;
+        }
 
-            function openWindow(windowId) {
-                const windowEl = document.getElementById(windowId);
-                if (windowEl) {
-                    windowEl.style.display = 'flex'; // Use flex for layout
-                    focusWindow(windowEl);
-                    if (windowId === 'game-window') {
-                        startPongGame();
-                    }
-                    if (windowId === 'war-game-window') {
-                        startWarGame();
-                    }
-                }
+        function showError() {
+            contentScreen.innerHTML = `<h2 class="text-2xl font-bold text-red-600 animate-pulse">! ERROR !</h2><p class="mt-4">MULTIPLE SIGNALS DETECTED AT MASTER INPUT.</p>`;
+        }
+        
+        function getRawSignal(source) {
+            if (!source) return 0;
+            const t = systemState.time;
+            switch(source) {
+                case 'lfo1Sine': return Math.sin(t * systemState.lfo1.rate);
+                case 'lfo1Square': return Math.sin(t * systemState.lfo1.rate) > 0 ? 1 : -1;
+                case 'lfo2Sine': return Math.sin(t * systemState.lfo2.rate);
+                case 'lfo2Square': return Math.sin(t * systemState.lfo2.rate) > 0 ? 1 : -1;
+                case 'lfo3Sine': return Math.sin(t * systemState.lfo3.rate);
+                case 'lfo3Square': return Math.sin(t * systemState.lfo3.rate) > 0 ? 1 : -1;
+                default: return 0;
             }
+        }
 
-            function closeWindow(windowEl) {
-                if(windowEl) {
-                    windowEl.style.display = 'none';
-                    if(activeWindow === windowEl) {
-                        activeWindow = null;
-                    }
-                    if (windowEl.id === 'game-window') {
-                        stopPongGame();
-                    }
-                    if (windowEl.id === 'war-game-window') {
-                        stopWarGame();
-                    }
-                }
+        function getFinalSignal(source) {
+            if (!source) return false;
+            if (systemState.clockDivider.out.hasOwnProperty(source)) return systemState.clockDivider.out[source];
+            return getRawSignal(source) > 0;
+        }
+
+        function systemClock() {
+            systemState.time += 0.02;
+
+            // Clock Divider
+            const clockSignal = getRawSignal(systemState.clockDivider.in) > 0;
+            if (clockSignal && !systemState.clockDivider.prevClockState) {
+                systemState.clockDivider.counter++;
+            }
+            systemState.clockDivider.prevClockState = clockSignal;
+            systemState.clockDivider.out.div2 = Math.floor(systemState.clockDivider.counter / 1) % 2 === 0;
+            systemState.clockDivider.out.div4 = Math.floor(systemState.clockDivider.counter / 2) % 2 === 0;
+            systemState.clockDivider.out.div8 = Math.floor(systemState.clockDivider.counter / 4) % 2 === 0;
+
+             // Sequencer
+            const seqClockSignal = getFinalSignal(systemState.sequencer.in);
+            if (seqClockSignal && !systemState.sequencer.prevClockState) {
+                systemState.sequencer.step = (systemState.sequencer.step + 1) % systemState.sequencer.contentOrder.length;
+                const currentContent = systemState.sequencer.contentOrder[systemState.sequencer.step];
+                updateContent(currentContent);
+            }
+            systemState.sequencer.prevClockState = seqClockSignal;
+            
+            // Screen Effects
+            const brightnessSignal = getFinalSignal(systemState.brightnessSource);
+            const contrastSignal = getFinalSignal(systemState.contrastSource);
+            const fontSignal = getFinalSignal(systemState.fontSource);
+
+            const brightnessValue = brightnessSignal ? 1.2 : 0.9;
+            const contrastValue = contrastSignal ? 1.5 : 0.7;
+            
+            let colorValue = 'transparent';
+            if (systemState.colorSource) {
+                const rawColorSignal = getRawSignal(systemState.colorSource); // Value from -1 to 1
+                const normalizedSignal = (rawColorSignal + 1) / 2; // Maps [-1, 1] to [0, 1]
+                const hue = normalizedSignal * 360;
+                colorValue = `hsla(${hue}, 70%, 60%, 0.2)`;
             }
             
-            // Make all windows draggable
-            document.querySelectorAll('.window').forEach(windowEl => {
-                const titleBar = windowEl.querySelector('.title-bar');
-                
-                windowEl.addEventListener('mousedown', () => focusWindow(windowEl));
+            contentScreen.style.filter = `brightness(${brightnessValue}) contrast(${contrastValue})`;
+            contentScreen.style.setProperty('--screen-tint-color', colorValue);
 
-                titleBar.addEventListener('mousedown', (e) => {
-                    e.preventDefault();
-                    focusWindow(windowEl);
-
-                    let offsetX = e.clientX - windowEl.offsetLeft;
-                    let offsetY = e.clientY - windowEl.offsetTop;
-
-                    function onMouseMove(e) {
-                        windowEl.style.left = `${e.clientX - offsetX}px`;
-                        windowEl.style.top = `${e.clientY - offsetY}px`;
-                    }
-
-                    function onMouseUp() {
-                        document.removeEventListener('mousemove', onMouseMove);
-                        document.removeEventListener('mouseup', onMouseUp);
-                    }
-
-                    document.addEventListener('mousemove', onMouseMove);
-                    document.addEventListener('mouseup', onMouseUp);
-                });
-
-                // Close button functionality
-                const closeBox = windowEl.querySelector('.close-box');
-                closeBox.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    closeWindow(windowEl);
-                });
-            });
-
-            // --- Icon Functionality ---
-            document.querySelectorAll('.desktop-icon').forEach(icon => {
-                // Make icons draggable
-                makeIconDraggable(icon);
-
-                icon.addEventListener('dblclick', (e) => {
-                    // Prevent dblclick from triggering drag
-                    e.preventDefault(); 
-                    const windowId = icon.dataset.window;
-                    if (windowId) {
-                        openWindow(windowId);
-                    }
-                });
-            });
-
-            function makeIconDraggable(icon) {
-                 let offsetX, offsetY;
-
-                icon.addEventListener('mousedown', (e) => {
-                    // Don't drag on dblclick
-                    if (e.detail > 1) {
-                        return;
-                    }
-                    e.preventDefault();
-                    
-                    offsetX = e.clientX - icon.offsetLeft;
-                    offsetY = e.clientY - icon.offsetTop;
-
-                    document.addEventListener('mousemove', onMouseMove);
-                    document.addEventListener('mouseup', onMouseUp);
-                });
-
-                function onMouseMove(e) {
-                    icon.style.left = `${e.clientX - offsetX}px`;
-                    icon.style.top = `${e.clientY - offsetY}px`;
-                    icon.style.right = 'auto'; // override the css 'right' property
-                }
-
-                function onMouseUp() {
-                    document.removeEventListener('mousemove', onMouseMove);
-                    document.removeEventListener('mouseup', onMouseUp);
-                }
-            }
-            
-            // --- Special Folder Item Functionality ---
-            document.querySelectorAll('.folder-item[data-window]').forEach(item => {
-                item.addEventListener('dblclick', (e) => {
-                    const windowId = item.dataset.window;
-                    if(windowId) {
-                        openWindow(windowId);
-                    }
-                });
-            });
-
-            document.getElementById('publications-folder').addEventListener('dblclick', () => {
-                window.open('https://docs.google.com/document/d/e/2PACX-1vTNOwfFbUrv_nqlR6ShIRcVnj5GEn1ZFPu_fGBX59fz_2sOvSxgLoEaA9-HjJCEg0bTqz58g6V2cN5z/pub', '_blank');
-            });
-            
-            document.getElementById('other-texts-folder').addEventListener('dblclick', () => {
-                window.open('https://docs.google.com/document/d/e/2PACX-1vSwIVGvniEs4MOzcTiY-9jHRZ9Viz38s4aj2zwohs_nT1LCjMNdM6BFhtD-uKCQwTi-F-p_bo-1mitA/pub', '_blank');
-            });
-
-            document.getElementById('bandcamp-folder').addEventListener('dblclick', () => {
-                window.open('https://bandcamp.com/dalgleish', '_blank');
-            });
-
-            document.getElementById('spotify-folder').addEventListener('dblclick', () => {
-                window.open('https://open.spotify.com/user/31jzcxgamrfetimrf5dovclssj7u?si=5c4bbc5e339a4903', '_blank');
-            });
-            
-            document.getElementById('one1-link').addEventListener('dblclick', () => {
-                window.open('https://www.one.minimauk.com/', '_blank');
-            });
-            
-            document.getElementById('aardvark-link').addEventListener('dblclick', () => {
-                window.open('https://www.aardvark-books.com/', '_blank');
-            });
-            
-            document.getElementById('scarthin-link').addEventListener('dblclick', () => {
-                window.open('https://www.scarthinbooks.com/', '_blank');
-            });
-
-            document.getElementById('chapters-link').addEventListener('dblclick', () => {
-                window.open('https://chaptershayonwye.co.uk/', '_blank');
-            });
-
-            document.getElementById('inver-link').addEventListener('dblclick', () => {
-                window.open('https://inverrestaurant.co.uk/', '_blank');
-            });
-
-            document.getElementById('marios-link').addEventListener('dblclick', () => {
-                window.open('https://www.facebook.com/mariosotherplaice/?locale=en_GB', '_blank');
-            });
-
-            document.getElementById('the-bridges-link').addEventListener('dblclick', () => {
-                window.open('https://www.thebridgespub.co.uk/', '_blank');
-            });
-            
-            document.getElementById('puredata-link').addEventListener('dblclick', () => {
-                window.open('https://puredata.info/', '_blank');
-            });
-            document.getElementById('supercollider-link').addEventListener('dblclick', () => {
-                window.open('https://supercollider.github.io/', '_blank');
-            });
-            document.getElementById('processing-link').addEventListener('dblclick', () => {
-                window.open('https://processing.org/', '_blank');
-            });
-            document.getElementById('arduino-link').addEventListener('dblclick', () => {
-                window.open('https://www.arduino.cc/', '_blank');
-            });
-            document.getElementById('audacity-link').addEventListener('dblclick', () => {
-                window.open('https://www.audacityteam.org/', '_blank');
-            });
-            document.getElementById('ollama-link').addEventListener('dblclick', () => {
-                window.open('https://ollama.com/', '_blank');
-            });
-             document.getElementById('nww-list-link').addEventListener('dblclick', () => {
-                window.open('http://www.ultimathulerecords.com/nwwlist.html', '_blank');
-            });
-
-            // --- Menu Bar Functionality ---
-            const menus = document.querySelectorAll('.menu');
-            menus.forEach(menu => {
-                const dropdown = menu.querySelector('.menu-dropdown');
-                menu.addEventListener('click', (e) => {
-                    // Hide other menus
-                    menus.forEach(m => {
-                        if (m !== menu) {
-                           const otherDropdown = m.querySelector('.menu-dropdown');
-                           if(otherDropdown) otherDropdown.style.display = 'none';
-                        }
-                    });
-                    // Toggle current menu
-                    if(dropdown) {
-                       dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
-                    }
-                });
-            });
-            
-            // Hide menus when clicking elsewhere
-            document.addEventListener('click', (e) => {
-                if (!e.target.closest('.menu')) {
-                    menus.forEach(menu => {
-                       const dropdown = menu.querySelector('.menu-dropdown');
-                       if(dropdown) dropdown.style.display = 'none';
-                    });
-                }
-            });
-            
-            // Menu item actions
-            document.querySelectorAll('.menu-item').forEach(item => {
-                item.addEventListener('click', () => {
-                    const windowId = item.dataset.window;
-                    const action = item.dataset.action;
-                    
-                    if (windowId) {
-                        openWindow(windowId);
-                    }
-                    
-                    if (action === 'close' && activeWindow) {
-                        closeWindow(activeWindow);
-                    }
-                    
-                    if (action === 'reboot') {
-                        location.reload();
-                    }
-                    
-                    if (action === 'clear') {
-                        document.querySelectorAll('.desktop-icon').forEach(icon => {
-                            icon.style.left = '';
-                            icon.style.top = '';
-                            icon.style.right = '';
-                        });
-                    }
-                    
-                    // Hide dropdown after click
-                    item.closest('.menu-dropdown').style.display = 'none';
-                });
-            });
-
-            // --- PONG GAME LOGIC ---
-            const pongCanvas = document.getElementById('pongCanvas');
-            const pongContext = pongCanvas.getContext('2d');
-            
-            let ball, player, computer;
-
-            function initPongGameObjects() {
-                pongCanvas.width = pongCanvas.offsetWidth;
-                pongCanvas.height = pongCanvas.offsetHeight;
-                
-                ball = { x: pongCanvas.width / 2, y: pongCanvas.height / 2, radius: 5, speed: 4, velX: 4, velY: 4 };
-                player = { x: 10, y: (pongCanvas.height - 80) / 2, width: 8, height: 80, score: 0 };
-                computer = { x: pongCanvas.width - 18, y: (pongCanvas.height - 80) / 2, width: 8, height: 80, score: 0 };
+            if (fontSignal) {
+                contentScreen.classList.remove('font-mono-custom');
+                contentScreen.classList.add('font-serif-custom');
+            } else {
+                contentScreen.classList.add('font-mono-custom');
+                contentScreen.classList.remove('font-serif-custom');
             }
 
-            function drawPongRect(x, y, w, h, color) {
-                pongContext.fillStyle = color;
-                pongContext.fillRect(x, y, w, h);
-            }
+            requestAnimationFrame(systemClock);
+        }
 
-            function drawPongCircle(x, y, r, color) {
-                pongContext.fillStyle = color;
-                pongContext.beginPath();
-                pongContext.arc(x, y, r, 0, Math.PI * 2, false);
-                pongContext.closePath();
-                pongContext.fill();
-            }
-
-            function drawPongText(text, x, y, color) {
-                pongContext.fillStyle = color;
-                pongContext.font = '30px VT323';
-                pongContext.fillText(text, x, y);
-            }
-
-            function renderPong() {
-                drawPongRect(0, 0, pongCanvas.width, pongCanvas.height, '#000');
-                drawPongText(player.score, pongCanvas.width / 4, pongCanvas.height / 5, '#FFF');
-                drawPongText(computer.score, 3 * pongCanvas.width / 4, pongCanvas.height / 5, '#FFF');
-                drawPongRect(player.x, player.y, player.width, player.height, '#FFF');
-                drawPongRect(computer.x, computer.y, computer.width, computer.height, '#FFF');
-                drawPongCircle(ball.x, ball.y, ball.radius, '#FFF');
-            }
-
-            function updatePong() {
-                ball.x += ball.velX;
-                ball.y += ball.velY;
-
-                if (ball.y + ball.radius > pongCanvas.height || ball.y - ball.radius < 0) {
-                    ball.velY = -ball.velY;
-                }
-
-                computer.y += ((ball.y - (computer.y + computer.height / 2))) * 0.1;
-
-                let currentPaddle = (ball.x < pongCanvas.width / 2) ? player : computer;
-                if (pongCollision(ball, currentPaddle)) {
-                    ball.velX = -ball.velX;
-                }
-
-                if (ball.x - ball.radius < 0) {
-                    computer.score++;
-                    resetPongBall();
-                } else if (ball.x + ball.radius > pongCanvas.width) {
-                    player.score++;
-                    resetPongBall();
-                }
-            }
-
-            function pongCollision(b, p) {
-                p.top = p.y;
-                p.bottom = p.y + p.height;
-                p.left = p.x;
-                p.right = p.x + p.width;
-                b.top = b.y - b.radius;
-                b.bottom = b.y + b.radius;
-                b.left = b.x - b.radius;
-                b.right = b.x + b.radius;
-                return p.left < b.right && p.top < b.bottom && p.right > b.left && p.bottom > b.top;
-            }
-
-            function resetPongBall() {
-                ball.x = pongCanvas.width / 2;
-                ball.y = pongCanvas.height / 2;
-                ball.velX = -ball.velX;
-            }
-
-            pongCanvas.addEventListener('mousemove', (evt) => {
-                let rect = pongCanvas.getBoundingClientRect();
-                player.y = evt.clientY - rect.top - player.height / 2;
-            });
-
-            function pongGameLoop() {
-                updatePong();
-                renderPong();
-                pongAnimationId = requestAnimationFrame(pongGameLoop);
-            }
-
-            function startPongGame() {
-                if (!pongAnimationId) {
-                    initPongGameObjects();
-                    pongGameLoop();
-                }
-            }
-
-            function stopPongGame() {
-                if (pongAnimationId) {
-                    cancelAnimationFrame(pongAnimationId);
-                    pongAnimationId = null;
-                }
-            }
-
-            // --- WAR GAME LOGIC ---
-            const warCanvas = document.getElementById('warCanvas');
-            const warContext = warCanvas.getContext('2d');
-            const turnIndicator = document.getElementById('turn-indicator');
-            const endTurnBtn = document.getElementById('end-turn-btn');
-            
-            const ROWS = 22;
-            const COLS = 20;
-            let tileSize = 25;
-            let units = [];
-            let currentPlayer = 'North'; // North starts
-            let selectedUnit = null;
-            let validMoves = [];
-            let unitMovedThisTurn = false;
-
-            function startWarGame() {
-                 if (!warGameAnimationId) {
-                    initWarGame();
-                    warGameLoop();
-                }
-            }
-
-            function stopWarGame() {
-                if (warGameAnimationId) {
-                    cancelAnimationFrame(warGameAnimationId);
-                    warGameAnimationId = null;
-                }
-            }
-            
-            endTurnBtn.addEventListener('click', () => {
-                currentPlayer = (currentPlayer === 'North') ? 'South' : 'North';
-                selectedUnit = null;
-                validMoves = [];
-                unitMovedThisTurn = false;
-                updateTurnIndicator();
-            });
-
-            function updateTurnIndicator() {
-                turnIndicator.textContent = `${currentPlayer}'s Turn`;
-                turnIndicator.style.color = '#000';
-            }
-
-            class Unit {
-                constructor(x, y, owner, type) {
-                    this.x = x;
-                    this.y = y;
-                    this.owner = owner; // 'North' or 'South'
-                    this.type = type; // 'Infantry', 'Cavalry', 'Arsenal'
-                    this.moves = type === 'Cavalry' ? 5 : 3;
-                    if (type === 'Arsenal') this.moves = 0;
-                }
-
-                draw(ctx) {
-                    const xPos = this.x * tileSize + tileSize / 2;
-                    const yPos = this.y * tileSize + tileSize / 2;
-                    
-                    if (this.owner === 'North') {
-                        ctx.fillStyle = '#000';
-                        ctx.strokeStyle = '#000';
-                    } else {
-                        ctx.fillStyle = '#FFF';
-                        ctx.strokeStyle = '#000';
-                    }
-                    
-                    if (this.type === 'Infantry') {
-                        ctx.fillRect(xPos - 8, yPos - 8, 16, 16);
-                        if(this.owner === 'South') ctx.strokeRect(xPos - 8, yPos - 8, 16, 16);
-                    } else if (this.type === 'Cavalry') {
-                        ctx.beginPath();
-                        ctx.moveTo(xPos, yPos - 8);
-                        ctx.lineTo(xPos + 8, yPos);
-                        ctx.lineTo(xPos, yPos + 8);
-                        ctx.lineTo(xPos - 8, yPos);
-                        ctx.closePath();
-                        ctx.fill();
-                        if(this.owner === 'South') ctx.stroke();
-                    } else if (this.type === 'Arsenal') {
-                        ctx.beginPath();
-                        ctx.arc(xPos, yPos, 10, 0, Math.PI * 2);
-                        ctx.stroke();
-                        ctx.beginPath();
-                        ctx.arc(xPos, yPos, 5, 0, Math.PI * 2);
-                        ctx.fill();
-                    }
-                }
-            }
-
-            function initWarGame() {
-                warCanvas.width = warCanvas.parentElement.offsetWidth;
-                tileSize = warCanvas.width / COLS;
-                warCanvas.height = tileSize * ROWS;
-                
-                units = [];
-                // North setup
-                units.push(new Unit(9, 0, 'North', 'Arsenal'));
-                units.push(new Unit(10, 0, 'North', 'Arsenal'));
-                [6,7,8,9,10,11,12,13].forEach(x => units.push(new Unit(x, 1, 'North', 'Infantry')));
-                [8,9,10,11].forEach(x => units.push(new Unit(x, 2, 'North', 'Infantry')));
-                [8,11].forEach(x => units.push(new Unit(x, 3, 'North', 'Cavalry')));
-                
-                // South setup
-                units.push(new Unit(9, ROWS - 1, 'South', 'Arsenal'));
-                units.push(new Unit(10, ROWS - 1, 'South', 'Arsenal'));
-                [6,7,8,9,10,11,12,13].forEach(x => units.push(new Unit(x, ROWS - 2, 'South', 'Infantry')));
-                [8,9,10,11].forEach(x => units.push(new Unit(x, ROWS - 3, 'South', 'Infantry')));
-                [8,11].forEach(x => units.push(new Unit(x, ROWS - 4, 'South', 'Cavalry')));
-                
-                updateTurnIndicator();
-                warCanvas.addEventListener('click', onWarCanvasClick);
-            }
-            
-            function onWarCanvasClick(e) {
-                const rect = warCanvas.getBoundingClientRect();
-                const x = Math.floor((e.clientX - rect.left) / tileSize);
-                const y = Math.floor((e.clientY - rect.top) / tileSize);
-
-                if (selectedUnit) {
-                    const move = validMoves.find(m => m.x === x && m.y === y);
-                    if (move) {
-                        const targetUnit = units.find(u => u.x === x && u.y === y);
-                        if (targetUnit) {
-                            units = units.filter(u => u !== targetUnit);
-                        }
-                        selectedUnit.x = x;
-                        selectedUnit.y = y;
-                        unitMovedThisTurn = true;
-                        selectedUnit = null;
-                        validMoves = [];
-                    } else {
-                        selectedUnit = null;
-                        validMoves = [];
-                    }
+        function deleteCable(cableToDelete) {
+            const index = activeCables.findIndex(c => c === cableToDelete);
+            if (index === -1) return;
+            svgArea.removeChild(cableToDelete.path);
+            activeCables.splice(index, 1);
+            const destType = cableToDelete.endEl.dataset.type;
+            if (destType === 'content') {
+                const masterInConnections = activeCables.filter(c => c.endEl.dataset.type === 'content');
+                if (masterInConnections.length > 1) {
+                    showError();
+                } else if (masterInConnections.length === 1) {
+                    updateContent(masterInConnections[0].content);
                 } else {
-                    const unit = units.find(u => u.x === x && u.y === y && u.owner === currentPlayer);
-                    if (unit && !unitMovedThisTurn) {
-                        selectedUnit = unit;
-                        validMoves = getValidMoves(unit);
-                    }
+                    if (!systemState.sequencer.in) resetScreen();
                 }
+            } else if (destType === 'brightness') {
+                systemState.brightnessSource = null;
+            } else if (destType === 'color') {
+                systemState.colorSource = null;
+            } else if (destType === 'contrast') {
+                systemState.contrastSource = null;
+            } else if (destType === 'font') {
+                systemState.fontSource = null;
+            } else if (destType === 'clock-in') {
+                systemState.clockDivider.in = null;
+            } else if (destType === 'sequencer-in') {
+                systemState.sequencer.in = null;
             }
-            
-            function getValidMoves(unit) {
-                const moves = [];
-                if (unit.type === 'Arsenal' || !checkLineOfCommunication(unit)) return [];
+        }
 
-                for (let i = -unit.moves; i <= unit.moves; i++) {
-                    for (let j = -unit.moves; j <= unit.moves; j++) {
-                        if (Math.abs(i) + Math.abs(j) > unit.moves) continue;
-                        const newX = unit.x + i;
-                        const newY = unit.y + j;
-                        if (newX >= 0 && newX < COLS && newY >= 0 && newY < ROWS) {
-                           const targetUnit = units.find(u => u.x === newX && u.y === newY);
-                           if (!targetUnit || targetUnit.owner !== unit.owner) {
-                                moves.push({x: newX, y: newY});
-                           }
-                        }
-                    }
-                }
-                return moves;
-            }
-            
-            function checkLineOfCommunication(unit) {
-                const q = [{x: unit.x, y: unit.y}];
-                const visited = new Set([`${unit.x},${unit.y}`]);
-                
-                while(q.length > 0) {
-                    const curr = q.shift();
-                    const currentUnit = units.find(u => u.x === curr.x && u.y === curr.y);
-                    if(currentUnit && currentUnit.type === 'Arsenal' && currentUnit.owner === unit.owner) {
-                        return true;
-                    }
-                    
-                    [[0,1], [0,-1], [1,0], [-1,0]].forEach(([dx, dy]) => {
-                        const nx = curr.x + dx;
-                        const ny = curr.y + dy;
-                        const key = `${nx},${ny}`;
-                        
-                        if(nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS && !visited.has(key)) {
-                            const neighborUnit = units.find(u => u.x === nx && u.y === ny);
-                            if(neighborUnit && neighborUnit.owner === unit.owner) {
-                                visited.add(key);
-                                q.push({x: nx, y: ny});
-                            }
-                        }
-                    });
-                }
-                return false;
-            }
+        function setupKnob(knobEl, targetState, minVal, maxVal, initialAngle = 0) {
+            let isDragging = false, currentAngle = initialAngle, startY = 0, startAngle = 0;
+            knobEl.style.transform = `rotate(${currentAngle}deg)`;
+            knobEl.addEventListener('mousedown', (e) => {
+                e.preventDefault(); isDragging = true; startY = e.clientY; startAngle = currentAngle;
+                document.body.style.cursor = 'ns-resize';
+            });
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                const deltaY = startY - e.clientY;
+                currentAngle = Math.max(-135, Math.min(135, startAngle + deltaY * 1.5));
+                knobEl.style.transform = `rotate(${currentAngle}deg)`;
+                const value = ((currentAngle + 135) / 270) * (maxVal - minVal) + minVal;
+                const path = targetState.split('.');
+                let obj = systemState;
+                for(let i = 0; i < path.length - 1; i++) obj = obj[path[i]];
+                obj[path[path.length - 1]] = value;
+            });
+            document.addEventListener('mouseup', () => { isDragging = false; document.body.style.cursor = 'default'; });
+        }
 
-            function drawWarGame() {
-                warContext.clearRect(0, 0, warCanvas.width, warCanvas.height);
-                
-                // Draw dithered background
-                for(let i = 0; i < warCanvas.width; i+=2) {
-                    for(let j = 0; j < warCanvas.height; j+=2) {
-                        if ((i/2 + j/2) % 2 === 0) {
-                            warContext.fillStyle = '#FFF';
-                        } else {
-                            warContext.fillStyle = '#B5B5B5';
-                        }
-                        warContext.fillRect(i, j, 2, 2);
-                    }
-                }
+        setupKnob(document.getElementById('lfo1-rate-knob'), 'lfo1.rate', 0.1, 10, -90);
+        setupKnob(document.getElementById('lfo2-rate-knob'), 'lfo2.rate', 0.1, 10, -90);
+        setupKnob(document.getElementById('lfo3-rate-knob'), 'lfo3.rate', 0.1, 10, -90);
 
-                warContext.strokeStyle = '#000';
-                for (let i = 0; i < COLS; i++) {
-                    for (let j = 0; j < ROWS; j++) {
-                        warContext.strokeRect(i * tileSize, j * tileSize, tileSize, tileSize);
-                    }
-                }
-                
-                // Draw valid moves
-                validMoves.forEach(move => {
-                    warContext.fillStyle = 'rgba(128, 128, 128, 0.5)';
-                    warContext.fillRect(move.x * tileSize, move.y * tileSize, tileSize, tileSize);
-                });
+        outputJacks.forEach(jack => jack.addEventListener('click', () => {
+            if (selectedOutput) selectedOutput.classList.remove('selected');
+            selectedOutput = jack;
+            selectedOutput.classList.add('selected');
+        }));
 
-                units.forEach(unit => unit.draw(warContext));
-                
-                if (selectedUnit) {
-                    warContext.fillStyle = 'rgba(0, 0, 0, 0.5)';
-                    warContext.fillRect(selectedUnit.x * tileSize, selectedUnit.y * tileSize, tileSize, tileSize);
-                }
+        inputJacks.forEach(inputJack => inputJack.addEventListener('click', () => {
+            if (!selectedOutput) return;
+            const sourceType = selectedOutput.dataset.type;
+            const destType = inputJack.dataset.type;
+
+            const isModSource = sourceType === 'lfo-source' || sourceType === 'logic-output';
+            const isModDest = ['brightness', 'color', 'contrast', 'font', 'clock-in', 'sequencer-in'].includes(destType);
+
+            const isValidPatch = 
+                (sourceType === 'content-source' && destType === 'content') ||
+                (isModSource && isModDest);
+
+            if (!isValidPatch) {
+                selectedOutput.classList.remove('selected');
+                selectedOutput = null;
+                return;
             }
 
-            function warGameLoop() {
-                drawWarGame();
-                warGameAnimationId = requestAnimationFrame(warGameLoop);
+            const startPoint = getJackCenter(selectedOutput);
+            const endPoint = getJackCenter(inputJack);
+            const cableElement = drawCable(startPoint, endPoint, selectedOutput.dataset.color);
+            const cableData = {
+                startEl: selectedOutput, endEl: inputJack, path: cableElement,
+                content: selectedOutput.dataset.content, effect: selectedOutput.dataset.effect
+            };
+            cableElement.addEventListener('click', () => deleteCable(cableData));
+            activeCables.push(cableData);
+
+            if (destType === 'content') {
+                 if (!systemState.sequencer.in) {
+                    const masterInConnections = activeCables.filter(c => c.endEl.dataset.type === 'content');
+                    if (masterInConnections.length > 1) {
+                        showError();
+                    } else {
+                        updateContent(cableData.content);
+                    }
+                 }
             }
+            else if (destType === 'brightness') systemState.brightnessSource = cableData.effect;
+            else if (destType === 'color') systemState.colorSource = cableData.effect;
+            else if (destType === 'contrast') systemState.contrastSource = cableData.effect;
+            else if (destType === 'font') systemState.fontSource = cableData.effect;
+            else if (destType === 'clock-in') systemState.clockDivider.in = cableData.effect;
+            else if (destType === 'sequencer-in') systemState.sequencer.in = cableData.effect;
 
-
-            // --- Initial State ---
-            openWindow('welcome-window');
+            selectedOutput.classList.remove('selected');
+            selectedOutput = null;
+        }));
+        
+        document.getElementById('clear-patches')?.addEventListener('click', () => {
+            svgArea.innerHTML = '';
+            activeCables = [];
+            resetScreen();
+            systemState.brightnessSource = null;
+            systemState.colorSource = null;
+            systemState.contrastSource = null;
+            systemState.fontSource = null;
+            systemState.clockDivider.in = null;
+            systemState.sequencer.in = null;
+            if(selectedOutput) {
+                 selectedOutput.classList.remove('selected');
+                 selectedOutput = null;
+            }
         });
+
+        window.addEventListener('resize', () => {
+            activeCables.forEach(cable => {
+                const startPoint = getJackCenter(cable.startEl);
+                const endPoint = getJackCenter(cable.endEl);
+                const sag = Math.max(Math.abs(startPoint.y - endPoint.y) * 0.8, Math.abs(startPoint.x - endPoint.x) * 0.3, 80);
+                cable.path.setAttribute('d', `M ${startPoint.x} ${startPoint.y} C ${startPoint.x} ${startPoint.y + sag}, ${endPoint.x} ${endPoint.y + sag}, ${endPoint.x} ${endPoint.y}`);
+            });
+        });
+
+        systemClock();
     </script>
 </body>
 </html>
