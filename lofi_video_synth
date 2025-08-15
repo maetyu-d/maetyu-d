@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lo-Fi Video Synth</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #1a1a1a;
+            --module-bg: #2a2a2a;
+            --text-color: #e0e0e0;
+            --accent-color: #00ff9d;
+            --border-color: #444;
+            --connector-color: #888;
+            --cable-color: #00ff9d;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            overflow: hidden;
+            cursor: grab;
+        }
+        .module {
+            background-color: var(--module-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem;
+            position: absolute;
+            cursor: move;
+            min-width: 200px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            user-select: none;
+        }
+        .module-title {
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            text-align: center;
+            color: var(--accent-color);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.5rem;
+        }
+        .connector-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: absolute;
+            width: 100%;
+            top: 50%;
+            transform: translateY(-50%);
+            padding: 0 5px;
+            pointer-events: none;
+        }
+        .inputs, .outputs {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .connector {
+            width: 16px;
+            height: 16px;
+            background-color: var(--connector-color);
+            border-radius: 50%;
+            border: 2px solid var(--border-color);
+            cursor: pointer;
+            pointer-events: all;
+        }
+        .connector.input {
+            margin-left: -25px;
+        }
+        .connector.output {
+            margin-right: -25px;
+        }
+        .connector:hover {
+            background-color: var(--accent-color);
+        }
+        .param {
+            margin-bottom: 0.5rem;
+        }
+        .param label {
+            display: block;
+            font-size: 0.8rem;
+            margin-bottom: 0.25rem;
+        }
+        .param input, .param select, .param button {
+            width: 100%;
+            background-color: #333;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: var(--text-color);
+            padding: 0.25rem;
+            box-sizing: border-box;
+            cursor: auto;
+        }
+        .switcher-btn {
+            width: 30px;
+            height: 30px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+        }
+        .switcher-btn.active {
+            background-color: var(--accent-color);
+            box-shadow: 0 0 10px var(--accent-color);
+        }
+        #patch-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: -1;
+        }
+        .preview-canvas, #final-output-canvas {
+            width: 100%;
+            height: auto;
+            aspect-ratio: 4 / 3;
+            background-color: #000;
+            border-radius: 4px;
+        }
+        #preset-manager {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: var(--module-bg);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+        .preset-btn {
+            background-color: #333;
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .preset-btn:hover {
+            background-color: #444;
+        }
+        .preset-btn.clear {
+            background-color: #803333;
+        }
+        .preset-btn.clear:hover {
+            background-color: #a04444;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen">
+
+    <canvas id="patch-canvas"></canvas>
+
+    <!-- Preset Manager -->
+    <div id="preset-manager">
+        <button class="preset-btn" data-preset="rings">Rhythmic Rings</button>
+        <button class="preset-btn" data-preset="grid">Logic Grid</button>
+        <button class="preset-btn" data-preset="keyhole">Sequenced Key</button>
+        <button class="preset-btn clear" id="clear-patch">Clear Patch</button>
+    </div>
+
+    <!-- Modules -->
+    <div id="modules-container">
+        <!-- Oscillator 1 -->
+        <div id="oscillator" class="module" style="top: 80px; left: 20px;">
+            <div class="module-title">Oscillator 1</div>
+            <div class="param">
+                <label for="osc-shape">Shape</label>
+                <select id="osc-shape">
+                    <option>Sine</option>
+                    <option>Square</option>
+                    <option>Triangle</option>
+                    <option>Parabola</option>
+                    <option>Double Ramp</option>
+                </select>
+            </div>
+            <div class="param">
+                <label for="osc-freq-mode">Frequency Mode</label>
+                <select id="osc-freq-mode">
+                    <option>Locked Horizontal</option>
+                    <option>Locked Upper Vertical</option>
+                    <option>Locked Lower Vertical</option>
+                    <option>Seconds</option>
+                    <option>Frames</option>
+                    <option>Free Lower Vertical</option>
+                    <option>Free Upper Vertical</option>
+                    <option>Free Horizontal</option>
+                </select>
+            </div>
+             <div class="param">
+                <label for="osc-freq">Frequency</label>
+                <input id="osc-freq" type="range" min="1" max="100" value="10">
+            </div>
+            <div class="connector-container">
+                <div class="inputs">
+                    <div class="connector input" data-module="oscillator" data-name="freq-in"></div>
+                </div>
+                <div class="outputs">
+                    <div class="connector output" data-module="oscillator" data-name="out"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Oscillator 2 -->
+        <div id="oscillator2" class="module" style="top: 310px; left: 20px;">
+            <div class="module-title">Oscillator 2</div>
+            <div class="param">
+                <label for="osc2-shape">Shape</label>
+                <select id="osc2-shape">
+                    <option>Sine</option>
+                    <option>Square</option>
+                    <option>Triangle</option>
+                    <option>Parabola</option>
+                    <option>Double Ramp</option>
+                </select>
+            </div>
+            <div class="param">
+                <label for="osc2-freq-mode">Frequency Mode</label>
+                <select id="osc2-freq-mode">
+                    <option>Locked Horizontal</option>
+                    <option>Locked Upper Vertical</option>
+                    <option>Locked Lower Vertical</option>
+                    <option>Seconds</option>
+                    <option>Frames</option>
+                    <option>Free Lower Vertical</option>
+                    <option>Free Upper Vertical</option>
+                    <option>Free Horizontal</option>
+                </select>
+            </div>
+             <div class="param">
+                <label for="osc2-freq">Frequency</label>
+                <input id="osc2-freq" type="range" min="1" max="100" value="10">
+            </div>
+            <div class="connector-container">
+                <div class="inputs">
+                    <div class="connector input" data-module="oscillator2" data-name="freq-in"></div>
+                </div>
+                <div class="outputs">
+                    <div class="connector output" data-module="oscillator2" data-name="out"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Mixer -->
+        <div id="mixer" class="module" style="top: 540px; left: 20px;">
+            <div class="module-title">Mixer</div>
+            <div class="param">
+                <label for="mixer-balance">Balance (A/B)</label>
+                <input id="mixer-balance" type="range" min="0" max="1" value="0.5" step="0.01">
+            </div>
+            <div class="connector-container">
+                <div class="inputs">
+                    <div class="connector input" data-module="mixer" data-name="in-a"></div>
+                    <div class="connector input" data-module="mixer" data-name="in-b"></div>
+                </div>
+                <div class="outputs">
+                    <div class="connector output" data-module="mixer" data-name="out"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Matrix -->
+        <div id="matrix" class="module" style="top: 80px; left: 300px; min-width: 250px;">
+            <div class="module-title">Matrix Mixer</div>
+            <div class="grid grid-cols-3 gap-2">
+                <input type="range" min="-1" max="1" value="1" step="0.1" class="matrix-slider" data-row="0" data-col="0">
+                <input type="range" min="-1" max="1" value="0" step="0.1" class="matrix-slider" data-row="0" data-col="1">
+                <input type="range" min="-1" max="1" value="0" step="0.1" class="matrix-slider" data-row="0" data-col="2">
+                <input type="range" min="-1" max="1" value="0" step="0.1" class="matrix-slider" data-row="1" data-col="0">
+                <input type="range" min="-1" max="1" value="1" step="0.1" class="matrix-slider" data-row="1" data-col="1">
+                <input type="range" min="-1" max="1" value="0" step="0.1" class="matrix-slider" data-row="1" data-col="2">
+                <input type="range" min="-1" max="1" value="0" step="0.1" class="matrix-slider" data-row="2" data-col="0">
+                <input type="range" min="-1" max="1" value="0" step="0.1" class="matrix-slider" data-row="2" data-col="1">
+                <input type="range" min="-1" max="1" value="1" step="0.1" class="matrix-slider" data-row="2" data-col="2">
+            </div>
+            <div class="connector-container">
+                <div class="inputs">
+                    <div class="connector input" data-module="matrix" data-name="in-r"></div>
+                    <div class="connector input" data-module="matrix" data-name="in-g"></div>
+                    <div class="connector input" data-module="matrix" data-name="in-b"></div>
+                </div>
+                <div class="outputs">
+                    <div class="connector output" data-module="matrix" data-name="out-r"></div>
+                    <div class="connector output" data-module="matrix" data-name="out-g"></div>
+                    <div class="connector output" data-module="matrix" data-name="out-b"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Factors -->
+        <div id="factors" class="module" style="top: 310px; left: 300px;">
+            <div class="module-title">Factors</div>
+            <div class="param">
+                <label for="factors-contrast">Contrast</label>
+                <input id="factors-contrast" type="range" min="-1" max="1" value="1" step="0.01">
+            </div>
+            <div class="connector-container">
+                <div class="inputs">
+                    <div class="connector input" data-module="factors" data-name="in"></div>
+                    <div class="connector input" data-module="factors" data-name="control"></div>
+                </div>
+                <div class="outputs">
+                    <div class="connector output" data-module="factors" data-name="out"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Switcher -->
+        <div id="switcher" class="module" style="top: 480px; left: 300px; min-width: 250px; height: 280px;">
+            <div class="module-title">Switcher</div>
+            <div class="param">
+                <label>Select Input</label>
+                <button id="switcher-btn">Input A</button>
+            </div>
+            <div class="connector-container">
+                <div class="inputs">
+                    <div class="connector input" data-module="switcher" data-name="in-ar" title="Input A Red"></div>
+                    <div class="connector input" data-module="switcher" data-name="in-ag" title="Input A Green"></div>
+                    <div class="connector input" data-module="switcher" data-name="in-ab" title="Input A Blue"></div>
+                    <div class="connector input" data-module="switcher" data-name="in-br" title="Input B Red"></div>
+                    <div class="connector input" data-module="switcher" data-name="in-bg" title="Input B Green"></div>
+                    <div class="connector input" data-module="switcher" data-name="in-bb" title="Input B Blue"></div>
+                </div>
+                <div class="outputs">
+                    <div class="connector output" data-module="switcher" data-name="out-r"></div>
+                    <div class="connector output" data-module="switcher" data-name="out-g"></div>
+                    <div class="connector output" data-module="switcher" data-name="out-b"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Shape -->
+        <div id="shape" class="module" style="top: 80px; left: 600px;">
+            <div class="module-title">Shape</div>
+            <div class="param">
+                <label for="shape-type">Type</label>
+                <select id="shape-type">
+                    <option>Circle</option>
+                    <option>Rectangle</option>
+                    <option>Diamond</option>
+                </select>
+            </div>
+            <div class="param">
+                <label for="shape-size">Size</label>
+                <input id="shape-size" type="range" min="0.01" max="1" value="0.5" step="0.01">
+            </div>
+            <div class="connector-container">
+                 <div class="inputs">
+                    <div class="connector input" data-module="shape" data-name="size-in"></div>
+                </div>
+                <div class="outputs">
+                    <div class="connector output" data-module="shape" data-name="out"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- KeyHard -->
+        <div id="keyhard" class="module" style="top: 280px; left: 600px;">
+            <div class="module-title">KeyHard</div>
+            <div class="param">
+                <label for="keyhard-threshold">Threshold</label>
+                <input id="keyhard-threshold" type="range" min="0" max="1" value="0.5" step="0.01">
+            </div>
+            <div class="connector-container">
+                <div class="inputs">
+                    <div class="connector input" data-module="keyhard" data-name="in"></div>
+                </div>
+                <div class="outputs">
+                    <div class="connector output" data-module="keyhard" data-name="out"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- KeySoft -->
+        <div id="keysoft" class="module" style="top: 450px; left: 600px;">
+            <div class="module-title">KeySoft</div>
+            <div class="param">
+                <label for="keysoft-level">Level</label>
+                <input id="keysoft-level" type="range" min="0" max="1" value="0.5" step="0.01">
+            </div>
+            <div class="param">
+                <label for="keysoft-softness">Softness</label>
+                <input id="keysoft-softness" type="range" min="0.01" max="1" value="0.1" step="0.01">
+            </div>
+            <div class="connector-container">
+                <div class="inputs">
+                    <div class="connector input" data-module="keysoft" data-name="in"></div>
+                </div>
+                <div class="outputs">
+                    <div class="connector output" data-module="keysoft" data-name="out"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ribbons -->
+        <div id="ribbons" class="module" style="top: 640px; left: 600px;">
+            <div class="module-title">Ribbons</div>
+            <div class="param">
+                <label for="ribbons-levels">Levels</label>
+                <input id="ribbons-levels" type="range" min="2" max="8" value="8" step="1">
+            </div>
+            <div class="connector-container">
+                <div class="inputs">
+                    <div class="connector input" data-module="ribbons" data-name="in-r"></div>
+                    <div class="connector input" data-module="ribbons" data-name="in-g"></div>
+                    <div class="connector input" data-module="ribbons" data-name="in-b"></div>
+                </div>
+                <div class="outputs">
+                    <div class="connector output" data-module="ribbons" data-name="out-r"></div>
+                    <div class="connector output" data-module="ribbons" data-name="out-g"></div>
+                    <div class="connector output" data-module="ribbons" data-name="out-b"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Preview -->
+        <div id="preview" class="module" style="top: 80px; left: 1130px;">
+            <div class="module-title">Preview</div>
+            <canvas id="preview-canvas" class="preview-canvas" width="256" height="192"></canvas>
+            <div class="connector-container">
+                <div class="inputs">
+                    <div class="connector input" data-module="preview" data-name="in-r"></div>
+                    <div class="connector input" data-module="preview" data-name="in-g"></div>
+                    <div class="connector input" data-module="preview" data-name="in-b"></div>
+                </div>
+                 <div class="outputs"></div>
+            </div>
+        </div>
+        
+        <!-- Final Output -->
+        <div id="final-output" class="module" style="top: 360px; left: 1130px;">
+            <div class="module-title">Final Output</div>
+            <canvas id="final-output-canvas" width="256" height="192"></canvas>
+            <div class="connector-container">
+                <div class="inputs">
+                    <div class="connector input" data-module="final-output" data-name="in-r"></div>
+                    <div class="connector input" data-module="final-output" data-name="in-g"></div>
+                    <div class="connector input" data-module="final-output" data-name="in-b"></div>
+                </div>
+                 <div class="outputs"></div>
+            </div>
+        </div>
+
+        <!-- NEW MODULES -->
+        <div id="ramp" class="module" style="top: 80px; left: 850px;">
+            <div class="module-title">Ramp Gen</div>
+            <p class="text-center text-sm text-gray-400 pt-4">Outputs H/V Ramps</p>
+            <div class="connector-container">
+                 <div class="inputs"></div>
+                <div class="outputs">
+                    <div class="connector output" data-module="ramp" data-name="h-ramp"></div>
+                    <div class="connector output" data-module="ramp" data-name="v-ramp"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="vca" class="module" style="top: 250px; left: 850px;">
+            <div class="module-title">VCA</div>
+            <div class="param">
+                <label for="vca-amount">CV Amount</label>
+                <input id="vca-amount" type="range" min="0" max="1" value="1" step="0.01">
+            </div>
+            <div class="connector-container">
+                <div class="inputs">
+                    <div class="connector input" data-module="vca" data-name="in"></div>
+                    <div class="connector input" data-module="vca" data-name="cv"></div>
+                </div>
+                <div class="outputs">
+                    <div class="connector output" data-module="vca" data-name="out"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="logic" class="module" style="top: 420px; left: 850px;">
+            <div class="module-title">Logic</div>
+            <div class="param">
+                <label for="logic-op">Operation</label>
+                <select id="logic-op">
+                    <option>AND</option>
+                    <option>OR</option>
+                    <option>XOR</option>
+                </select>
+            </div>
+            <div class="connector-container">
+                <div class="inputs">
+                    <div class="connector input" data-module="logic" data-name="in-a"></div>
+                    <div class="connector input" data-module="logic" data-name="in-b"></div>
+                </div>
+                <div class="outputs">
+                    <div class="connector output" data-module="logic" data-name="out"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="sequencer" class="module" style="top: 590px; left: 850px;">
+            <div class="module-title">4-Step Sequencer</div>
+            <div class="param">
+                <label for="seq-rate">Rate</label>
+                <input id="seq-rate" type="range" min="0.1" max="10" value="1" step="0.1">
+            </div>
+            <div class="grid grid-cols-4 gap-2">
+                <input type="range" min="0" max="1" value="0.25" step="0.01" class="seq-step" data-step="0">
+                <input type="range" min="0" max="1" value="0.5" step="0.01" class="seq-step" data-step="1">
+                <input type="range" min="0" max="1" value="0.75" step="0.01" class="seq-step" data-step="2">
+                <input type="range" min="0" max="1" value="1" step="0.01" class="seq-step" data-step="3">
+            </div>
+            <div class="connector-container">
+                <div class="inputs"></div>
+                <div class="outputs">
+                    <div class="connector output" data-module="sequencer" data-name="out"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hidden modules for logic, not display -->
+        <div id="stairs" class="module" style="display: none;"></div>
+        <div id="proc" class="module" style="display: none;"></div>
+
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- Basic setup ---
+            const modulesContainer = document.getElementById('modules-container');
+            const patchCanvas = document.getElementById('patch-canvas');
+            const patchCtx = patchCanvas.getContext('2d');
+            patchCanvas.width = window.innerWidth;
+            patchCanvas.height = window.innerHeight;
+
+            let connections = [];
+            let draggingCable = null;
+
+            // --- Module Dragging & Canvas Panning ---
+            let activeModule = null;
+            let startDragPos = { moduleX: 0, moduleY: 0, mouseX: 0, mouseY: 0 };
+            
+            let isPanning = false;
+            let panOffset = { x: 0, y: 0 };
+            let startPan = { x: 0, y: 0 };
+
+            document.body.addEventListener('mousedown', (e) => {
+                const targetModule = e.target.closest('.module');
+                if (targetModule && !e.target.closest('input, select, button, .connector')) {
+                    activeModule = targetModule;
+                    startDragPos = {
+                        moduleX: activeModule.offsetLeft,
+                        moduleY: activeModule.offsetTop,
+                        mouseX: e.clientX,
+                        mouseY: e.clientY
+                    };
+                    return; 
+                }
+                
+                if (e.target.classList.contains('connector') && e.target.classList.contains('output')) {
+                    draggingCable = {
+                        startModule: e.target.dataset.module,
+                        startConnector: e.target.dataset.name,
+                    };
+                    e.stopPropagation();
+                    return;
+                }
+
+                if (e.target === document.body || e.target === patchCanvas || e.target === modulesContainer) {
+                    isPanning = true;
+                    startPan.x = e.clientX - panOffset.x;
+                    startPan.y = e.clientY - panOffset.y;
+                    document.body.style.cursor = 'grabbing';
+                }
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (activeModule) {
+                    const dx = e.clientX - startDragPos.mouseX;
+                    const dy = e.clientY - startDragPos.mouseY;
+                    activeModule.style.left = `${startDragPos.moduleX + dx}px`;
+                    activeModule.style.top = `${startDragPos.moduleY + dy}px`;
+                    drawConnections();
+                }
+
+                if (isPanning) {
+                    panOffset.x = e.clientX - startPan.x;
+                    panOffset.y = e.clientY - startPan.y;
+                    modulesContainer.style.transform = `translate(${panOffset.x}px, ${panOffset.y}px)`;
+                    drawConnections();
+                }
+                
+                if (draggingCable) {
+                    drawConnections();
+                    const startPos = getConnectorPosition(draggingCable.startModule, draggingCable.startConnector);
+                    patchCtx.beginPath();
+                    patchCtx.moveTo(startPos.x, startPos.y);
+                    patchCtx.lineTo(e.clientX, e.clientY);
+                    patchCtx.strokeStyle = 'var(--cable-color)';
+                    patchCtx.lineWidth = 3;
+                    patchCtx.stroke();
+                }
+            });
+
+            document.addEventListener('mouseup', (e) => {
+                if (draggingCable && e.target.classList.contains('connector') && e.target.classList.contains('input')) {
+                    const newConnection = {
+                        ...draggingCable,
+                        endModule: e.target.dataset.module,
+                        endConnector: e.target.dataset.name,
+                        id: `conn-${Date.now()}`
+                    };
+                    if (newConnection.startModule !== newConnection.endModule) {
+                        connections = connections.filter(c => !(c.endModule === newConnection.endModule && c.endConnector === newConnection.endConnector));
+                        connections.push(newConnection);
+                    }
+                }
+                
+                activeModule = null;
+                isPanning = false;
+                draggingCable = null;
+                document.body.style.cursor = 'grab';
+                drawConnections();
+            });
+            
+            // --- Patching Logic (rest of the file is the same) ---
+            function getConnectorPosition(moduleId, connectorName) {
+                const moduleEl = document.getElementById(moduleId);
+                const query = `.connector[data-module="${moduleId}"][data-name="${connectorName}"]`;
+                const connectorEl = moduleEl.querySelector(query);
+                if (!connectorEl) {
+                    console.warn(`Connector not found: ${moduleId} -> ${connectorName}`);
+                    return { x: 0, y: 0 };
+                }
+                const connectorRect = connectorEl.getBoundingClientRect();
+                
+                return {
+                    x: connectorRect.left + connectorRect.width / 2,
+                    y: connectorRect.top + connectorRect.height / 2,
+                };
+            }
+
+            function drawConnections() {
+                patchCtx.clearRect(0, 0, patchCanvas.width, patchCanvas.height);
+                connections.forEach(conn => {
+                    const startPos = getConnectorPosition(conn.startModule, conn.startConnector);
+                    const endPos = getConnectorPosition(conn.endModule, conn.endConnector);
+
+                    patchCtx.beginPath();
+                    patchCtx.moveTo(startPos.x, startPos.y);
+                    const cpx1 = startPos.x + 50;
+                    const cpy1 = startPos.y;
+                    const cpx2 = endPos.x - 50;
+                    const cpy2 = endPos.y;
+                    patchCtx.bezierCurveTo(cpx1, cpy1, cpx2, cpy2, endPos.x, endPos.y);
+                    patchCtx.strokeStyle = 'var(--cable-color)';
+                    patchCtx.lineWidth = 3;
+                    patchCtx.stroke();
+                });
+            }
+            
+            function pDistance(x, y, x1, y1, x2, y2) {
+              const A = x - x1; const B = y - y1;
+              const C = x2 - x1; const D = y2 - y1;
+              const dot = A * C + B * D;
+              const len_sq = C * C + D * D;
+              let param = -1;
+              if (len_sq != 0) param = dot / len_sq;
+              let xx, yy;
+              if (param < 0) { xx = x1; yy = y1; }
+              else if (param > 1) { xx = x2; yy = y2; }
+              else { xx = x1 + param * C; yy = y1 + param * D; }
+              const dx = x - xx; const dy = y - yy;
+              return Math.sqrt(dx * dx + dy * dy);
+            }
+
+            // --- Video Synthesis Engine ---
+            const finalCanvas = document.getElementById('final-output-canvas');
+            const finalCtx = finalCanvas.getContext('2d');
+            const previewCanvas = document.getElementById('preview-canvas');
+            const previewCtx = previewCanvas.getContext('2d');
+            
+            const width = finalCanvas.width;
+            const height = finalCanvas.height;
+            
+            const finalImageData = finalCtx.createImageData(width, height);
+            const previewImageData = previewCtx.createImageData(width, height);
+
+            const moduleState = {
+                oscillator: { shape: 'Sine', freqMode: 'Locked Horizontal', freq: 10 },
+                oscillator2: { shape: 'Sine', freqMode: 'Locked Horizontal', freq: 10 },
+                mixer: { balance: 0.5 },
+                matrix: { weights: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] },
+                factors: { contrast: 1 },
+                switcher: { activeInput: 'A' },
+                shape: { type: 'Circle', size: 0.5 },
+                keyhard: { threshold: 0.5 },
+                keysoft: { level: 0.5, softness: 0.1 },
+                ribbons: { levels: 8 },
+                vca: { amount: 1 },
+                logic: { op: 'AND' },
+                sequencer: { rate: 1, steps: [0.25, 0.5, 0.75, 1] }
+            };
+
+            // --- UI Listeners ---
+            document.getElementById('osc-shape').addEventListener('change', (e) => moduleState.oscillator.shape = e.target.value);
+            document.getElementById('osc-freq-mode').addEventListener('change', (e) => moduleState.oscillator.freqMode = e.target.value);
+            document.getElementById('osc-freq').addEventListener('input', (e) => moduleState.oscillator.freq = parseFloat(e.target.value));
+            document.getElementById('osc2-shape').addEventListener('change', (e) => moduleState.oscillator2.shape = e.target.value);
+            document.getElementById('osc2-freq-mode').addEventListener('change', (e) => moduleState.oscillator2.freqMode = e.target.value);
+            document.getElementById('osc2-freq').addEventListener('input', (e) => moduleState.oscillator2.freq = parseFloat(e.target.value));
+            document.getElementById('mixer-balance').addEventListener('input', (e) => moduleState.mixer.balance = parseFloat(e.target.value));
+            document.querySelectorAll('.matrix-slider').forEach(slider => {
+                slider.addEventListener('input', (e) => {
+                    const row = parseInt(e.target.dataset.row);
+                    const col = parseInt(e.target.dataset.col);
+                    moduleState.matrix.weights[row][col] = parseFloat(e.target.value);
+                });
+            });
+            document.getElementById('factors-contrast').addEventListener('input', (e) => moduleState.factors.contrast = parseFloat(e.target.value));
+            document.getElementById('switcher-btn').addEventListener('click', (e) => {
+                moduleState.switcher.activeInput = moduleState.switcher.activeInput === 'A' ? 'B' : 'A';
+                e.target.textContent = `Input ${moduleState.switcher.activeInput}`;
+            });
+            document.getElementById('shape-type').addEventListener('change', (e) => moduleState.shape.type = e.target.value);
+            document.getElementById('shape-size').addEventListener('input', (e) => moduleState.shape.size = parseFloat(e.target.value));
+            document.getElementById('keyhard-threshold').addEventListener('input', (e) => moduleState.keyhard.threshold = parseFloat(e.target.value));
+            document.getElementById('keysoft-level').addEventListener('input', (e) => moduleState.keysoft.level = parseFloat(e.target.value));
+            document.getElementById('keysoft-softness').addEventListener('input', (e) => moduleState.keysoft.softness = parseFloat(e.target.value));
+            document.getElementById('ribbons-levels').addEventListener('input', (e) => moduleState.ribbons.levels = parseInt(e.target.value));
+            document.getElementById('vca-amount').addEventListener('input', (e) => moduleState.vca.amount = parseFloat(e.target.value));
+            document.getElementById('logic-op').addEventListener('change', (e) => moduleState.logic.op = e.target.value);
+            document.getElementById('seq-rate').addEventListener('input', (e) => moduleState.sequencer.rate = parseFloat(e.target.value));
+            document.querySelectorAll('.seq-step').forEach(slider => {
+                slider.addEventListener('input', (e) => {
+                    const step = parseInt(e.target.dataset.step);
+                    moduleState.sequencer.steps[step] = parseFloat(e.target.value);
+                });
+            });
+
+            // --- Preset Manager ---
+            document.getElementById('preset-manager').addEventListener('click', (e) => {
+                if(e.target.classList.contains('preset-btn')) {
+                    const preset = e.target.dataset.preset;
+                    if(preset) {
+                        loadPreset(preset);
+                    }
+                }
+            });
+            document.getElementById('clear-patch').addEventListener('click', () => {
+                connections = [];
+                drawConnections();
+            });
+
+            function setControlValue(id, value) {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.value = value;
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }
+
+            function loadPreset(presetName) {
+                connections = [];
+                
+                switch(presetName) {
+                    case 'rings':
+                        setControlValue('shape-type', 'Circle');
+                        setControlValue('keysoft-softness', 0.2);
+                        setControlValue('osc-shape', 'Sine');
+                        setControlValue('osc-freq-mode', 'Free Lower Vertical');
+                        setControlValue('osc-freq', 4);
+                        setControlValue('osc2-shape', 'Triangle');
+                        setControlValue('osc2-freq-mode', 'Free Horizontal');
+                        setControlValue('osc2-freq', 5);
+                        setControlValue('seq-rate', 2);
+                        moduleState.sequencer.steps = [0.2, 0.4, 0.3, 0.5];
+                        document.querySelectorAll('.seq-step').forEach((s, i) => s.value = moduleState.sequencer.steps[i]);
+
+                        connections.push({ startModule: 'sequencer', startConnector: 'out', endModule: 'shape', endConnector: 'size-in', id: 'p1-1' });
+                        connections.push({ startModule: 'shape', startConnector: 'out', endModule: 'keysoft', endConnector: 'in', id: 'p1-2' });
+                        connections.push({ startModule: 'keysoft', startConnector: 'out', endModule: 'matrix', endConnector: 'in-r', id: 'p1-3' });
+                        connections.push({ startModule: 'oscillator', startConnector: 'out', endModule: 'matrix', endConnector: 'in-g', id: 'p1-4' });
+                        connections.push({ startModule: 'oscillator2', startConnector: 'out', endModule: 'matrix', endConnector: 'in-b', id: 'p1-5' });
+                        connections.push({ startModule: 'matrix', startConnector: 'out-r', endModule: 'final-output', endConnector: 'in-r', id: 'p1-6' });
+                        connections.push({ startModule: 'matrix', startConnector: 'out-g', endModule: 'final-output', endConnector: 'in-g', id: 'p1-7' });
+                        connections.push({ startModule: 'matrix', startConnector: 'out-b', endModule: 'final-output', endConnector: 'in-b', id: 'p1-8' });
+                        break;
+                    
+                    case 'grid':
+                        setControlValue('osc-shape', 'Square');
+                        setControlValue('osc-freq-mode', 'Locked Horizontal');
+                        setControlValue('osc-freq', 10);
+                        setControlValue('osc2-shape', 'Square');
+                        setControlValue('osc2-freq-mode', 'Locked Upper Vertical');
+                        setControlValue('osc2-freq', 10);
+                        setControlValue('logic-op', 'XOR');
+                        
+                        connections.push({ startModule: 'oscillator', startConnector: 'out', endModule: 'logic', endConnector: 'in-a', id: 'p2-1' });
+                        connections.push({ startModule: 'oscillator2', startConnector: 'out', endModule: 'logic', endConnector: 'in-b', id: 'p2-2' });
+                        connections.push({ startModule: 'logic', startConnector: 'out', endModule: 'matrix', endConnector: 'in-r', id: 'p2-3' });
+                        connections.push({ startModule: 'oscillator', startConnector: 'out', endModule: 'matrix', endConnector: 'in-g', id: 'p2-4' });
+                        connections.push({ startModule: 'oscillator2', startConnector: 'out', endModule: 'matrix', endConnector: 'in-b', id: 'p2-5' });
+                        connections.push({ startModule: 'matrix', startConnector: 'out-r', endModule: 'final-output', endConnector: 'in-r', id: 'p2-6' });
+                        connections.push({ startModule: 'matrix', startConnector: 'out-g', endModule: 'final-output', endConnector: 'in-g', id: 'p2-7' });
+                        connections.push({ startModule: 'matrix', startConnector: 'out-b', endModule: 'final-output', endConnector: 'in-b', id: 'p2-8' });
+                        break;
+
+                    case 'keyhole':
+                        setControlValue('shape-type', 'Diamond');
+                        setControlValue('shape-size', 0.8);
+                        setControlValue('keyhard-threshold', 0.5);
+                        setControlValue('osc-shape', 'Parabola');
+                        setControlValue('osc-freq-mode', 'Free Horizontal');
+                        setControlValue('osc-freq', 15);
+                        setControlValue('osc2-shape', 'Sine');
+                        setControlValue('osc2-freq-mode', 'Free Lower Vertical');
+                        setControlValue('osc2-freq', 10);
+                        setControlValue('seq-rate', 1.5);
+                        
+                        connections.push({ startModule: 'shape', startConnector: 'out', endModule: 'keyhard', endConnector: 'in', id: 'p3-1' });
+                        connections.push({ startModule: 'oscillator', startConnector: 'out', endModule: 'vca', endConnector: 'in', id: 'p3-2' });
+                        connections.push({ startModule: 'keyhard', startConnector: 'out', endModule: 'vca', endConnector: 'cv', id: 'p3-3' });
+                        connections.push({ startModule: 'sequencer', startConnector: 'out', endModule: 'matrix', endConnector: 'in-r', id: 'p3-4' });
+                        connections.push({ startModule: 'vca', startConnector: 'out', endModule: 'matrix', endConnector: 'in-g', id: 'p3-5' });
+                        connections.push({ startModule: 'oscillator2', startConnector: 'out', endModule: 'matrix', endConnector: 'in-b', id: 'p3-6' });
+                        connections.push({ startModule: 'matrix', startConnector: 'out-r', endModule: 'final-output', endConnector: 'in-r', id: 'p3-7' });
+                        connections.push({ startModule: 'matrix', startConnector: 'out-g', endModule: 'final-output', endConnector: 'in-g', id: 'p3-8' });
+                        connections.push({ startModule: 'matrix', startConnector: 'out-b', endModule: 'final-output', endConnector: 'in-b', id: 'p3-9' });
+                        break;
+                }
+                drawConnections();
+            }
+
+
+            const processingOrder = ['ramp', 'oscillator', 'oscillator2', 'sequencer', 'mixer', 'shape', 'vca', 'logic', 'factors', 'keyhard', 'keysoft', 'matrix', 'switcher', 'ribbons', 'preview', 'final-output'];
+
+            function computeGraph(x, y, t, frame) {
+                const allOutputs = {};
+                
+                processingOrder.forEach(moduleId => {
+                    const moduleInputs = {};
+                    connections.filter(c => c.endModule === moduleId).forEach(conn => {
+                         moduleInputs[conn.endConnector] = allOutputs[conn.startModule]?.[conn.startConnector] || 0;
+                    });
+                    
+                    allOutputs[moduleId] = processModule(moduleId, moduleInputs, x, y, t, frame);
+                });
+
+                return allOutputs;
+            }
+            
+            function smoothstep(edge0, edge1, x) {
+                const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+                return t * t * (3 - 2 * t);
+            }
+
+            function processModule(moduleId, inputs, x, y, t, frame) {
+                const out = {};
+                const u = x / width;
+                const v = y / height;
+                const clamp = (val) => Math.max(0, Math.min(1, val));
+
+                switch(moduleId) {
+                    case 'oscillator':
+                    case 'oscillator2': {
+                        const state = moduleState[moduleId];
+                        let freq = state.freq * (inputs['freq-in'] ? (inputs['freq-in'] * 2) : 1);
+                        let phase = 0;
+                        switch(state.freqMode) {
+                            case 'Locked Horizontal': phase = u * freq; break;
+                            case 'Locked Upper Vertical': phase = v * freq; break;
+                            case 'Locked Lower Vertical': phase = (1-v) * freq; break;
+                            case 'Seconds': phase = (t/1000) * freq; break;
+                            case 'Frames': phase = (frame / 60) * freq; break;
+                            case 'Free Lower Vertical': phase = (v + t/1000) * freq; break;
+                            case 'Free Upper Vertical': phase = ((1-v) + t/1000) * freq; break;
+                            case 'Free Horizontal': phase = (u + t/1000) * freq; break;
+                        }
+                        let val = 0;
+                        switch(state.shape) {
+                            case 'Sine': val = Math.sin(phase * 2 * Math.PI) * 0.5 + 0.5; break;
+                            case 'Square': val = (phase % 1) > 0.5 ? 1 : 0; break;
+                            case 'Triangle': val = 1 - Math.abs((phase % 1) * 2 - 1); break;
+                            case 'Parabola': val = Math.pow(Math.sin(phase * Math.PI), 2); break;
+                            case 'Double Ramp': val = (phase * 2) % 1; break;
+                        }
+                        out['out'] = val;
+                        break;
+                    }
+                    case 'mixer': {
+                        const state = moduleState.mixer;
+                        const inA = inputs['in-a'] || 0;
+                        const inB = inputs['in-b'] || 0;
+                        out['out'] = inA * (1 - state.balance) + inB * state.balance;
+                        break;
+                    }
+                    case 'matrix': {
+                        const state = moduleState.matrix;
+                        const rIn = inputs['in-r'] || 0;
+                        const gIn = inputs['in-g'] || 0;
+                        const bIn = inputs['in-b'] || 0;
+                        out['out-r'] = clamp(state.weights[0][0]*rIn + state.weights[0][1]*gIn + state.weights[0][2]*bIn);
+                        out['out-g'] = clamp(state.weights[1][0]*rIn + state.weights[1][1]*gIn + state.weights[1][2]*bIn);
+                        out['out-b'] = clamp(state.weights[2][0]*rIn + state.weights[2][1]*gIn + state.weights[2][2]*bIn);
+                        break;
+                    }
+                    case 'factors': {
+                        const state = moduleState.factors;
+                        const inVal = inputs['in'] || 0;
+                        const control = inputs['control'] ? (inputs['control'] * 2 - 1) : 1;
+                        const contrast = state.contrast * control;
+                        out['out'] = clamp(0.5 + (inVal - 0.5) * contrast);
+                        break;
+                    }
+                    case 'switcher': {
+                        const state = moduleState.switcher;
+                        if (state.activeInput === 'A') {
+                            out['out-r'] = inputs['in-ar'] || 0;
+                            out['out-g'] = inputs['in-ag'] || 0;
+                            out['out-b'] = inputs['in-ab'] || 0;
+                        } else {
+                            out['out-r'] = inputs['in-br'] || 0;
+                            out['out-g'] = inputs['in-bg'] || 0;
+                            out['out-b'] = inputs['in-bb'] || 0;
+                        }
+                        break;
+                    }
+                    case 'shape': {
+                        const state = moduleState.shape;
+                        const size = state.size * (inputs['size-in'] || 1);
+                        let val = 0;
+                        const dx = u - 0.5;
+                        const dy = v - 0.5;
+                        switch(state.type) {
+                            case 'Circle': val = Math.sqrt(dx*dx + dy*dy) < size / 2 ? 1 : 0; break;
+                            case 'Rectangle': val = Math.abs(dx) < size / 2 && Math.abs(dy) < size / 2 ? 1 : 0; break;
+                            case 'Diamond': val = (Math.abs(dx) + Math.abs(dy)) < size / 2 ? 1 : 0; break;
+                        }
+                        out['out'] = val;
+                        break;
+                    }
+                    case 'keyhard': {
+                        const state = moduleState.keyhard;
+                        const inVal = inputs['in'] || 0;
+                        out['out'] = inVal > state.threshold ? 1 : 0;
+                        break;
+                    }
+                    case 'keysoft': {
+                        const state = moduleState.keysoft;
+                        const inVal = inputs['in'] || 0;
+                        const edge0 = state.level - state.softness / 2;
+                        const edge1 = state.level + state.softness / 2;
+                        out['out'] = smoothstep(edge0, edge1, inVal);
+                        break;
+                    }
+                    case 'ribbons': {
+                        const state = moduleState.ribbons;
+                        const levels = state.levels;
+                        if (levels > 1) {
+                            out['out-r'] = Math.floor((inputs['in-r'] || 0) * levels) / (levels - 1);
+                            out['out-g'] = Math.floor((inputs['in-g'] || 0) * levels) / (levels - 1);
+                            out['out-b'] = Math.floor((inputs['in-b'] || 0) * levels) / (levels - 1);
+                        } else {
+                            out['out-r'] = inputs['in-r'] || 0;
+                            out['out-g'] = inputs['in-g'] || 0;
+                            out['out-b'] = inputs['in-b'] || 0;
+                        }
+                        break;
+                    }
+                    case 'ramp': {
+                        out['h-ramp'] = u;
+                        out['v-ramp'] = v;
+                        break;
+                    }
+                    case 'vca': {
+                        const state = moduleState.vca;
+                        const inVal = inputs['in'] || 0;
+                        const cv = inputs['cv'] || 0;
+                        out['out'] = clamp(inVal * (cv * state.amount));
+                        break;
+                    }
+                    case 'logic': {
+                        const state = moduleState.logic;
+                        const inA = inputs['in-a'] > 0.5;
+                        const inB = inputs['in-b'] > 0.5;
+                        let val = 0;
+                        switch(state.op) {
+                            case 'AND': val = (inA && inB) ? 1 : 0; break;
+                            case 'OR': val = (inA || inB) ? 1 : 0; break;
+                            case 'XOR': val = (inA !== inB) ? 1 : 0; break;
+                        }
+                        out['out'] = val;
+                        break;
+                    }
+                    case 'sequencer': {
+                        const state = moduleState.sequencer;
+                        const currentStep = Math.floor((t / 1000) * state.rate) % state.steps.length;
+                        out['out'] = state.steps[currentStep];
+                        break;
+                    }
+                }
+                return out;
+            }
+
+            let frame = 0;
+            function renderLoop(t) {
+                const finalData = finalImageData.data;
+                const previewData = previewImageData.data;
+
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const allOutputs = computeGraph(x, y, t, frame);
+                        const pixelIndex = (y * width + x) * 4;
+
+                        const finalInputs = {};
+                        connections.filter(c => c.endModule === 'final-output').forEach(conn => {
+                            finalInputs[conn.endConnector] = allOutputs[conn.startModule]?.[conn.startConnector] || 0;
+                        });
+                        finalData[pixelIndex]     = (finalInputs['in-r'] || 0) * 255;
+                        finalData[pixelIndex + 1] = (finalInputs['in-g'] || 0) * 255;
+                        finalData[pixelIndex + 2] = (finalInputs['in-b'] || 0) * 255;
+                        finalData[pixelIndex + 3] = 255;
+
+                        const previewInputs = {};
+                        connections.filter(c => c.endModule === 'preview').forEach(conn => {
+                            previewInputs[conn.endConnector] = allOutputs[conn.startModule]?.[conn.startConnector] || 0;
+                        });
+                        previewData[pixelIndex]     = (previewInputs['in-r'] || 0) * 255;
+                        previewData[pixelIndex + 1] = (previewInputs['in-g'] || 0) * 255;
+                        previewData[pixelIndex + 2] = (previewInputs['in-b'] || 0) * 255;
+                        previewData[pixelIndex + 3] = 255;
+                    }
+                }
+                finalCtx.putImageData(finalImageData, 0, 0);
+                previewCtx.putImageData(previewImageData, 0, 0);
+                frame++;
+                requestAnimationFrame(renderLoop);
+            }
+
+            requestAnimationFrame(renderLoop);
+            
+            window.addEventListener('resize', () => {
+                patchCanvas.width = window.innerWidth;
+                patchCanvas.height = window.innerHeight;
+                drawConnections();
+            });
+        });
+    </script>
+</body>
+</html>
