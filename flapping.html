@@ -30,7 +30,7 @@
             width: calc(100% - 40px);
             display: flex;
             justify-content: space-between;
-            pointer-events: none;
+            pointer-events: none; /* Pass clicks through to canvas */
         }
         .hud {
             background-color: rgba(0, 0, 0, 0.5);
@@ -38,6 +38,7 @@
             border-radius: 5px;
             border: 1px solid rgba(255,255,255,0.3);
             text-shadow: 1px 1px 2px black;
+            pointer-events: auto; /* Re-enable events for this element */
         }
         #instructions {
             font-size: 0.9em;
@@ -58,6 +59,39 @@
             height: 100%;
             background-color: #4CAF50;
             transition: width 0.2s linear;
+        }
+        /* Styles for the new slider panel */
+        #sliders-container {
+            position: absolute;
+            top: 180px;
+            left: 20px;
+        }
+        .slider-group {
+            margin-bottom: 5px;
+            display: grid;
+            grid-template-columns: 100px 1fr 50px;
+            align-items: center;
+            font-size: 0.9em;
+        }
+        .slider-group label {
+            text-align: right;
+            margin-right: 10px;
+        }
+        .slider-group input[type=range] {
+            width: 120px;
+        }
+        #reset-physics-btn {
+            margin-top: 10px;
+            width: 100%;
+            padding: 5px;
+            background-color: #c0392b;
+            border: 1px solid #e74c3c;
+            color: white;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        #reset-physics-btn:hover {
+            background-color: #e74c3c;
         }
     </style>
 </head>
@@ -83,6 +117,32 @@
             <span id="state-readout">State: Grounded</span>
         </div>
     </div>
+    
+    <!-- New Physics Sliders Panel -->
+    <div id="sliders-container" class="hud">
+        <strong>PHYSICS PARAMETERS:</strong>
+        <div class="slider-group">
+            <label for="gravity-slider">Gravity:</label>
+            <input type="range" id="gravity-slider" min="0.05" max="0.8" step="0.01">
+            <span id="gravity-value">0.25</span>
+        </div>
+        <div class="slider-group">
+            <label for="lift-slider">Lift Factor:</label>
+            <input type="range" id="lift-slider" min="0.1" max="1.5" step="0.05">
+            <span id="lift-value">0.70</span>
+        </div>
+        <div class="slider-group">
+            <label for="thrust-slider">Thrust Factor:</label>
+            <input type="range" id="thrust-slider" min="0.05" max="0.5" step="0.01">
+            <span id="thrust-value">0.25</span>
+        </div>
+        <div class="slider-group">
+            <label for="drag-slider">Drag Coeff:</label>
+            <input type="range" id="drag-slider" min="0.95" max="0.999" step="0.001">
+            <span id="drag-value">0.99</span>
+        </div>
+        <button id="reset-physics-btn">Reset Physics</button>
+    </div>
 
     <canvas id="gameCanvas" width="1000" height="600"></canvas>
 
@@ -95,21 +155,24 @@
         const velocityReadout = document.getElementById('velocity-readout');
         const stateReadout = document.getElementById('state-readout');
 
-        // --- RE-BALANCED AND SIMPLIFIED PHYSICS ---
-        const config = {
-            gravity: 0.25,          // Increased for a weightier feel
-            liftFactor: 0.7,        // Significantly increased for intuitive lift
-            thrustFactor: 0.25,     // Strong forward thrust
-            dragCoefficient: 0.99,  // Air resistance
-            flapEnergyCost: 0.25,   // Slightly reduced cost for longer flight
+        // --- Default Physics Configuration ---
+        const defaultConfig = {
+            gravity: 0.25,
+            liftFactor: 0.7,
+            thrustFactor: 0.25,
+            dragCoefficient: 0.99,
+            flapEnergyCost: 0.25,
             glideEnergyGain: 0.05,
             perchEnergyGain: 2.0,
             maxEnergy: 100,
-            maxWingPitch: 45,
-            minWingPitch: -10,
+            maxWingPitch: 60,
+            minWingPitch: -20,
             stallPitch: 70,
             perchRange: 80
         };
+        
+        // --- Live Config Object (will be modified by sliders) ---
+        let config = { ...defaultConfig };
 
         let robotBird = {};
         let perches = [];
@@ -143,7 +206,6 @@
         window.addEventListener('keyup', (e) => { keys[e.code] = false; });
         
         function applyFlightPhysics() {
-            // --- Player Inputs ---
             if (keys['Space'] && robotBird.energy > 0) {
                 robotBird.flapFrequency = Math.min(1, robotBird.flapFrequency + 0.1);
                 robotBird.energy -= config.flapEnergyCost;
@@ -153,30 +215,24 @@
             }
             if (keys['KeyW']) robotBird.wingPitch = Math.min(config.maxWingPitch, robotBird.wingPitch + 1.5);
             if (keys['KeyS']) robotBird.wingPitch = Math.max(config.minWingPitch, robotBird.wingPitch - 1.5);
-            if (keys['KeyA']) robotBird.angle = Math.max(-30, robotBird.angle - 1);
-            if (keys['KeyD']) robotBird.angle = Math.min(30, robotBird.angle + 1);
+            if (keys['KeyA']) robotBird.angle = Math.max(-45, robotBird.angle - 1.5);
+            if (keys['KeyD']) robotBird.angle = Math.min(45, robotBird.angle + 1.5);
 
-            // --- Simplified Physics Simulation ---
             const bodyAngleRad = robotBird.angle * Math.PI / 180;
             const wingPitchRad = robotBird.wingPitch * Math.PI / 180;
 
-            // THRUST: Pushes the robot forward along its current angle.
             const thrust = robotBird.flapFrequency * config.thrustFactor;
             robotBird.vx += Math.cos(bodyAngleRad) * thrust;
             robotBird.vy += Math.sin(bodyAngleRad) * thrust;
             
-            // LIFT: A dedicated upward force based on flapping and wing pitch.
             const lift = robotBird.flapFrequency * Math.abs(Math.sin(wingPitchRad)) * config.liftFactor;
             robotBird.vy -= lift; 
             
-            // GRAVITY: A constant downward pull.
             robotBird.vy += config.gravity;
 
-            // DRAG: Slows the robot down over time.
             robotBird.vx *= config.dragCoefficient;
             robotBird.vy *= config.dragCoefficient;
 
-            // Update position
             robotBird.x += robotBird.vx;
             robotBird.y += robotBird.vy;
         }
@@ -188,7 +244,7 @@
                 if (gameState === 'perched') robotBird.energy = Math.min(config.maxEnergy, robotBird.energy + config.perchEnergyGain);
                 if (keys['Space']) {
                     gameState = 'flying';
-                    robotBird.vy = -6; // Stronger takeoff impulse
+                    robotBird.vy = -6;
                 }
             } else if (gameState === 'flying') {
                 const closestPerch = getClosestPerch();
@@ -228,7 +284,7 @@
                     robotBird.vx = 0; robotBird.vy = 0;
                     robotBird.y = canvas.height - robotBird.height;
                 }
-                if (robotBird.energy <= 0) gameState = 'flying'; // Allow graceful fall
+                if (robotBird.energy <= 0) gameState = 'flying';
                 if (robotBird.x > canvas.width) robotBird.x = 0;
                 if (robotBird.x < 0) robotBird.x = canvas.width;
             }
@@ -304,14 +360,49 @@
             return Math.sqrt((obj1.x - obj2.x)**2 + (obj1.y - obj2.y)**2);
         }
 
+        // --- New Slider Setup Function ---
+        function setupSliders() {
+            const sliders = {
+                'gravity-slider': { key: 'gravity', valueEl: 'gravity-value', decimals: 2 },
+                'lift-slider': { key: 'liftFactor', valueEl: 'lift-value', decimals: 2 },
+                'thrust-slider': { key: 'thrustFactor', valueEl: 'thrust-value', decimals: 2 },
+                'drag-slider': { key: 'dragCoefficient', valueEl: 'drag-value', decimals: 3 }
+            };
+
+            for (const [sliderId, data] of Object.entries(sliders)) {
+                const slider = document.getElementById(sliderId);
+                const valueEl = document.getElementById(data.valueEl);
+                
+                // Set initial slider position from config
+                slider.value = config[data.key];
+                valueEl.textContent = parseFloat(slider.value).toFixed(data.decimals);
+
+                // Add event listener
+                slider.addEventListener('input', (e) => {
+                    const newValue = parseFloat(e.target.value);
+                    config[data.key] = newValue;
+                    valueEl.textContent = newValue.toFixed(data.decimals);
+                });
+            }
+            
+            document.getElementById('reset-physics-btn').addEventListener('click', () => {
+                config = { ...defaultConfig };
+                // Re-run setup to update slider positions and values
+                setupSliders();
+            });
+        }
+
         function gameLoop() {
             requestAnimationFrame(gameLoop);
             update();
             draw();
         }
 
+        // --- Initialize ---
         resetSimulation();
+        setupSliders();
         gameLoop();
     </script>
 </body>
 </html>
+
