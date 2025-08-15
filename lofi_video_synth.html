@@ -23,6 +23,12 @@
             overflow: hidden;
             cursor: grab;
         }
+        #modules-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            transform-origin: top left;
+        }
         .module {
             background-color: var(--module-bg);
             border: 1px solid var(--border-color);
@@ -132,6 +138,7 @@
             display: flex;
             gap: 10px;
             z-index: 100;
+            align-items: center;
         }
         .preset-btn {
             background-color: #333;
@@ -150,17 +157,39 @@
         .preset-btn.clear:hover {
             background-color: #a04444;
         }
+        #notification {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: var(--accent-color);
+            color: var(--bg-color);
+            padding: 10px 20px;
+            border-radius: 5px;
+            z-index: 200;
+            opacity: 0;
+            transition: opacity 0.5s;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body class="w-screen h-screen">
 
     <canvas id="patch-canvas"></canvas>
+    <div id="notification"></div>
 
     <!-- Preset Manager -->
     <div id="preset-manager">
+        <button class="preset-btn" id="zoom-out">-</button>
+        <button class="preset-btn" id="zoom-in">+</button>
+        <span class="text-gray-500 mx-2">|</span>
         <button class="preset-btn" data-preset="rings">Rhythmic Rings</button>
         <button class="preset-btn" data-preset="grid">Logic Grid</button>
         <button class="preset-btn" data-preset="keyhole">Sequenced Key</button>
+        <span class="text-gray-500 mx-2">|</span>
+        <button class="preset-btn" id="save-patch">Save</button>
+        <button class="preset-btn" data-preset="user">Load</button>
+        <span class="text-gray-500 mx-2">|</span>
         <button class="preset-btn clear" id="clear-patch">Clear Patch</button>
     </div>
 
@@ -542,6 +571,12 @@
             let isPanning = false;
             let panOffset = { x: 0, y: 0 };
             let startPan = { x: 0, y: 0 };
+            let zoomLevel = 1.0;
+
+            function applyTransform() {
+                modulesContainer.style.transform = `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomLevel})`;
+                drawConnections();
+            }
 
             document.body.addEventListener('mousedown', (e) => {
                 const targetModule = e.target.closest('.module');
@@ -577,16 +612,15 @@
                 if (activeModule) {
                     const dx = e.clientX - startDragPos.mouseX;
                     const dy = e.clientY - startDragPos.mouseY;
-                    activeModule.style.left = `${startDragPos.moduleX + dx}px`;
-                    activeModule.style.top = `${startDragPos.moduleY + dy}px`;
+                    activeModule.style.left = `${startDragPos.moduleX + (dx / zoomLevel)}px`;
+                    activeModule.style.top = `${startDragPos.moduleY + (dy / zoomLevel)}px`;
                     drawConnections();
                 }
 
                 if (isPanning) {
                     panOffset.x = e.clientX - startPan.x;
                     panOffset.y = e.clientY - startPan.y;
-                    modulesContainer.style.transform = `translate(${panOffset.x}px, ${panOffset.y}px)`;
-                    drawConnections();
+                    applyTransform();
                 }
                 
                 if (draggingCable) {
@@ -622,7 +656,7 @@
                 drawConnections();
             });
             
-            // --- Patching Logic (rest of the file is the same) ---
+            // --- Patching Logic ---
             function getConnectorPosition(moduleId, connectorName) {
                 const moduleEl = document.getElementById(moduleId);
                 const query = `.connector[data-module="${moduleId}"][data-name="${connectorName}"]`;
@@ -737,6 +771,26 @@
                 });
             });
 
+            // --- Zoom Listeners ---
+            document.getElementById('zoom-in').addEventListener('click', () => {
+                zoomLevel = Math.min(2, zoomLevel + 0.1);
+                applyTransform();
+            });
+            document.getElementById('zoom-out').addEventListener('click', () => {
+                zoomLevel = Math.max(0.3, zoomLevel - 0.1);
+                applyTransform();
+            });
+            
+            // --- Notification ---
+            const notificationEl = document.getElementById('notification');
+            function showNotification(message) {
+                notificationEl.textContent = message;
+                notificationEl.style.opacity = 1;
+                setTimeout(() => {
+                    notificationEl.style.opacity = 0;
+                }, 2000);
+            }
+
             // --- Preset Manager ---
             document.getElementById('preset-manager').addEventListener('click', (e) => {
                 if(e.target.classList.contains('preset-btn')) {
@@ -750,85 +804,139 @@
                 connections = [];
                 drawConnections();
             });
+            document.getElementById('save-patch').addEventListener('click', () => {
+                const patchData = {
+                    state: moduleState,
+                    connections: connections
+                };
+                localStorage.setItem('userVideoSynthPatch', JSON.stringify(patchData));
+                showNotification('Patch Saved!');
+            });
 
-            function setControlValue(id, value) {
-                const el = document.getElementById(id);
-                if (el) {
-                    el.value = value;
-                    el.dispatchEvent(new Event('input', { bubbles: true }));
-                    el.dispatchEvent(new Event('change', { bubbles: true }));
-                }
+            function applyStateToUI(state) {
+                // This function updates all UI controls to match the given state object.
+                Object.keys(state).forEach(moduleId => {
+                    const moduleControls = state[moduleId];
+                    Object.keys(moduleControls).forEach(controlId => {
+                        let elId;
+                        if (moduleId === 'oscillator') {
+                            elId = `osc-${controlId}`;
+                        } else if (moduleId === 'oscillator2') {
+                            elId = `osc2-${controlId}`;
+                        } else if (moduleId === 'sequencer' && controlId === 'steps') {
+                            moduleControls.steps.forEach((val, i) => {
+                                const stepEl = document.querySelector(`.seq-step[data-step="${i}"]`);
+                                if (stepEl) stepEl.value = val;
+                            });
+                            return; // continue to next control
+                        } else if (moduleId === 'matrix' && controlId === 'weights') {
+                           moduleControls.weights.forEach((row, r) => {
+                               row.forEach((val, c) => {
+                                   const slider = document.querySelector(`.matrix-slider[data-row="${r}"][data-col="${c}"]`);
+                                   if(slider) slider.value = val;
+                               });
+                           });
+                           return;
+                        }
+                        else {
+                           elId = `${moduleId}-${controlId}`;
+                        }
+
+                        const el = document.getElementById(elId);
+                        if(el) {
+                           el.value = moduleControls[controlId];
+                           el.dispatchEvent(new Event('input', { bubbles: true }));
+                           el.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
+                    });
+                });
             }
 
             function loadPreset(presetName) {
                 connections = [];
                 
+                if (presetName === 'user') {
+                    const savedPatchJSON = localStorage.getItem('userVideoSynthPatch');
+                    if (savedPatchJSON) {
+                        const patchData = JSON.parse(savedPatchJSON);
+                        Object.assign(moduleState, patchData.state); // Load state first
+                        applyStateToUI(moduleState);
+                        connections = patchData.connections;
+                        showNotification('User Patch Loaded');
+                    } else {
+                        showNotification('No User Patch Found');
+                    }
+                    drawConnections();
+                    return;
+                }
+                
+                let presetState = {};
+                let presetConnections = [];
+
                 switch(presetName) {
                     case 'rings':
-                        setControlValue('shape-type', 'Circle');
-                        setControlValue('keysoft-softness', 0.2);
-                        setControlValue('osc-shape', 'Sine');
-                        setControlValue('osc-freq-mode', 'Free Lower Vertical');
-                        setControlValue('osc-freq', 4);
-                        setControlValue('osc2-shape', 'Triangle');
-                        setControlValue('osc2-freq-mode', 'Free Horizontal');
-                        setControlValue('osc2-freq', 5);
-                        setControlValue('seq-rate', 2);
-                        moduleState.sequencer.steps = [0.2, 0.4, 0.3, 0.5];
-                        document.querySelectorAll('.seq-step').forEach((s, i) => s.value = moduleState.sequencer.steps[i]);
-
-                        connections.push({ startModule: 'sequencer', startConnector: 'out', endModule: 'shape', endConnector: 'size-in', id: 'p1-1' });
-                        connections.push({ startModule: 'shape', startConnector: 'out', endModule: 'keysoft', endConnector: 'in', id: 'p1-2' });
-                        connections.push({ startModule: 'keysoft', startConnector: 'out', endModule: 'matrix', endConnector: 'in-r', id: 'p1-3' });
-                        connections.push({ startModule: 'oscillator', startConnector: 'out', endModule: 'matrix', endConnector: 'in-g', id: 'p1-4' });
-                        connections.push({ startModule: 'oscillator2', startConnector: 'out', endModule: 'matrix', endConnector: 'in-b', id: 'p1-5' });
-                        connections.push({ startModule: 'matrix', startConnector: 'out-r', endModule: 'final-output', endConnector: 'in-r', id: 'p1-6' });
-                        connections.push({ startModule: 'matrix', startConnector: 'out-g', endModule: 'final-output', endConnector: 'in-g', id: 'p1-7' });
-                        connections.push({ startModule: 'matrix', startConnector: 'out-b', endModule: 'final-output', endConnector: 'in-b', id: 'p1-8' });
+                        presetState = {
+                            shape: { type: 'Circle' },
+                            keysoft: { softness: 0.2 },
+                            oscillator: { shape: 'Sine', freqMode: 'Free Lower Vertical', freq: 4 },
+                            oscillator2: { shape: 'Triangle', freqMode: 'Free Horizontal', freq: 5 },
+                            sequencer: { rate: 2, steps: [0.2, 0.4, 0.3, 0.5] }
+                        };
+                        presetConnections = [
+                            { startModule: 'sequencer', startConnector: 'out', endModule: 'shape', endConnector: 'size-in', id: 'p1-1' },
+                            { startModule: 'shape', startConnector: 'out', endModule: 'keysoft', endConnector: 'in', id: 'p1-2' },
+                            { startModule: 'keysoft', startConnector: 'out', endModule: 'matrix', endConnector: 'in-r', id: 'p1-3' },
+                            { startModule: 'oscillator', startConnector: 'out', endModule: 'matrix', endConnector: 'in-g', id: 'p1-4' },
+                            { startModule: 'oscillator2', startConnector: 'out', endModule: 'matrix', endConnector: 'in-b', id: 'p1-5' },
+                            { startModule: 'matrix', startConnector: 'out-r', endModule: 'final-output', endConnector: 'in-r', id: 'p1-6' },
+                            { startModule: 'matrix', startConnector: 'out-g', endModule: 'final-output', endConnector: 'in-g', id: 'p1-7' },
+                            { startModule: 'matrix', startConnector: 'out-b', endModule: 'final-output', endConnector: 'in-b', id: 'p1-8' }
+                        ];
                         break;
                     
                     case 'grid':
-                        setControlValue('osc-shape', 'Square');
-                        setControlValue('osc-freq-mode', 'Locked Horizontal');
-                        setControlValue('osc-freq', 10);
-                        setControlValue('osc2-shape', 'Square');
-                        setControlValue('osc2-freq-mode', 'Locked Upper Vertical');
-                        setControlValue('osc2-freq', 10);
-                        setControlValue('logic-op', 'XOR');
-                        
-                        connections.push({ startModule: 'oscillator', startConnector: 'out', endModule: 'logic', endConnector: 'in-a', id: 'p2-1' });
-                        connections.push({ startModule: 'oscillator2', startConnector: 'out', endModule: 'logic', endConnector: 'in-b', id: 'p2-2' });
-                        connections.push({ startModule: 'logic', startConnector: 'out', endModule: 'matrix', endConnector: 'in-r', id: 'p2-3' });
-                        connections.push({ startModule: 'oscillator', startConnector: 'out', endModule: 'matrix', endConnector: 'in-g', id: 'p2-4' });
-                        connections.push({ startModule: 'oscillator2', startConnector: 'out', endModule: 'matrix', endConnector: 'in-b', id: 'p2-5' });
-                        connections.push({ startModule: 'matrix', startConnector: 'out-r', endModule: 'final-output', endConnector: 'in-r', id: 'p2-6' });
-                        connections.push({ startModule: 'matrix', startConnector: 'out-g', endModule: 'final-output', endConnector: 'in-g', id: 'p2-7' });
-                        connections.push({ startModule: 'matrix', startConnector: 'out-b', endModule: 'final-output', endConnector: 'in-b', id: 'p2-8' });
+                        presetState = {
+                            oscillator: { shape: 'Square', freqMode: 'Locked Horizontal', freq: 10 },
+                            oscillator2: { shape: 'Square', freqMode: 'Locked Upper Vertical', freq: 10 },
+                            logic: { op: 'XOR' }
+                        };
+                        presetConnections = [
+                            { startModule: 'oscillator', startConnector: 'out', endModule: 'logic', endConnector: 'in-a', id: 'p2-1' },
+                            { startModule: 'oscillator2', startConnector: 'out', endModule: 'logic', endConnector: 'in-b', id: 'p2-2' },
+                            { startModule: 'logic', startConnector: 'out', endModule: 'matrix', endConnector: 'in-r', id: 'p2-3' },
+                            { startModule: 'oscillator', startConnector: 'out', endModule: 'matrix', endConnector: 'in-g', id: 'p2-4' },
+                            { startModule: 'oscillator2', startConnector: 'out', endModule: 'matrix', endConnector: 'in-b', id: 'p2-5' },
+                            { startModule: 'matrix', startConnector: 'out-r', endModule: 'final-output', endConnector: 'in-r', id: 'p2-6' },
+                            { startModule: 'matrix', startConnector: 'out-g', endModule: 'final-output', endConnector: 'in-g', id: 'p2-7' },
+                            { startModule: 'matrix', startConnector: 'out-b', endModule: 'final-output', endConnector: 'in-b', id: 'p2-8' }
+                        ];
                         break;
 
                     case 'keyhole':
-                        setControlValue('shape-type', 'Diamond');
-                        setControlValue('shape-size', 0.8);
-                        setControlValue('keyhard-threshold', 0.5);
-                        setControlValue('osc-shape', 'Parabola');
-                        setControlValue('osc-freq-mode', 'Free Horizontal');
-                        setControlValue('osc-freq', 15);
-                        setControlValue('osc2-shape', 'Sine');
-                        setControlValue('osc2-freq-mode', 'Free Lower Vertical');
-                        setControlValue('osc2-freq', 10);
-                        setControlValue('seq-rate', 1.5);
-                        
-                        connections.push({ startModule: 'shape', startConnector: 'out', endModule: 'keyhard', endConnector: 'in', id: 'p3-1' });
-                        connections.push({ startModule: 'oscillator', startConnector: 'out', endModule: 'vca', endConnector: 'in', id: 'p3-2' });
-                        connections.push({ startModule: 'keyhard', startConnector: 'out', endModule: 'vca', endConnector: 'cv', id: 'p3-3' });
-                        connections.push({ startModule: 'sequencer', startConnector: 'out', endModule: 'matrix', endConnector: 'in-r', id: 'p3-4' });
-                        connections.push({ startModule: 'vca', startConnector: 'out', endModule: 'matrix', endConnector: 'in-g', id: 'p3-5' });
-                        connections.push({ startModule: 'oscillator2', startConnector: 'out', endModule: 'matrix', endConnector: 'in-b', id: 'p3-6' });
-                        connections.push({ startModule: 'matrix', startConnector: 'out-r', endModule: 'final-output', endConnector: 'in-r', id: 'p3-7' });
-                        connections.push({ startModule: 'matrix', startConnector: 'out-g', endModule: 'final-output', endConnector: 'in-g', id: 'p3-8' });
-                        connections.push({ startModule: 'matrix', startConnector: 'out-b', endModule: 'final-output', endConnector: 'in-b', id: 'p3-9' });
+                        presetState = {
+                            shape: { type: 'Diamond', size: 0.8 },
+                            keyhard: { threshold: 0.5 },
+                            oscillator: { shape: 'Parabola', freqMode: 'Free Horizontal', freq: 15 },
+                            oscillator2: { shape: 'Sine', freqMode: 'Free Lower Vertical', freq: 10 },
+                            sequencer: { rate: 1.5 }
+                        };
+                        presetConnections = [
+                            { startModule: 'shape', startConnector: 'out', endModule: 'keyhard', endConnector: 'in', id: 'p3-1' },
+                            { startModule: 'oscillator', startConnector: 'out', endModule: 'vca', endConnector: 'in', id: 'p3-2' },
+                            { startModule: 'keyhard', startConnector: 'out', endModule: 'vca', endConnector: 'cv', id: 'p3-3' },
+                            { startModule: 'sequencer', startConnector: 'out', endModule: 'matrix', endConnector: 'in-r', id: 'p3-4' },
+                            { startModule: 'vca', startConnector: 'out', endModule: 'matrix', endConnector: 'in-g', id: 'p3-5' },
+                            { startModule: 'oscillator2', startConnector: 'out', endModule: 'matrix', endConnector: 'in-b', id: 'p3-6' },
+                            { startModule: 'matrix', startConnector: 'out-r', endModule: 'final-output', endConnector: 'in-r', id: 'p3-7' },
+                            { startModule: 'matrix', startConnector: 'out-g', endModule: 'final-output', endConnector: 'in-g', id: 'p3-8' },
+                            { startModule: 'matrix', startConnector: 'out-b', endModule: 'final-output', endConnector: 'in-b', id: 'p3-9' }
+                        ];
                         break;
                 }
+                
+                Object.assign(moduleState, presetState);
+                applyStateToUI(moduleState);
+                connections = presetConnections;
                 drawConnections();
             }
 
