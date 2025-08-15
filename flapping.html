@@ -97,11 +97,12 @@
         const stateReadout = document.getElementById('state-readout');
 
         // --- Research-Based Physics Parameters ---
+        // CORRECTED VALUES FOR LIFT AND THRUST
         const config = {
-            gravity: 0.05,
-            liftFactor: 0.05,
-            thrustFactor: 0.03,
-            dragCoefficient: 0.995,
+            gravity: 0.15,
+            liftFactor: 0.4,       // Increased from 0.005
+            thrustFactor: 0.2,     // Increased from 0.003
+            dragCoefficient: 0.99,
             inducedDragFactor: 0.01,
             flapEnergyCost: 0.3,
             glideEnergyGain: 0.05,
@@ -153,7 +154,6 @@
         window.addEventListener('keyup', (e) => { keys[e.code] = false; });
         
         function applyFlightPhysics() {
-            // --- Control Inputs ---
             if (keys['Space'] && robotBird.energy > 0) {
                 robotBird.flapFrequency = Math.min(1, robotBird.flapFrequency + 0.1);
                 robotBird.energy -= config.flapEnergyCost;
@@ -163,10 +163,9 @@
             }
             if (keys['KeyW']) robotBird.wingPitch = Math.min(config.maxWingPitch, robotBird.wingPitch + 1);
             if (keys['KeyS']) robotBird.wingPitch = Math.max(config.minWingPitch, robotBird.wingPitch - 1);
-            if (keys['KeyA']) robotBird.angle = Math.max(-30, robotBird.angle - 1);
-            if (keys['KeyD']) robotBird.angle = Math.min(30, robotBird.angle + 1);
+            if (keys['KeyA']) robotBird.angle = Math.max(-45, robotBird.angle - 1);
+            if (keys['KeyD']) robotBird.angle = Math.min(45, robotBird.angle + 1);
 
-            // --- Physics Simulation ---
             const bodyAngleRad = robotBird.angle * Math.PI / 180;
             const wingPitchRad = robotBird.wingPitch * Math.PI / 180;
 
@@ -174,7 +173,7 @@
             robotBird.vx += Math.cos(bodyAngleRad) * thrust;
             robotBird.vy += Math.sin(bodyAngleRad) * thrust;
             
-            const lift = robotBird.flapFrequency * Math.abs(Math.sin(wingPitchRad)) * config.liftFactor * (1 - Math.abs(robotBird.vx)/20);
+            const lift = robotBird.flapFrequency * Math.abs(Math.sin(wingPitchRad)) * config.liftFactor;
             robotBird.vy -= lift;
             robotBird.vy += config.gravity;
 
@@ -183,7 +182,6 @@
             const inducedDrag = Math.abs(robotBird.wingPitch / config.maxWingPitch) * config.inducedDragFactor * (robotBird.vx**2);
             robotBird.vx -= inducedDrag * Math.sign(robotBird.vx);
 
-            // --- Update Position ---
             robotBird.x += robotBird.vx;
             robotBird.y += robotBird.vy;
         }
@@ -194,12 +192,11 @@
                 return;
             }
 
-            // --- State Machine ---
             if (gameState === 'grounded' || gameState === 'perched') {
                 if (gameState === 'perched') {
                     robotBird.energy = Math.min(config.maxEnergy, robotBird.energy + config.perchEnergyGain);
                 }
-                if (keys['Space']) { // Takeoff
+                if (keys['Space']) {
                     gameState = 'flying';
                     robotBird.vy = -5;
                 }
@@ -216,19 +213,17 @@
             } else if (gameState === 'perching') {
                 const closestPerch = getClosestPerch();
                 if (!keys['KeyP'] || !closestPerch || getDistance(robotBird, {x: closestPerch.x + closestPerch.width/2, y: closestPerch.y}) > config.perchRange + 20) {
-                    gameState = 'flying'; // Abort perch
+                    gameState = 'flying';
                     return;
                 }
                 
-                // Stall Dynamics
                 robotBird.angle = -config.stallPitch;
-                robotBird.vx *= 0.9; 
+                robotBird.vx *= 0.92; 
                 robotBird.vy *= 0.95;
-                robotBird.vy += config.gravity * 0.5; // Still affected by some gravity
+                robotBird.vy += config.gravity * 0.5;
                 robotBird.x += robotBird.vx;
                 robotBird.y += robotBird.vy;
 
-                // Check for successful landing
                 if (robotBird.x > closestPerch.x && robotBird.x < closestPerch.x + closestPerch.width &&
                     robotBird.y > closestPerch.y - robotBird.height && robotBird.y < closestPerch.y + closestPerch.height) {
                     gameState = 'perched';
@@ -240,7 +235,6 @@
                 }
             }
             
-            // Universal Checks (apply to flying/perching states)
             if (gameState === 'flying' || gameState === 'perching') {
                  if (robotBird.y > canvas.height - robotBird.height / 2) {
                     gameState = 'grounded';
@@ -248,7 +242,7 @@
                     robotBird.y = canvas.height - robotBird.height / 2;
                 }
                 if (robotBird.energy <= 0) {
-                    gameState = 'flying'; // fall gracefully
+                    gameState = 'flying';
                 }
                 if (robotBird.x > canvas.width) robotBird.x = 0;
                 if (robotBird.x < 0) robotBird.x = canvas.width;
@@ -317,7 +311,7 @@
             energyBar.style.backgroundColor = robotBird.energy < 20 ? '#FF0000' : '#4CAF50';
             wingPitchReadout.textContent = `Wing Pitch: ${robotBird.wingPitch.toFixed(1)}°`;
             const totalVelocity = Math.sqrt(robotBird.vx**2 + robotBird.vy**2);
-            velocityReadout.textContent = `Velocity: ${(totalVelocity * 10).toFixed(1)} m/s`;
+            velocityReadout.textContent = `Velocity: ${(totalVelocity * 5).toFixed(1)} m/s`;
             stateReadout.textContent = `State: ${gameState.toUpperCase()}`;
         }
 
