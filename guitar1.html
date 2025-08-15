@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generative Granular Angels</title>
+    <style>
+        :root {
+            --bg-color: #1a1a2e;
+            --primary-color: #e94560;
+            --secondary-color: #16213e;
+            --text-color: #f0f0f0;
+            --slider-track: #0f3460;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: var(--secondary-color);
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+            text-align: center;
+            max-width: 600px;
+            width: 100%;
+        }
+        h1 {
+            color: var(--primary-color);
+            margin-bottom: 10px;
+        }
+        p {
+            margin-bottom: 25px;
+            line-height: 1.6;
+        }
+        button {
+            background-color: var(--primary-color);
+            color: var(--text-color);
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 20px;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(233, 69, 96, 0.4);
+        }
+        button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            text-align: left;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+        }
+        label {
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 8px;
+            background: var(--slider-track);
+            border-radius: 5px;
+            outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: var(--primary-color);
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid var(--secondary-color);
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: var(--primary-color);
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid var(--secondary-color);
+        }
+        .value-display {
+            font-size: 0.9em;
+            opacity: 0.8;
+            margin-top: 5px;
+        }
+        canvas {
+            width: 100%;
+            height: 100px;
+            background-color: var(--slider-track);
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Generative Granular Angels</h1>
+        <p>Play your guitar (or sing) into your microphone to generate an ethereal, choir-like soundscape. This version generates the reverb effect programmatically.</p>
+        <button id="startButton">Start Audio Engine</button>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label for="wetDryMix">Wet/Dry Mix</label>
+                <input type="range" id="wetDryMix" min="0" max="1" value="0.8" step="0.01">
+                <span id="wetDryMixValue" class="value-display">80% Wet</span>
+            </div>
+            <div class="control-group">
+                <label for="grainDensity">Grain Density</label>
+                <input type="range" id="grainDensity" min="10" max="100" value="70" step="1">
+                <span id="grainDensityValue" class="value-display">70 grains/sec</span>
+            </div>
+            <div class="control-group">
+                <label for="grainSize">Grain Size (ms)</label>
+                <input type="range" id="grainSize" min="50" max="500" value="300" step="1">
+                <span id="grainSizeValue" class="value-display">300 ms</span>
+            </div>
+            <div class="control-group">
+                <label for="pitchSpread">Pitch Spread</label>
+                <input type="range" id="pitchSpread" min="0" max="1" value="0.6" step="0.01">
+                 <span id="pitchSpreadValue" class="value-display">60% Octave / 40% Fifth</span>
+            </div>
+        </div>
+        <canvas id="visualizer" width="600" height="100"></canvas>
+    </div>
+
+    <script>
+        // --- Core Audio Variables ---
+        let audioContext;
+        let micSource;
+        let analyser;
+        let scriptNode;
+        let convolver;
+        let dryGain;
+        let wetGain;
+        let schedulerInterval;
+        let isAudioRunning = false;
+        
+        // --- Audio Buffers ---
+        const BUFFER_SIZE_SECONDS = 2;
+        let liveBuffer; 
+        let bufferWritePosition = 0;
+
+        // --- UI Elements ---
+        const startButton = document.getElementById('startButton');
+        const wetDryMixSlider = document.getElementById('wetDryMix');
+        const grainDensitySlider = document.getElementById('grainDensity');
+        const grainSizeSlider = document.getElementById('grainSize');
+        const pitchSpreadSlider = document.getElementById('pitchSpread');
+        
+        const wetDryMixValue = document.getElementById('wetDryMixValue');
+        const grainDensityValue = document.getElementById('grainDensityValue');
+        const grainSizeValue = document.getElementById('grainSizeValue');
+        const pitchSpreadValue = document.getElementById('pitchSpreadValue');
+
+        // --- Visualizer ---
+        const canvas = document.getElementById('visualizer');
+        const canvasCtx = canvas.getContext('2d');
+        let visualizationFrameRequest;
+
+
+        /**
+         * Creates a synthetic impulse response for the reverb effect.
+         * This avoids the need for any external audio files.
+         * @param {AudioContext} context The Web Audio API AudioContext.
+         * @returns {AudioBuffer} An audio buffer containing the generated impulse.
+         */
+        function createSyntheticImpulse(context) {
+            const sampleRate = context.sampleRate;
+            const duration = 2.5; // seconds
+            const decay = 4.0;
+            const length = sampleRate * duration;
+            const impulse = context.createBuffer(2, length, sampleRate);
+
+            for (let channel = 0; channel < 2; channel++) {
+                const channelData = impulse.getChannelData(channel);
+                for (let i = 0; i < length; i++) {
+                    // Generate white noise and apply an exponential decay
+                    const noise = Math.random() * 2 - 1;
+                    channelData[i] = noise * Math.pow(1 - i / length, decay);
+                }
+            }
+            return impulse;
+        }
+
+        async function initAudio() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+                // Allocate buffer based on actual sample rate
+                liveBuffer = new Float32Array(audioContext.sampleRate * BUFFER_SIZE_SECONDS);
+
+                // --- Create Audio Graph Nodes ---
+                dryGain = audioContext.createGain();
+                wetGain = audioContext.createGain();
+                convolver = audioContext.createConvolver();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 2048;
+                
+                // --- Set up the Reverb ---
+                convolver.buffer = createSyntheticImpulse(audioContext);
+                
+                // --- Get Microphone Input ---
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+                micSource = audioContext.createMediaStreamSource(stream);
+
+                // This node captures raw audio data for our buffer
+                scriptNode = audioContext.createScriptProcessor(4096, 1, 1);
+                scriptNode.onaudioprocess = (audioProcessingEvent) => {
+                    const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
+                    for (let i = 0; i < inputData.length; i++) {
+                        liveBuffer[bufferWritePosition] = inputData[i];
+                        bufferWritePosition = (bufferWritePosition + 1) % liveBuffer.length;
+                    }
+                };
+                
+                // --- Connect the Audio Graph ---
+                // Input -> ScriptNode (for capture) -> Analyser -> Dry Path -> Output
+                //                                              -> Wet Path -> Reverb -> Output
+                micSource.connect(scriptNode);
+                scriptNode.connect(analyser);
+                analyser.connect(dryGain);
+                analyser.connect(wetGain);
+                
+                dryGain.connect(audioContext.destination);
+                wetGain.connect(convolver);
+                convolver.connect(audioContext.destination);
+
+                // --- Set Initial UI Values ---
+                updateWetDryMix();
+                
+                isAudioRunning = true;
+                startButton.textContent = 'Stop Audio Engine';
+                startButton.disabled = false;
+                
+                startScheduler();
+                drawVisualizer();
+
+            } catch (err) {
+                alert('Error initialising audio. Please grant microphone permissions.\n' + err);
+                startButton.disabled = false;
+            }
+        }
+
+        function stopAudio() {
+            if (schedulerInterval) clearInterval(schedulerInterval);
+            if (visualizationFrameRequest) cancelAnimationFrame(visualizationFrameRequest);
+
+            micSource.mediaStream.getTracks().forEach(track => track.stop());
+            audioContext.close().then(() => {
+                isAudioRunning = false;
+                startButton.textContent = 'Start Audio Engine';
+                startButton.disabled = false;
+                // Clear visualizer
+                 canvasCtx.fillStyle = 'var(--slider-track)';
+                 canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+            });
+        }
+        
+        function playGrain() {
+            if (!audioContext || audioContext.state !== 'running') return;
+
+            const grainSizeMs = parseFloat(grainSizeSlider.value);
+            const grainSizeFrames = Math.floor(audioContext.sampleRate * (grainSizeMs / 1000));
+            const pitchSpread = parseFloat(pitchSpreadSlider.value);
+
+            // Choose a random position in the buffer to start reading from
+            const startFrame = Math.floor(Math.random() * (liveBuffer.length - grainSizeFrames));
+            
+            // Create a buffer for this single grain
+            const grainBuffer = audioContext.createBuffer(1, grainSizeFrames, audioContext.sampleRate);
+            const grainData = grainBuffer.getChannelData(0);
+
+            // Copy the audio data from our live recording buffer into the grain buffer
+            for (let i = 0; i < grainSizeFrames; i++) {
+                grainData[i] = liveBuffer[(startFrame + i) % liveBuffer.length];
+            }
+
+            // --- Apply a simple fade in/out envelope to the grain to avoid clicks ---
+            const envelopeAttack = grainSizeFrames * 0.1;
+            const envelopeRelease = grainSizeFrames * 0.9;
+            for(let i = 0; i < grainSizeFrames; i++) {
+                if(i < envelopeAttack) {
+                    grainData[i] *= i / envelopeAttack;
+                } else if (i > envelopeRelease) {
+                    grainData[i] *= (grainSizeFrames - i) / (grainSizeFrames - envelopeRelease);
+                }
+            }
+
+            // Create a source node to play this grain buffer
+            const grainSource = audioContext.createBufferSource();
+            grainSource.buffer = grainBuffer;
+            
+            // --- Pitch Shifting (The "Angels") ---
+            // 2.0 is one octave up, 1.5 is a perfect fifth up.
+            const highPitch = 2.0; 
+            const midPitch = 1.5; 
+            // The slider blends between these two harmonic intervals.
+            const playbackRate = highPitch * pitchSpread + midPitch * (1 - pitchSpread);
+            grainSource.playbackRate.value = playbackRate + (Math.random() * 0.02 - 0.01); // Add tiny detune
+
+            // --- Panning ---
+            const panner = audioContext.createStereoPanner();
+            panner.pan.value = Math.random() * 2 - 1; // Randomly pan left or right
+            
+            // Connect and play the grain
+            grainSource.connect(panner);
+            panner.connect(wetGain); // Grains only go to the wet (effects) path
+            grainSource.start(audioContext.currentTime);
+        }
+
+        function startScheduler() {
+             if (schedulerInterval) clearInterval(schedulerInterval);
+             
+             const updateInterval = () => {
+                const density = parseFloat(grainDensitySlider.value);
+                const intervalMs = 1000 / density;
+                clearInterval(schedulerInterval);
+                schedulerInterval = setInterval(playGrain, intervalMs);
+             };
+             
+             grainDensitySlider.addEventListener('input', updateInterval);
+             updateInterval(); // Call it once to start
+        }
+
+        function drawVisualizer() {
+            visualizationFrameRequest = requestAnimationFrame(drawVisualizer);
+            
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteTimeDomainData(dataArray);
+
+            canvasCtx.fillStyle = 'var(--slider-track)';
+            canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+
+            canvasCtx.lineWidth = 2;
+            canvasCtx.strokeStyle = 'var(--primary-color)';
+            canvasCtx.beginPath();
+
+            const sliceWidth = canvas.width * 1.0 / bufferLength;
+            let x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = v * canvas.height / 2;
+
+                if (i === 0) {
+                    canvasCtx.moveTo(x, y);
+                } else {
+                    canvasCtx.lineTo(x, y);
+                }
+                x += sliceWidth;
+            }
+
+            canvasCtx.lineTo(canvas.width, canvas.height / 2);
+            canvasCtx.stroke();
+        }
+
+        function updateWetDryMix() {
+            const mix = parseFloat(wetDryMixSlider.value);
+            // Use an equal-power crossfade curve for a smoother transition
+            dryGain.gain.value = Math.cos(mix * 0.5 * Math.PI);
+            wetGain.gain.value = Math.cos((1.0 - mix) * 0.5 * Math.PI);
+            wetDryMixValue.textContent = `${Math.round(mix * 100)}% Wet`;
+        }
+
+        // --- Event Listeners for UI ---
+        startButton.addEventListener('click', () => {
+            startButton.disabled = true;
+            if (isAudioRunning) {
+                stopAudio();
+            } else {
+                initAudio();
+            }
+        });
+
+        wetDryMixSlider.addEventListener('input', updateWetDryMix);
+        grainSizeSlider.addEventListener('input', () => {
+            grainSizeValue.textContent = `${grainSizeSlider.value} ms`;
+        });
+         grainDensitySlider.addEventListener('input', () => {
+            grainDensityValue.textContent = `${grainDensitySlider.value} grains/sec`;
+        });
+        pitchSpreadSlider.addEventListener('input', () => {
+            const spread = Math.round(pitchSpreadSlider.value * 100);
+            pitchSpreadValue.textContent = `${spread}% Octave / ${100 - spread}% Fifth`;
+        });
+
+    </script>
+
+</body>
+</html>
