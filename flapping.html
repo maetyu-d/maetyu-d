@@ -66,10 +66,10 @@
     <div id="ui-container">
         <div id="instructions" class="hud">
             <strong>CONTROLS:</strong><br>
-            [SPACE] Hold to Flap (Thrust)<br>
-            [W] / [S] Wing Pitch Up/Down (Lift)<br>
-            [A] / [D] Body Pitch Left/Right<br>
-            [P] Hold near Perch to Stall & Land<br>
+            [SPACE] Hold to Flap (Forward Thrust)<br>
+            [W] / [S] Wing Pitch (Up/Down Lift)<br>
+            [A] / [D] Body Pitch/Turn<br>
+            [P] Hold near Perch to Land<br>
             [R] Reset Simulation
         </div>
         <div id="status" class="hud">
@@ -90,21 +90,18 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
-        // --- UI Elements ---
         const energyBar = document.getElementById('energy-bar');
         const wingPitchReadout = document.getElementById('wing-pitch-readout');
         const velocityReadout = document.getElementById('velocity-readout');
         const stateReadout = document.getElementById('state-readout');
 
-        // --- Research-Based Physics Parameters ---
-        // CORRECTED VALUES FOR LIFT AND THRUST
+        // --- RE-BALANCED AND SIMPLIFIED PHYSICS ---
         const config = {
-            gravity: 0.15,
-            liftFactor: 0.4,       // Increased from 0.005
-            thrustFactor: 0.2,     // Increased from 0.003
-            dragCoefficient: 0.99,
-            inducedDragFactor: 0.01,
-            flapEnergyCost: 0.3,
+            gravity: 0.25,          // Increased for a weightier feel
+            liftFactor: 0.7,        // Significantly increased for intuitive lift
+            thrustFactor: 0.25,     // Strong forward thrust
+            dragCoefficient: 0.99,  // Air resistance
+            flapEnergyCost: 0.25,   // Slightly reduced cost for longer flight
             glideEnergyGain: 0.05,
             perchEnergyGain: 2.0,
             maxEnergy: 100,
@@ -117,30 +114,22 @@
         let robotBird = {};
         let perches = [];
         let keys = {};
-        let gameState = 'grounded'; // grounded, flying, perching, perched
+        let gameState = 'grounded';
 
         function createRobotBird() {
             return {
-                x: 100,
-                y: canvas.height - 50,
-                vx: 0,
-                vy: 0,
-                width: 40,
-                height: 15,
-                angle: 0,
-                wingAngle: 0,
-                wingPitch: 0,
-                flapFrequency: 0,
-                flapSpeed: 15,
+                x: 100, y: canvas.height - 50, vx: 0, vy: 0,
+                width: 40, height: 15, angle: 0, wingAngle: 0,
+                wingPitch: 0, flapFrequency: 0, flapSpeed: 15,
                 energy: config.maxEnergy,
             };
         }
 
         function createPerches() {
             return [
-                { x: 400, y: 450, width: 150, height: 20 },
-                { x: 750, y: 300, width: 200, height: 20 },
-                { x: 50, y: 200, width: 100, height: 20 }
+                { x: 450, y: 450, width: 150, height: 20 },
+                { x: 800, y: 300, width: 200, height: 20 },
+                { x: 100, y: 250, width: 100, height: 20 }
             ];
         }
         
@@ -154,6 +143,7 @@
         window.addEventListener('keyup', (e) => { keys[e.code] = false; });
         
         function applyFlightPhysics() {
+            // --- Player Inputs ---
             if (keys['Space'] && robotBird.energy > 0) {
                 robotBird.flapFrequency = Math.min(1, robotBird.flapFrequency + 0.1);
                 robotBird.energy -= config.flapEnergyCost;
@@ -161,44 +151,44 @@
                 robotBird.flapFrequency = Math.max(0, robotBird.flapFrequency - 0.05);
                 robotBird.energy = Math.min(config.maxEnergy, robotBird.energy + config.glideEnergyGain);
             }
-            if (keys['KeyW']) robotBird.wingPitch = Math.min(config.maxWingPitch, robotBird.wingPitch + 1);
-            if (keys['KeyS']) robotBird.wingPitch = Math.max(config.minWingPitch, robotBird.wingPitch - 1);
-            if (keys['KeyA']) robotBird.angle = Math.max(-45, robotBird.angle - 1);
-            if (keys['KeyD']) robotBird.angle = Math.min(45, robotBird.angle + 1);
+            if (keys['KeyW']) robotBird.wingPitch = Math.min(config.maxWingPitch, robotBird.wingPitch + 1.5);
+            if (keys['KeyS']) robotBird.wingPitch = Math.max(config.minWingPitch, robotBird.wingPitch - 1.5);
+            if (keys['KeyA']) robotBird.angle = Math.max(-30, robotBird.angle - 1);
+            if (keys['KeyD']) robotBird.angle = Math.min(30, robotBird.angle + 1);
 
+            // --- Simplified Physics Simulation ---
             const bodyAngleRad = robotBird.angle * Math.PI / 180;
             const wingPitchRad = robotBird.wingPitch * Math.PI / 180;
 
+            // THRUST: Pushes the robot forward along its current angle.
             const thrust = robotBird.flapFrequency * config.thrustFactor;
             robotBird.vx += Math.cos(bodyAngleRad) * thrust;
             robotBird.vy += Math.sin(bodyAngleRad) * thrust;
             
+            // LIFT: A dedicated upward force based on flapping and wing pitch.
             const lift = robotBird.flapFrequency * Math.abs(Math.sin(wingPitchRad)) * config.liftFactor;
-            robotBird.vy -= lift;
+            robotBird.vy -= lift; 
+            
+            // GRAVITY: A constant downward pull.
             robotBird.vy += config.gravity;
 
+            // DRAG: Slows the robot down over time.
             robotBird.vx *= config.dragCoefficient;
             robotBird.vy *= config.dragCoefficient;
-            const inducedDrag = Math.abs(robotBird.wingPitch / config.maxWingPitch) * config.inducedDragFactor * (robotBird.vx**2);
-            robotBird.vx -= inducedDrag * Math.sign(robotBird.vx);
 
+            // Update position
             robotBird.x += robotBird.vx;
             robotBird.y += robotBird.vy;
         }
 
         function update() {
-            if (keys['KeyR']) {
-                resetSimulation();
-                return;
-            }
+            if (keys['KeyR']) { resetSimulation(); return; }
 
             if (gameState === 'grounded' || gameState === 'perched') {
-                if (gameState === 'perched') {
-                    robotBird.energy = Math.min(config.maxEnergy, robotBird.energy + config.perchEnergyGain);
-                }
+                if (gameState === 'perched') robotBird.energy = Math.min(config.maxEnergy, robotBird.energy + config.perchEnergyGain);
                 if (keys['Space']) {
                     gameState = 'flying';
-                    robotBird.vy = -5;
+                    robotBird.vy = -6; // Stronger takeoff impulse
                 }
             } else if (gameState === 'flying') {
                 const closestPerch = getClosestPerch();
@@ -227,23 +217,18 @@
                 if (robotBird.x > closestPerch.x && robotBird.x < closestPerch.x + closestPerch.width &&
                     robotBird.y > closestPerch.y - robotBird.height && robotBird.y < closestPerch.y + closestPerch.height) {
                     gameState = 'perched';
-                    robotBird.vx = 0;
-                    robotBird.vy = 0;
-                    robotBird.angle = 0;
-                    robotBird.wingPitch = 0;
-                    robotBird.y = closestPerch.y - robotBird.height / 2;
+                    robotBird.vx = 0; robotBird.vy = 0; robotBird.angle = 0;
+                    robotBird.wingPitch = 0; robotBird.y = closestPerch.y - robotBird.height / 2;
                 }
             }
             
             if (gameState === 'flying' || gameState === 'perching') {
-                 if (robotBird.y > canvas.height - robotBird.height / 2) {
+                 if (robotBird.y > canvas.height - robotBird.height) {
                     gameState = 'grounded';
                     robotBird.vx = 0; robotBird.vy = 0;
-                    robotBird.y = canvas.height - robotBird.height / 2;
+                    robotBird.y = canvas.height - robotBird.height;
                 }
-                if (robotBird.energy <= 0) {
-                    gameState = 'flying';
-                }
+                if (robotBird.energy <= 0) gameState = 'flying'; // Allow graceful fall
                 if (robotBird.x > canvas.width) robotBird.x = 0;
                 if (robotBird.x < 0) robotBird.x = canvas.width;
             }
@@ -257,16 +242,12 @@
             perches.forEach(perch => {
                 ctx.fillStyle = (canPerch && perch === closestPerch && gameState === 'flying') ? '#FFFF00' : '#8B4513';
                 ctx.fillRect(perch.x, perch.y, perch.width, perch.height);
-                ctx.strokeStyle = '#654321';
-                ctx.strokeRect(perch.x, perch.y, perch.width, perch.height);
             });
 
             ctx.save();
             ctx.translate(robotBird.x, robotBird.y);
             ctx.rotate(robotBird.angle * Math.PI / 180);
-
             robotBird.wingAngle = robotBird.flapFrequency > 0 ? Math.sin(Date.now() / (100 / robotBird.flapSpeed)) * (30 + robotBird.flapFrequency * 20) : 0;
-            
             drawWing(robotBird.wingPitch - robotBird.wingAngle);
             ctx.scale(1, -1);
             drawWing(robotBird.wingPitch + robotBird.wingAngle);
@@ -279,8 +260,7 @@
             ctx.beginPath();
             ctx.ellipse(0, 0, robotBird.width / 2, robotBird.height / 2, 0, 0, 2 * Math.PI);
             ctx.fill();
-            ctx.strokeStyle = '#465362';
-            ctx.stroke();
+            ctx.strokeStyle = '#465362'; ctx.stroke();
             ctx.fillStyle = '#00FFFF';
             ctx.beginPath();
             ctx.arc(robotBird.width / 3, 0, 3, 0, 2 * Math.PI);
@@ -296,13 +276,9 @@
             ctx.fillStyle = '#DCDCDC';
             ctx.strokeStyle = '#808080';
             ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.lineTo(25, 5);
-            ctx.lineTo(35, 0);
-            ctx.lineTo(25, -5);
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
+            ctx.moveTo(0, 0); ctx.lineTo(25, 5);
+            ctx.lineTo(35, 0); ctx.lineTo(25, -5);
+            ctx.closePath(); ctx.fill(); ctx.stroke();
             ctx.restore();
         }
         
@@ -329,9 +305,9 @@
         }
 
         function gameLoop() {
+            requestAnimationFrame(gameLoop);
             update();
             draw();
-            requestAnimationFrame(gameLoop);
         }
 
         resetSimulation();
