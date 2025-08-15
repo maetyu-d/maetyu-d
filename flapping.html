@@ -2,462 +2,390 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Ornithopter Perching Simulator</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Perching Robot Simulator</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #d0e7f9; font-family: 'Courier New', Courier, monospace; }
-        canvas { display: block; }
-        #hud { position: absolute; top: 10px; left: 10px; color: #333; background-color: rgba(255, 255, 255, 0.7); padding: 10px; border-radius: 5px; }
-        #instructions { position: absolute; bottom: 10px; width: 100%; text-align: center; color: #333; }
-        #message { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 3em; color: #c0392b; display: none; text-shadow: 2px 2px 4px #333;}
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #111;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            font-family: 'Consolas', 'Courier New', monospace;
+            overflow: hidden;
+        }
+        canvas {
+            background: linear-gradient(to bottom, #87CEEB 0%, #d3e9f4 70%, #B0C4DE 100%);
+            border: 2px solid #fff;
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+        }
+        #ui-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 95%;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+        }
+        .hud {
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid rgba(255,255,255,0.3);
+            text-shadow: 1px 1px 2px black;
+        }
+        #instructions {
+            font-size: 0.9em;
+        }
+        #status {
+            text-align: right;
+        }
+        .energy-bar-container {
+            width: 150px;
+            height: 20px;
+            background-color: #555;
+            border: 1px solid #fff;
+            border-radius: 3px;
+            margin-top: 5px;
+        }
+        #energy-bar {
+            width: 100%;
+            height: 100%;
+            background-color: #4CAF50;
+            transition: width 0.2s linear;
+        }
     </style>
 </head>
 <body>
-    <canvas id="simulationCanvas"></canvas>
-    <div id="hud">
-        <div>Altitude: <span id="altitude">0.0</span> m</div>
-        <div>Speed: <span id="speed">0.0</span> m/s</div>
-        <div>Flap Freq: <span id="frequency">0.0</span> Hz</div>
-        <div>Energy: <span id="energy">100</span>%</div>
-        <div>AoA: <span id="aoa">0.0</span> deg</div>
-        <div>State: <span id="state">Flying</span></div>
+
+    <div id="ui-container">
+        <div id="instructions" class="hud">
+            <strong>CONTROLS:</strong><br>
+            [SPACE] Hold to Flap (Thrust)<br>
+            [W] / [S] Wing Pitch Up/Down (Lift)<br>
+            [A] / [D] Body Pitch Left/Right<br>
+            [P] Hold near Perch to Stall & Land<br>
+            [R] Reset Simulation
+        </div>
+        <div id="status" class="hud">
+            <strong>ROBOT STATUS:</strong><br>
+            <span>Energy:</span>
+            <div class="energy-bar-container">
+                <div id="energy-bar"></div>
+            </div>
+            <span id="wing-pitch-readout">Wing Pitch: 0.0°</span><br>
+            <span id="velocity-readout">Velocity: 0.0 m/s</span><br>
+            <span id="state-readout">State: Grounded</span>
+        </div>
     </div>
-    <div id="instructions">
-        <b>Controls:</b> Flap Freq | [Mouse] Pitch/Yaw | Roll | Perch Mode | Reset
-    </div>
-    <div id="message" id="crashMessage">CRASHED</div>
 
-<script>
-// =================================================================================
-// Ornithopter Perching Simulator
-// Based on deep research into avian-inspired robotics.
-// This single-file prototype translates complex aerodynamic and control principles
-// into an interactive simulation.
-// =================================================================================
+    <canvas id="gameCanvas" width="1000" height="600"></canvas>
 
-// --- CORE CONSTANTS & PARAMETERS ---
-// These values are derived from research on real-world ornithopters to ground the simulation.
-// See Section 2.3 and Table 1 of the accompanying report for detailed justifications.
-const CONSTANTS = {
-    // Physics
-    GRAVITY: 9.81, // m/s^2
-    AIR_DENSITY: 1.225, // kg/m^3
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
 
-    // Ornithopter Properties (inspired by Festo SmartBird & Robo Raven)
-    MASS: 0.45, // kg [25]
-    WING_AREA: 0.4, // m^2 [27]
-    WINGSPAN: 2.0, // m [27]
-    BODY_DRAG_COEFF: 0.4, // Dimensionless drag coefficient for the fuselage
-    FUSELAGE_AREA: 0.05, // m^2, effective frontal area for drag
+        // --- UI Elements ---
+        const energyBar = document.getElementById('energy-bar');
+        const wingPitchReadout = document.getElementById('wing-pitch-readout');
+        const velocityReadout = document.getElementById('velocity-readout');
+        const stateReadout = document.getElementById('state-readout');
 
-    // Aerodynamic Coefficients & Multipliers
-    LIFT_COEFF_SLOPE: 2 * Math.PI, // Ideal lift curve slope
-    THRUST_BASE_COEFF: 2.5, // Base coefficient for thrust calculation
-    UPSTROKE_EFFICIENCY: 0.4, // Thrust/lift reduction on upstroke [17, 18]
-    
-    // Control Parameters
-    MAX_FLAP_FREQ: 3.5, // Hz[28]
-    MIN_FLAP_FREQ: 1.0, // Hz, minimum for sustained flight
-    TAIL_EFFECTIVENESS: 0.5, // Base coefficient for tail-generated torque
-    ROLL_TORQUE_COEFF: 1.5, // Torque from differential flapping [30, 32]
-    
-    // Perching Parameters
-    PERCH_VELOCITY_THRESHOLD: 1.5, // m/s, max speed for successful grasp [11]
-    PERCH_ANGLE_THRESHOLD: Math.PI / 6, // 30 degrees, max angle deviation
-};
-
-class Ornithopter {
-    constructor(x, y) {
-        this.pos = { x: x, y: y };
-        this.vel = { x: 10, y: 0 }; // Start with some forward velocity
-        this.angle = 0; // Radians, 0 is horizontal
-        this.angularVel = 0;
-
-        this.flapFrequency = CONSTANTS.MIN_FLAP_FREQ;
-        this.targetFlapFrequency = CONSTANTS.MIN_FLAP_FREQ;
-        this.flapPhase = 0;
-
-        this.energy = 100.0;
-        this.isPerchingMode = false;
-        this.isPerched = false;
-        this.isCrashed = false;
-
-        // Control inputs
-        this.tailDeflection = { pitch: 0, yaw: 0 }; // Yaw is not used in 2D but included for structure
-        this.rollInput = 0;
-    }
-
-    updateState(dt, forces, torques) {
-        if (this.isPerched |
-
-| this.isCrashed) return;
-
-        // --- Translational Dynamics (Newton's Second Law) ---
-        const accel = {
-            x: forces.x / CONSTANTS.MASS,
-            y: forces.y / CONSTANTS.MASS,
+        // --- Research-Based Physics Parameters ---
+        const config = {
+            gravity: 0.15,
+            liftFactor: 0.005,      // How much lift is generated by wing pitch and flapping
+            thrustFactor: 0.003,    // How much forward thrust is generated by flapping
+            dragCoefficient: 0.995, // General air resistance
+            inducedDragFactor: 0.01,// Extra drag from high wing pitch (lift generation)
+            flapEnergyCost: 0.3,    // Energy consumed by flapping
+            glideEnergyGain: 0.05,  // Passive energy recovery while gliding
+            perchEnergyGain: 2.0,   // Rapid energy gain when perched
+            maxEnergy: 100,
+            maxWingPitch: 45,       // Max Angle of Attack in degrees
+            minWingPitch: -10,      // Min Angle of Attack for diving
+            stallPitch: 70,         // The angle the robot pitches up to during perching stall
+            perchRange: 80          // How close you need to be to a perch to initiate landing
         };
-        this.vel.x += accel.x * dt;
-        this.vel.y += accel.y * dt;
-        this.pos.x += this.vel.x * dt;
-        this.pos.y += this.vel.y * dt;
 
-        // --- Rotational Dynamics ---
-        // A simplified moment of inertia is assumed
-        const momentOfInertia = 0.1; // kg*m^2 (estimated)
-        const angularAccel = torques.pitch / momentOfInertia;
-        this.angularVel += angularAccel * dt;
-        this.angle += this.angularVel * dt;
-        
-        // Angular damping to prevent infinite spin
-        this.angularVel *= 0.95;
+        let robotBird = {};
+        let perches = [];
+        let keys = {};
+        let gameState = 'grounded'; // grounded, flying, perching, perched
 
-        // --- Flap Cycle Update ---
-        this.flapPhase = (this.flapPhase + dt * this.flapFrequency * 2 * Math.PI) % (2 * Math.PI);
-        
-        // Smoothly adjust flap frequency towards target
-        this.flapFrequency += (this.targetFlapFrequency - this.flapFrequency) * 0.1;
-
-        // --- Energy Consumption ---
-        // Power drain is non-linear with flap frequency
-        const powerDrain = 0.05 * Math.pow(this.flapFrequency / CONSTANTS.MAX_FLAP_FREQ, 3);
-        this.energy -= powerDrain;
-        if (this.energy <= 0) {
-            this.energy = 0;
-            this.targetFlapFrequency = 0;
-        }
-    }
-}
-
-class PhysicsEngine {
-    calculateForcesAndTorques(ornithopter) {
-        if (ornithopter.isPerched |
-
-| ornithopter.isCrashed) {
-            return { forces: { x: 0, y: 0 }, torques: { pitch: 0 } };
+        function createRobotBird() {
+            return {
+                x: 100,
+                y: canvas.height - 50,
+                vx: 0,
+                vy: 0,
+                width: 40,
+                height: 15,
+                angle: 0,           // Body pitch in degrees
+                wingAngle: 0,       // For animation
+                wingPitch: 0,       // Angle of Attack, controlled by player
+                flapFrequency: 0,   // How fast the wings are flapping
+                flapSpeed: 15,
+                energy: config.maxEnergy,
+                isStalling: false
+            };
         }
 
-        const forces = { x: 0, y: 0 };
-        const torques = { pitch: 0 };
-        const v = Math.sqrt(ornithopter.vel.x**2 + ornithopter.vel.y**2);
+        function createPerches() {
+            return [
+                { x: 400, y: 450, width: 150, height: 20 },
+                { x: 750, y: 300, width: 200, height: 20 },
+                { x: 50, y: 200, width: 100, height: 20 }
+            ];
+        }
+        
+        function resetSimulation() {
+            robotBird = createRobotBird();
+            perches = createPerches();
+            gameState = 'grounded';
+        }
 
-        // --- 1. Gravity ---
-        forces.y -= CONSTANTS.GRAVITY * CONSTANTS.MASS;
-
-        if (v > 0.1) {
-            const flightPathAngle = Math.atan2(ornithopter.vel.y, ornithopter.vel.x);
-            const angleOfAttack = ornithopter.angle - flightPathAngle;
-
-            // --- 2. Aerodynamic Forces (Lift & Drag) ---
-            // This section implements the core aerodynamic model from Section II.
-            const dynamicPressure = 0.5 * CONSTANTS.AIR_DENSITY * v**2;
-
-            // 2a. Lift Calculation
-            // The lift model incorporates a "delayed stall" effect for perching. [12, 22]
-            // Instead of a sharp drop, lift capability is maintained at high AoA in perching mode.
-            let cl;
-            const criticalAoA = Math.PI / 9; // 20 degrees
-            if (ornithopter.isPerchingMode && Math.abs(angleOfAttack) > criticalAoA) {
-                // In perching mode, we maintain a high (but not max) lift coefficient
-                // and generate massive drag, simulating a controlled stall.
-                cl = CONSTANTS.LIFT_COEFF_SLOPE * Math.sin(criticalAoA) * 0.8;
-            } else {
-                cl = CONSTANTS.LIFT_COEFF_SLOPE * Math.sin(angleOfAttack);
+        window.addEventListener('keydown', (e) => { keys[e.code] = true; });
+        window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+        
+        function update() {
+            if (keys['KeyR']) {
+                resetSimulation();
+                return;
             }
-            const liftMagnitude = cl * dynamicPressure * CONSTANTS.WING_AREA;
 
-            // 2b. Drag Calculation (Profile Drag + Induced Drag)
-            const cd_profile = CONSTANTS.BODY_DRAG_COEFF;
-            const cd_induced = cl**2 / (Math.PI * (CONSTANTS.WINGSPAN**2 / CONSTANTS.WING_AREA));
-            let dragMagnitude = (cd_profile + cd_induced) * dynamicPressure * CONSTANTS.FUSELAGE_AREA;
+            if (gameState === 'perched' || gameState === 'grounded') {
+                if (gameState === 'perched') {
+                    robotBird.energy = Math.min(config.maxEnergy, robotBird.energy + config.perchEnergyGain);
+                }
+                if (keys['Space']) { // Takeoff
+                    gameState = 'flying';
+                    robotBird.vy = -5; // Initial takeoff jump
+                }
+                return; // Don't apply physics if not flying
+            }
+
+            if (gameState === 'flying' || gameState === 'perching') {
+                // --- Control Inputs ---
+                // 1. Flapping for Thrust
+                if (keys['Space'] && robotBird.energy > 0) {
+                    robotBird.flapFrequency = Math.min(1, robotBird.flapFrequency + 0.1);
+                    robotBird.energy -= config.flapEnergyCost;
+                } else {
+                    robotBird.flapFrequency = Math.max(0, robotBird.flapFrequency - 0.05);
+                    robotBird.energy = Math.min(config.maxEnergy, robotBird.energy + config.glideEnergyGain);
+                }
+
+                // 2. Wing Pitch for Lift
+                if (keys['KeyW']) {
+                    robotBird.wingPitch = Math.min(config.maxWingPitch, robotBird.wingPitch + 1);
+                }
+                if (keys['KeyS']) {
+                    robotBird.wingPitch = Math.max(config.minWingPitch, robotBird.wingPitch - 1);
+                }
+
+                // 3. Body Pitch for Attitude Control
+                if (keys['KeyA']) {
+                    robotBird.angle = Math.max(-30, robotBird.angle - 1);
+                }
+                if (keys['KeyD']) {
+                    robotBird.angle = Math.min(30, robotBird.angle + 1);
+                }
+                
+                // 4. Perching Maneuver
+                const closestPerch = getClosestPerch();
+                const canPerch = closestPerch && getDistance(robotBird, {x: closestPerch.x + closestPerch.width/2, y: closestPerch.y}) < config.perchRange;
+
+                if (keys['KeyP'] && canPerch) {
+                    gameState = 'perching';
+                    robotBird.isStalling = true;
+                } else {
+                    // if not holding P or out of range, stop stalling
+                    if(robotBird.isStalling) {
+                        gameState = 'flying';
+                        robotBird.isStalling = false;
+                    }
+                }
+
+                // --- Physics Simulation ---
+                // Convert angles to radians for Math functions
+                const bodyAngleRad = robotBird.angle * Math.PI / 180;
+                const wingPitchRad = robotBird.wingPitch * Math.PI / 180;
+
+                // Thrust: Based on flapping frequency, directed by body angle.
+                const thrust = robotBird.flapFrequency * config.thrustFactor;
+                robotBird.vx += Math.cos(bodyAngleRad) * thrust;
+                robotBird.vy += Math.sin(bodyAngleRad) * thrust;
+                
+                // Lift: Generated by wing pitch and flapping, acts perpendicular to motion.
+                // A simplified model where lift primarily counteracts gravity.
+                const lift = robotBird.flapFrequency * Math.abs(Math.sin(wingPitchRad)) * config.liftFactor * (1 - Math.abs(robotBird.vx)/20);
+                robotBird.vy -= lift;
+
+                // Gravity
+                robotBird.vy += config.gravity;
+
+                // Drag: General drag + induced drag from lift.
+                robotBird.vx *= config.dragCoefficient;
+                robotBird.vy *= config.dragCoefficient;
+                const inducedDrag = Math.abs(robotBird.wingPitch / config.maxWingPitch) * config.inducedDragFactor * (robotBird.vx**2);
+                robotBird.vx -= inducedDrag * Math.sign(robotBird.vx);
+
+                // Stall Dynamics: If perching, override normal physics with a high-drag state
+                if (robotBird.isStalling) {
+                    robotBird.angle = -config.stallPitch; // Pitch up sharply
+                    robotBird.vx *= 0.9; // Massive air braking
+                    robotBird.vy *= 0.95; 
+                }
+
+                // Update Position
+                robotBird.x += robotBird.vx;
+                robotBird.y += robotBird.vy;
+
+                // --- Collision & Boundary Checks ---
+                // Ground collision
+                if (robotBird.y > canvas.height - robotBird.height / 2) {
+                    gameState = 'grounded';
+                    robotBird.vy = 0;
+                    robotBird.vx = 0;
+                    robotBird.y = canvas.height - robotBird.height / 2;
+                }
+                // Energy failure
+                if (robotBird.energy <= 0) {
+                     robotBird.isStalling = false;
+                     gameState = 'flying'; // prevent getting stuck in perch mode
+                }
+
+                // Perch collision
+                perches.forEach(perch => {
+                    if (robotBird.isStalling &&
+                        robotBird.x > perch.x && robotBird.x < perch.x + perch.width &&
+                        robotBird.y > perch.y - robotBird.height && robotBird.y < perch.y + perch.height) 
+                    {
+                        gameState = 'perched';
+                        robotBird.vx = 0;
+                        robotBird.vy = 0;
+                        robotBird.angle = 0;
+                        robotBird.wingPitch = 0;
+                        robotBird.isStalling = false;
+                        robotBird.y = perch.y - robotBird.height / 2;
+                    }
+                });
+
+                // Screen wrapping
+                if (robotBird.x > canvas.width) robotBird.x = 0;
+                if (robotBird.x < 0) robotBird.x = canvas.width;
+            }
+        }
+        
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw perches
+            const closestPerch = getClosestPerch();
+            const canPerch = closestPerch && getDistance(robotBird, {x: closestPerch.x + closestPerch.width/2, y: closestPerch.y}) < config.perchRange;
             
-            // In perching mode, drag is significantly increased to dissipate energy.
-            if (ornithopter.isPerchingMode && Math.abs(angleOfAttack) > criticalAoA) {
-                dragMagnitude *= 5.0; 
-            }
+            perches.forEach(perch => {
+                ctx.fillStyle = (canPerch && perch === closestPerch && !robotBird.isStalling) ? '#FFFF00' : '#8B4513';
+                ctx.fillRect(perch.x, perch.y, perch.width, perch.height);
+                ctx.strokeStyle = '#654321';
+                ctx.strokeRect(perch.x, perch.y, perch.width, perch.height);
+            });
 
-            const liftAngle = flightPathAngle + Math.PI / 2;
-            const dragAngle = flightPathAngle + Math.PI;
+            // Draw Robot Bird
+            ctx.save();
+            ctx.translate(robotBird.x, robotBird.y);
+            ctx.rotate(robotBird.angle * Math.PI / 180);
 
-            forces.x += liftMagnitude * Math.cos(liftAngle) + dragMagnitude * Math.cos(dragAngle);
-            forces.y += liftMagnitude * Math.sin(liftAngle) + dragMagnitude * Math.sin(dragAngle);
-
-            // --- 3. Thrust from Flapping ---
-            // Thrust is generated asymmetrically during the flap cycle. [14]
-            const isDownstroke = ornithopter.flapPhase < Math.PI;
-            const flapPower = Math.abs(Math.cos(ornithopter.flapPhase)); // Power is max at mid-stroke
+            // Animate wings based on flapping frequency
+            robotBird.wingAngle = robotBird.flapFrequency > 0 ? Math.sin(Date.now() / (100 / robotBird.flapSpeed)) * (30 + robotBird.flapFrequency * 20) : 0;
             
-            let thrustMagnitude = CONSTANTS.THRUST_BASE_COEFF * flapPower * ornithopter.flapFrequency;
-            if (!isDownstroke) {
-                thrustMagnitude *= CONSTANTS.UPSTROKE_EFFICIENCY; // Reduced power on upstroke [18]
-            }
+            // Wing 1 (top)
+            drawWing(robotBird.wingPitch - robotBird.wingAngle);
+            // Wing 2 (bottom)
+            ctx.scale(1, -1); // Flip context for the other wing
+            drawWing(robotBird.wingPitch + robotBird.wingAngle);
             
-            // Thrust is directed along the bird's body axis
-            forces.x += thrustMagnitude * Math.cos(ornithopter.angle);
-            forces.y += thrustMagnitude * Math.sin(ornithopter.angle);
+            ctx.restore(); // Restore context to draw body
+
+            ctx.save();
+            ctx.translate(robotBird.x, robotBird.y);
+            ctx.rotate(robotBird.angle * Math.PI / 180);
+
+            // Body
+            ctx.fillStyle = '#B0C4DE';
+            ctx.beginPath();
+            ctx.ellipse(0, 0, robotBird.width / 2, robotBird.height / 2, 0, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.strokeStyle = '#465362';
+            ctx.stroke();
+
+            // Cockpit/Eye
+            ctx.fillStyle = '#00FFFF';
+            ctx.beginPath();
+            ctx.arc(robotBird.width / 3, 0, 3, 0, 2 * Math.PI);
+            ctx.fill();
+
+            ctx.restore();
+            
+            // Update HUD
+            updateHUD();
         }
 
-        // --- 4. Control Torques ---
-        // Torques are generated by tail deflection and differential wing flapping.
-        
-        // 4a. Pitch Torque from Tail
-        // Effectiveness is proportional to v^2, making it weak at low speeds. [30]
-        const tailPitchTorque = -ornithopter.tailDeflection.pitch * (v**2) * CONSTANTS.TAIL_EFFECTIVENESS;
-        torques.pitch += tailPitchTorque;
-
-        // 4b. Roll Torque (simulated as pitch torque in 2D)
-        // This represents the powerful, agile control from differential flapping. [32]
-        const rollTorque = -ornithopter.rollInput * CONSTANTS.ROLL_TORQUE_COEFF;
-        torques.pitch += rollTorque; // In 2D, we map roll to a fast pitch change for turning effect.
-
-        return { forces, torques };
-    }
-}
-
-class PlayerController {
-    constructor(ornithopter, canvas) {
-        this.ornithopter = ornithopter;
-        this.canvas = canvas;
-        this.keys = {};
-
-        window.addEventListener('keydown', (e) => this.keys[e.code] = true);
-        window.addEventListener('keyup', (e) => {
-            this.keys[e.code] = false;
-            // Toggle perching mode on spacebar press
-            if (e.code === 'Space') {
-                this.ornithopter.isPerchingMode =!this.ornithopter.isPerchingMode;
-            }
-        });
-
-        canvas.addEventListener('mousemove', (e) => {
-            // Mouse Y position controls pitch via tail deflection.
-            const rect = canvas.getBoundingClientRect();
-            const mouseY = e.clientY - rect.top;
-            // Map mouse Y from [0, height] to [-1, 1] for tail deflection
-            this.ornithopter.tailDeflection.pitch = (mouseY / canvas.height - 0.5) * 2;
-        });
-    }
-
-    update() {
-        // --- Flapping Frequency Control (Throttle) ---
-        if (this.keys) {
-            this.ornithopter.targetFlapFrequency = Math.min(CONSTANTS.MAX_FLAP_FREQ, this.ornithopter.targetFlapFrequency + 0.05);
-        }
-        if (this.keys) {
-            this.ornithopter.targetFlapFrequency = Math.max(CONSTANTS.MIN_FLAP_FREQ, this.ornithopter.targetFlapFrequency - 0.05);
+        function drawWing(rotation) {
+            ctx.save();
+            ctx.rotate(rotation * Math.PI / 180);
+            ctx.fillStyle = '#DCDCDC';
+            ctx.strokeStyle = '#808080';
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(25, 5);
+            ctx.lineTo(35, 0);
+            ctx.lineTo(25, -5);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
         }
         
-        // --- Differential Wing Control (Roll) ---
-        this.ornithopter.rollInput = 0;
-        if (this.keys['KeyA']) {
-            this.ornithopter.rollInput = 1;
+        function updateHUD() {
+            energyBar.style.width = robotBird.energy + '%';
+            energyBar.style.backgroundColor = robotBird.energy < 20 ? '#FF0000' : '#4CAF50';
+            wingPitchReadout.textContent = `Wing Pitch: ${robotBird.wingPitch.toFixed(1)}°`;
+            const totalVelocity = Math.sqrt(robotBird.vx**2 + robotBird.vy**2);
+            velocityReadout.textContent = `Velocity: ${(totalVelocity * 10).toFixed(1)} m/s`;
+            
+            let stateText = gameState.toUpperCase();
+            if (robotBird.isStalling) stateText = "STALLING";
+            stateReadout.textContent = `State: ${stateText}`;
         }
-        if (this.keys) {
-            this.ornithopter.rollInput = -1;
+
+        function getClosestPerch() {
+            if (perches.length === 0) return null;
+            return perches.reduce((closest, perch) => {
+                const dist = getDistance(robotBird, {x: perch.x + perch.width/2, y: perch.y});
+                const closestDist = getDistance(robotBird, {x: closest.x + closest.width/2, y: closest.y});
+                return dist < closestDist ? perch : closest;
+            });
         }
-
-        // --- Reset ---
-        if (this.keys) {
-            simulator.reset();
-        }
-    }
-}
-
-class Renderer {
-    constructor(canvas, ornithopter, world) {
-        this.canvas = canvas;
-        this.ctx = canvas.getContext('2d');
-        this.ornithopter = ornithopter;
-        this.world = world;
-        this.camera = { x: 0, y: 0 };
-    }
-
-    updateCamera() {
-        // Camera follows the ornithopter smoothly
-        this.camera.x += (this.ornithopter.pos.x - this.canvas.width / 3 - this.camera.x) * 0.1;
-        this.camera.y += (this.ornithopter.pos.y - this.canvas.height / 2 - this.camera.y) * 0.1;
-    }
-
-    draw() {
-        this.updateCamera();
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        this.ctx.save();
-        this.ctx.translate(-this.camera.x, -this.camera.y);
-
-        // Draw world elements
-        this.drawGround();
-        this.drawPerch();
-
-        // Draw ornithopter
-        this.drawOrnithopter();
-
-        this.ctx.restore();
-    }
-
-    drawGround() {
-        this.ctx.fillStyle = '#8c6f5e';
-        this.ctx.fillRect(-10000, this.world.groundLevel, 20000, 500);
-    }
-
-    drawPerch() {
-        this.ctx.fillStyle = '#654321';
-        this.ctx.fillRect(this.world.perch.x, this.world.perch.y, this.world.perch.width, this.world.perch.height);
-    }
-
-    drawOrnithopter() {
-        const o = this.ornithopter;
-        this.ctx.save();
-        this.ctx.translate(o.pos.x, o.pos.y);
-        this.ctx.rotate(o.angle);
-
-        // Body
-        this.ctx.fillStyle = '#555';
-        this.ctx.beginPath();
-        this.ctx.ellipse(0, 0, 20, 5, 0, 0, 2 * Math.PI);
-        this.ctx.fill();
-
-        // Wings
-        const wingAngle = Math.sin(o.flapPhase) * (Math.PI / 4); // 45 degree flap amplitude
-        this.ctx.fillStyle = o.isPerchingMode? '#c0392b' : '#333';
-        // Top wing
-        this.ctx.save();
-        this.ctx.rotate(wingAngle);
-        this.ctx.fillRect(-10, -2, 40, 4);
-        this.ctx.restore();
-        // Bottom wing
-        this.ctx.save();
-        this.ctx.rotate(-wingAngle);
-        this.ctx.fillRect(-10, -2, 40, 4);
-        this.ctx.restore();
         
-        this.ctx.restore();
-    }
-}
-
-class World {
-    constructor() {
-        this.groundLevel = 600;
-        this.perch = { x: 800, y: 400, width: 100, height: 20 };
-    }
-
-    checkCollisions(ornithopter) {
-        // Ground collision
-        if (ornithopter.pos.y > this.groundLevel - 5) {
-            ornithopter.isCrashed = true;
+        function getDistance(obj1, obj2) {
+            return Math.sqrt((obj1.x - obj2.x)**2 + (obj1.y - obj2.y)**2);
         }
 
-        // Perch collision
-        const p = this.perch;
-        if (
-            ornithopter.pos.x > p.x && ornithopter.pos.x < p.x + p.width &&
-            ornithopter.pos.y > p.y - 10 && ornithopter.pos.y < p.y + p.height
-        ) {
-            this.handlePerchContact(ornithopter);
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
         }
-    }
 
-    handlePerchContact(ornithopter) {
-        if (ornithopter.isPerched) return;
-        
-        // This check implements the passive grasping mechanism from Section 4.4.
-        // Success is not a button press, but a physics check on arrival.
-        const speed = Math.sqrt(ornithopter.vel.x**2 + ornithopter.vel.y**2);
-        const angleOK = Math.abs(ornithopter.angle) < CONSTANTS.PERCH_ANGLE_THRESHOLD;
-
-        if (speed < CONSTANTS.PERCH_VELOCITY_THRESHOLD && angleOK) {
-            // Successful Perch
-            ornithopter.isPerched = true;
-            ornithopter.vel = { x: 0, y: 0 };
-            ornithopter.angularVel = 0;
-            ornithopter.pos.y = this.perch.y - 5; // Lock position
-        } else {
-            // Failed Perch (crash)
-            ornithopter.isCrashed = true;
-        }
-    }
-}
-
-class Simulator {
-    constructor() {
-        this.canvas = document.getElementById('simulationCanvas');
-        this.canvas.width = window.innerWidth;
-        this.canvas.height = window.innerHeight;
-
-        this.reset();
-
-        this.lastTime = 0;
-        this.animationFrameId = null;
-    }
-
-    reset() {
-        this.world = new World();
-        this.ornithopter = new Ornithopter(100, 300);
-        this.physicsEngine = new PhysicsEngine();
-        this.controller = new PlayerController(this.ornithopter, this.canvas);
-        this.renderer = new Renderer(this.canvas, this.ornithopter, this.world);
-        document.getElementById('message').style.display = 'none';
-        if (this.animationFrameId) {
-            cancelAnimationFrame(this.animationFrameId);
-        }
-        this.lastTime = performance.now();
-        this.gameLoop(this.lastTime);
-    }
-
-    gameLoop(timestamp) {
-        const dt = (timestamp - this.lastTime) / 1000;
-        this.lastTime = timestamp;
-
-        // 1. Handle Input
-        this.controller.update();
-
-        // 2. Run Physics
-        const { forces, torques } = this.physicsEngine.calculateForcesAndTorques(this.ornithopter);
-        this.ornithopter.updateState(dt, forces, torques);
-
-        // 3. Check Collisions
-        this.world.checkCollisions(this.ornithopter);
-
-        // 4. Render
-        this.renderer.draw();
-
-        // 5. Update UI
-        this.updateHUD();
-
-        this.animationFrameId = requestAnimationFrame((t) => this.gameLoop(t));
-    }
-
-    updateHUD() {
-        const o = this.ornithopter;
-        document.getElementById('altitude').textContent = (this.world.groundLevel - o.pos.y).toFixed(1);
-        document.getElementById('speed').textContent = Math.sqrt(o.vel.x**2 + o.vel.y**2).toFixed(1);
-        document.getElementById('frequency').textContent = o.flapFrequency.toFixed(1);
-        document.getElementById('energy').textContent = o.energy.toFixed(1);
-        
-        const flightPathAngle = Math.atan2(o.vel.y, o.vel.x);
-        const angleOfAttack = (o.angle - flightPathAngle) * (180 / Math.PI);
-        document.getElementById('aoa').textContent = angleOfAttack.toFixed(1);
-
-        let state = "Flying";
-        if (o.isPerchingMode) state = "Perch Mode";
-        if (o.isPerched) {
-            state = "Perched!";
-            document.getElementById('message').textContent = 'PERCHED';
-            document.getElementById('message').style.display = 'block';
-        }
-        if (o.isCrashed) {
-            state = "Crashed";
-            document.getElementById('message').textContent = 'CRASHED';
-            document.getElementById('message').style.display = 'block';
-        }
-        document.getElementById('state').textContent = state;
-    }
-}
-
-const simulator = new Simulator();
-window.addEventListener('resize', () => {
-    simulator.canvas.width = window.innerWidth;
-    simulator.canvas.height = window.innerHeight;
-});
-
-</script>
+        resetSimulation();
+        gameLoop();
+    </script>
 </body>
 </html>
