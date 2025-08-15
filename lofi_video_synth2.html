@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lo-Fi Video Synth</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #1a1a1a;
+            --module-bg: #2a2a2a;
+            --text-color: #e0e0e0;
+            --accent-color: #00ff9d;
+            --border-color: #444;
+            --connector-color: #888;
+            --cable-color: #00ff9d;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            overflow: hidden;
+            cursor: grab;
+        }
+        #modules-wrapper {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        #modules-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            transform-origin: top left;
+        }
+        .module {
+            background-color: var(--module-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem;
+            position: absolute;
+            cursor: move;
+            min-width: 200px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            user-select: none;
+        }
+        .module-title {
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            text-align: center;
+            color: var(--accent-color);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.5rem;
+        }
+        .connector-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: absolute;
+            width: 100%;
+            top: 50%;
+            transform: translateY(-50%);
+            padding: 0 5px;
+            pointer-events: none;
+        }
+        .inputs, .outputs {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .connector {
+            width: 16px;
+            height: 16px;
+            background-color: var(--connector-color);
+            border-radius: 50%;
+            border: 2px solid var(--border-color);
+            cursor: pointer;
+            pointer-events: all;
+        }
+        .connector.input {
+            margin-left: -25px;
+        }
+        .connector.output {
+            margin-right: -25px;
+        }
+        .connector:hover {
+            background-color: var(--accent-color);
+        }
+        .param {
+            margin-bottom: 0.5rem;
+        }
+        .param label {
+            display: block;
+            font-size: 0.8rem;
+            margin-bottom: 0.25rem;
+        }
+        .param input, .param select, .param button {
+            width: 100%;
+            background-color: #333;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: var(--text-color);
+            padding: 0.25rem;
+            box-sizing: border-box;
+            cursor: auto;
+        }
+        #patch-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: -1;
+        }
+        #preset-manager {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: var(--module-bg);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+            align-items: center;
+        }
+        .preset-btn {
+            background-color: #333;
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .preset-btn:hover {
+            background-color: #444;
+        }
+        .preset-btn.clear {
+            background-color: #803333;
+        }
+        .preset-btn.clear:hover {
+            background-color: #a04444;
+        }
+        #notification {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: var(--accent-color);
+            color: var(--bg-color);
+            padding: 10px 20px;
+            border-radius: 5px;
+            z-index: 200;
+            opacity: 0;
+            transition: opacity 0.5s;
+            pointer-events: none;
+        }
+        #context-menu {
+            display: none;
+            position: absolute;
+            background-color: var(--module-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            padding: 5px 0;
+            z-index: 1000;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+        .context-menu-item {
+            padding: 8px 15px;
+            cursor: pointer;
+            color: var(--text-color);
+        }
+        .context-menu-item:hover {
+            background-color: var(--accent-color);
+            color: var(--bg-color);
+        }
+    </style>
+</head>
+<body class="w-screen h-screen">
+
+    <canvas id="patch-canvas"></canvas>
+    <div id="notification"></div>
+
+    <!-- Preset Manager -->
+    <div id="preset-manager">
+        <button class="preset-btn" id="zoom-out">-</button>
+        <button class="preset-btn" id="zoom-in">+</button>
+        <span class="text-gray-500 mx-2">|</span>
+        <button class="preset-btn" data-preset="rings">Rhythmic Rings</button>
+        <button class="preset-btn" data-preset="grid">Logic Grid</button>
+        <button class="preset-btn" data-preset="keyhole">Sequenced Key</button>
+        <span class="text-gray-500 mx-2">|</span>
+        <button class="preset-btn" id="save-patch">Save</button>
+        <button class="preset-btn" data-preset="user">Load</button>
+        <span class="text-gray-500 mx-2">|</span>
+        <button class="preset-btn clear" id="clear-patch">Clear Patch</button>
+    </div>
+
+    <!-- Context Menu -->
+    <div id="context-menu"></div>
+
+    <!-- Main Wrapper for Modules -->
+    <div id="modules-wrapper">
+        <div id="modules-container">
+            <!-- Modules will be spawned here -->
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- Basic setup ---
+            const modulesWrapper = document.getElementById('modules-wrapper');
+            const modulesContainer = document.getElementById('modules-container');
+            const patchCanvas = document.getElementById('patch-canvas');
+            const patchCtx = patchCanvas.getContext('2d');
+            patchCanvas.width = window.innerWidth;
+            patchCanvas.height = window.innerHeight;
+
+            let connections = [];
+            let draggingCable = null;
+            let moduleState = {};
+            let moduleCounter = {};
+
+            // --- Module Dragging & Canvas Panning ---
+            let activeModule = null;
+            let startDragPos = { moduleX: 0, moduleY: 0, mouseX: 0, mouseY: 0 };
+            
+            let isPanning = false;
+            let panOffset = { x: 0, y: 0 };
+            let startPan = { x: 0, y: 0 };
+            let zoomLevel = 1.0;
+
+            function applyTransform() {
+                modulesContainer.style.transform = `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomLevel})`;
+                drawConnections();
+            }
+
+            modulesWrapper.addEventListener('mousedown', (e) => {
+                const targetModule = e.target.closest('.module');
+                if (targetModule && !e.target.closest('input, select, button, .connector')) {
+                    activeModule = targetModule;
+                    startDragPos = {
+                        moduleX: activeModule.offsetLeft,
+                        moduleY: activeModule.offsetTop,
+                        mouseX: e.clientX,
+                        mouseY: e.clientY
+                    };
+                    return; 
+                }
+                
+                if (e.target.classList.contains('connector') && e.target.classList.contains('output')) {
+                    draggingCable = {
+                        startModule: e.target.closest('.module').id,
+                        startConnector: e.target.dataset.name,
+                    };
+                    e.stopPropagation();
+                    return;
+                }
+
+                if (e.target === modulesWrapper) {
+                    isPanning = true;
+                    startPan.x = e.clientX - panOffset.x;
+                    startPan.y = e.clientY - panOffset.y;
+                    document.body.style.cursor = 'grabbing';
+                }
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (activeModule) {
+                    const dx = e.clientX - startDragPos.mouseX;
+                    const dy = e.clientY - startDragPos.mouseY;
+                    activeModule.style.left = `${startDragPos.moduleX + (dx / zoomLevel)}px`;
+                    activeModule.style.top = `${startDragPos.moduleY + (dy / zoomLevel)}px`;
+                    drawConnections();
+                }
+
+                if (isPanning) {
+                    panOffset.x = e.clientX - startPan.x;
+                    panOffset.y = e.clientY - startPan.y;
+                    applyTransform();
+                }
+                
+                if (draggingCable) {
+                    drawConnections();
+                    const startPos = getConnectorPosition(draggingCable.startModule, draggingCable.startConnector);
+                    patchCtx.beginPath();
+                    patchCtx.moveTo(startPos.x, startPos.y);
+                    patchCtx.lineTo(e.clientX, e.clientY);
+                    patchCtx.strokeStyle = 'var(--cable-color)';
+                    patchCtx.lineWidth = 3;
+                    patchCtx.stroke();
+                }
+            });
+
+            document.addEventListener('mouseup', (e) => {
+                if (draggingCable && e.target.classList.contains('connector') && e.target.classList.contains('input')) {
+                    const newConnection = {
+                        ...draggingCable,
+                        endModule: e.target.closest('.module').id,
+                        endConnector: e.target.dataset.name,
+                        id: `conn-${Date.now()}`
+                    };
+                    if (newConnection.startModule !== newConnection.endModule) {
+                        connections = connections.filter(c => !(c.endModule === newConnection.endModule && c.endConnector === newConnection.endConnector));
+                        connections.push(newConnection);
+                    }
+                }
+                
+                activeModule = null;
+                isPanning = false;
+                draggingCable = null;
+                document.body.style.cursor = 'grab';
+                drawConnections();
+            });
+
+            // --- Context Menu for Spawning Modules ---
+            const contextMenu = document.getElementById('context-menu');
+            const moduleTypes = {
+                'oscillator': 'Oscillator', 'mixer': 'Mixer', 'matrix': 'Matrix Mixer', 'factors': 'Factors', 'switcher': 'Switcher', 'shape': 'Shape', 'keyhard': 'KeyHard', 'keysoft': 'KeySoft', 'ribbons': 'Ribbons', 'ramp': 'Ramp Gen', 'vca': 'VCA', 'logic': 'Logic', 'sequencer': 'Sequencer', 'preview': 'Preview', 'final-output': 'Final Output'
+            };
+
+            Object.entries(moduleTypes).forEach(([type, name]) => {
+                const item = document.createElement('div');
+                item.className = 'context-menu-item';
+                item.textContent = name;
+                item.dataset.moduleType = type;
+                contextMenu.appendChild(item);
+            });
+
+            modulesWrapper.addEventListener('contextmenu', e => {
+                e.preventDefault();
+                contextMenu.style.display = 'block';
+                contextMenu.style.left = `${e.clientX}px`;
+                contextMenu.style.top = `${e.clientY}px`;
+            });
+
+            window.addEventListener('click', () => {
+                contextMenu.style.display = 'none';
+            });
+            
+            contextMenu.addEventListener('click', e => {
+                if (e.target.classList.contains('context-menu-item')) {
+                    const type = e.target.dataset.moduleType;
+                    const x = (e.clientX - panOffset.x) / zoomLevel;
+                    const y = (e.clientY - panOffset.y) / zoomLevel;
+                    spawnModule(type, x, y);
+                }
+            });
+
+            
+            // --- Patching Logic ---
+            function getConnectorPosition(moduleId, connectorName) {
+                const moduleEl = document.getElementById(moduleId);
+                if (!moduleEl) return {x: 0, y: 0};
+                const query = `.connector[data-module-id="${moduleId}"][data-name="${connectorName}"]`;
+                const connectorEl = moduleEl.querySelector(query);
+                if (!connectorEl) {
+                    console.warn(`Connector not found: ${moduleId} -> ${connectorName}`);
+                    return { x: 0, y: 0 };
+                }
+                const connectorRect = connectorEl.getBoundingClientRect();
+                
+                return {
+                    x: connectorRect.left + connectorRect.width / 2,
+                    y: connectorRect.top + connectorRect.height / 2,
+                };
+            }
+
+            function drawConnections() {
+                patchCtx.clearRect(0, 0, patchCanvas.width, patchCanvas.height);
+                connections.forEach(conn => {
+                    const startPos = getConnectorPosition(conn.startModule, conn.startConnector);
+                    const endPos = getConnectorPosition(conn.endModule, conn.endConnector);
+
+                    patchCtx.beginPath();
+                    patchCtx.moveTo(startPos.x, startPos.y);
+                    const cpx1 = startPos.x + 50;
+                    const cpy1 = startPos.y;
+                    const cpx2 = endPos.x - 50;
+                    const cpy2 = endPos.y;
+                    patchCtx.bezierCurveTo(cpx1, cpy1, cpx2, cpy2, endPos.x, endPos.y);
+                    patchCtx.strokeStyle = 'var(--cable-color)';
+                    patchCtx.lineWidth = 3;
+                    patchCtx.stroke();
+                });
+            }
+            
+            function pDistance(x, y, x1, y1, x2, y2) {
+              const A = x - x1; const B = y - y1;
+              const C = x2 - x1; const D = y2 - y1;
+              const dot = A * C + B * D;
+              const len_sq = C * C + D * D;
+              let param = -1;
+              if (len_sq != 0) param = dot / len_sq;
+              let xx, yy;
+              if (param < 0) { xx = x1; yy = y1; }
+              else if (param > 1) { xx = x2; yy = y2; }
+              else { xx = x1 + param * C; yy = y1 + param * D; }
+              const dx = x - xx; const dy = y - yy;
+              return Math.sqrt(dx * dx + dy * dy);
+            }
+
+            // --- Video Synthesis Engine ---
+            const width = 256;
+            const height = 192;
+            
+            // --- UI Listeners (Delegated) ---
+            modulesContainer.addEventListener('input', e => {
+                const moduleEl = e.target.closest('.module');
+                if (!moduleEl) return;
+                const moduleId = moduleEl.id;
+                const controlId = e.target.dataset.control;
+                const value = e.target.type === 'range' ? parseFloat(e.target.value) : e.target.value;
+                if (moduleState[moduleId] && controlId) {
+                    moduleState[moduleId][controlId] = value;
+                }
+            });
+             modulesContainer.addEventListener('change', e => {
+                const moduleEl = e.target.closest('.module');
+                if (!moduleEl) return;
+                const moduleId = moduleEl.id;
+                const controlId = e.target.dataset.control;
+                const value = e.target.value;
+                if (moduleState[moduleId] && controlId) {
+                    moduleState[moduleId][controlId] = value;
+                }
+            });
+            modulesContainer.addEventListener('click', e => {
+                const moduleEl = e.target.closest('.module');
+                if (!moduleEl || e.target.tagName !== 'BUTTON') return;
+                const moduleId = moduleEl.id;
+                const controlId = e.target.dataset.control;
+                 if (moduleState[moduleId] && controlId === 'invert') {
+                    moduleState[moduleId].invert = !moduleState[moduleId].invert;
+                    e.target.textContent = moduleState[moduleId].invert ? 'On' : 'Off';
+                }
+                 if (moduleState[moduleId] && controlId === 'select') {
+                    moduleState[moduleId].activeInput = moduleState[moduleId].activeInput === 'A' ? 'B' : 'A';
+                    e.target.textContent = `Input ${moduleState[moduleId].activeInput}`;
+                }
+            });
+
+
+            // --- Zoom Listeners ---
+            document.getElementById('zoom-in').addEventListener('click', () => {
+                zoomLevel = Math.min(2, zoomLevel + 0.1);
+                applyTransform();
+            });
+            document.getElementById('zoom-out').addEventListener('click', () => {
+                zoomLevel = Math.max(0.3, zoomLevel - 0.1);
+                applyTransform();
+            });
+            
+            // --- Notification ---
+            const notificationEl = document.getElementById('notification');
+            function showNotification(message) {
+                notificationEl.textContent = message;
+                notificationEl.style.opacity = 1;
+                setTimeout(() => {
+                    notificationEl.style.opacity = 0;
+                }, 2000);
+            }
+
+            // --- Preset Manager ---
+            document.getElementById('preset-manager').addEventListener('click', (e) => {
+                if(e.target.classList.contains('preset-btn')) {
+                    const preset = e.target.dataset.preset;
+                    if(preset) {
+                        loadPreset(preset);
+                    }
+                }
+            });
+            document.getElementById('clear-patch').addEventListener('click', () => {
+                connections = [];
+                modulesContainer.innerHTML = '';
+                moduleState = {};
+                spawnModule('final-output', window.innerWidth / 2 - 100, 100);
+                drawConnections();
+            });
+            document.getElementById('save-patch').addEventListener('click', () => {
+                const patchData = {
+                    state: moduleState,
+                    connections: connections,
+                    positions: Array.from(modulesContainer.children).map(m => ({id: m.id, left: m.style.left, top: m.style.top}))
+                };
+                localStorage.setItem('userVideoSynthPatch', JSON.stringify(patchData));
+                showNotification('Patch Saved!');
+            });
+
+            function applyStateToUI(state) {
+                Object.keys(state).forEach(moduleId => {
+                    const moduleControls = state[moduleId];
+                    const moduleEl = document.getElementById(moduleId);
+                    if (!moduleEl) return;
+
+                    Object.keys(moduleControls).forEach(controlId => {
+                        if (controlId === 'steps') {
+                            moduleControls.steps.forEach((val, i) => {
+                                const stepEl = moduleEl.querySelector(`.seq-step[data-step="${i}"]`);
+                                if (stepEl) stepEl.value = val;
+                            });
+                        } else if (controlId === 'weights') {
+                           moduleControls.weights.forEach((row, r) => {
+                               row.forEach((val, c) => {
+                                   const slider = moduleEl.querySelector(`.matrix-slider[data-row="${r}"][data-col="${c}"]`);
+                                   if(slider) slider.value = val;
+                               });
+                           });
+                        } else {
+                           const el = moduleEl.querySelector(`[data-control="${controlId}"]`);
+                           if(el) {
+                               el.value = moduleControls[controlId];
+                           }
+                        }
+                    });
+                });
+            }
+
+            function loadPreset(presetName) {
+                modulesContainer.innerHTML = '';
+                connections = [];
+                moduleState = {};
+                moduleCounter = {};
+                spawnModule('final-output', window.innerWidth / 2 + 300, 200);
+
+                if (presetName === 'user') {
+                    const savedPatchJSON = localStorage.getItem('userVideoSynthPatch');
+                    if (savedPatchJSON) {
+                        const patchData = JSON.parse(savedPatchJSON);
+                        patchData.positions.forEach(p => {
+                            const type = p.id.split('-')[0];
+                            if(type !== 'final-output') spawnModule(type, parseFloat(p.left), parseFloat(p.top), p.id);
+                        });
+                        Object.assign(moduleState, patchData.state);
+                        applyStateToUI(moduleState);
+                        connections = patchData.connections;
+                        showNotification('User Patch Loaded');
+                    } else {
+                        showNotification('No User Patch Found');
+                    }
+                    drawConnections();
+                    return;
+                }
+                
+                showNotification(`${presetName} loaded`);
+                // Simplified preset loading for brevity in this example
+                drawConnections();
+            }
+
+            // --- Module Spawning ---
+            function spawnModule(type, x, y, existingId = null) {
+                if (type.startsWith('oscillator')) {
+                    if (!moduleCounter['oscillator']) moduleCounter['oscillator'] = 0;
+                    moduleCounter['oscillator']++;
+                } else {
+                    if (!moduleCounter[type]) moduleCounter[type] = 0;
+                    moduleCounter[type]++;
+                }
+
+                const id = existingId || `${type}-${moduleCounter[type]}`;
+
+                const moduleEl = document.createElement('div');
+                moduleEl.className = 'module';
+                moduleEl.id = id;
+                moduleEl.style.left = `${x}px`;
+                moduleEl.style.top = `${y}px`;
+
+                let content = '';
+                let initialState = {};
+
+                // This is a large template map for all modules
+                switch (type) {
+                    case 'oscillator':
+                    case 'oscillator2':
+                        const oscNum = moduleCounter['oscillator'];
+                        content = `<div class="module-title">Oscillator ${oscNum}</div>
+                           <div class="param"><label>Shape</label><select data-control="shape"><option>Sine</option><option>Square</option><option>Triangle</option><option>Parabola</option><option>Double Ramp</option></select></div>
+                           <div class="param"><label>Freq Mode</label><select data-control="freqMode"><option>Locked Horizontal</option><option>Locked Upper Vertical</option><option>Locked Lower Vertical</option><option>Seconds</option><option>Frames</option><option>Free Lower Vertical</option><option>Free Upper Vertical</option><option>Free Horizontal</option></select></div>
+                           <div class="param"><label>Frequency</label><input type="range" min="1" max="100" value="10" data-control="freq"></div>
+                           <div class="connector-container"><div class="inputs"><div class="connector input" data-module-id="${id}" data-name="freq-in"></div></div><div class="outputs"><div class="connector output" data-module-id="${id}" data-name="out"></div></div></div>`;
+                        initialState = { shape: 'Sine', freqMode: 'Locked Horizontal', freq: 10 };
+                        break;
+                    
+                    case 'final-output':
+                    case 'preview':
+                         const canvasId = `${id}-canvas`;
+                         content = `<div class="module-title">${type === 'final-output' ? 'Final Output' : 'Preview'}</div>
+                            <canvas id="${canvasId}" class="preview-canvas" width="256" height="192"></canvas>
+                            <div class="connector-container"><div class="inputs"><div class="connector input" data-module-id="${id}" data-name="in-r"></div><div class="connector input" data-module-id="${id}" data-name="in-g"></div><div class="connector input" data-module-id="${id}" data-name="in-b"></div></div><div class="outputs"></div></div>`;
+                         initialState = {};
+                         break;
+                    
+                    case 'mixer':
+                        content = `<div class="module-title">Mixer</div><div class="param"><label>Balance (A/B)</label><input type="range" min="0" max="1" value="0.5" step="0.01" data-control="balance"></div><div class="connector-container"><div class="inputs"><div class="connector input" data-module-id="${id}" data-name="in-a"></div><div class="connector input" data-module-id="${id}" data-name="in-b"></div></div><div class="outputs"><div class="connector output" data-module-id="${id}" data-name="out"></div></div></div>`;
+                        initialState = { balance: 0.5 };
+                        break;
+                    
+                    case 'logic':
+                         content = `<div class="module-title">Logic</div><div class="param"><label>Operation</label><select data-control="op"><option>AND</option><option>OR</option><option>XOR</option></select></div><div class="connector-container"><div class="inputs"><div class="connector input" data-module-id="${id}" data-name="in-a"></div><div class="connector input" data-module-id="${id}" data-name="in-b"></div></div><div class="outputs"><div class="connector output" data-module-id="${id}" data-name="out"></div></div></div>`;
+                         initialState = { op: 'AND' };
+                         break;
+                    case 'ramp':
+                        content = `<div class="module-title">Ramp Gen</div><p class="text-center text-sm text-gray-400 pt-4">Outputs H/V Ramps</p><div class="connector-container"><div class="inputs"></div><div class="outputs"><div class="connector output" data-module-id="${id}" data-name="h-ramp"></div><div class="connector output" data-module-id="${id}" data-name="v-ramp"></div></div></div>`;
+                        initialState = {};
+                        break;
+                    case 'sequencer':
+                        content = `<div class="module-title">4-Step Sequencer</div><div class="param"><label>Rate</label><input type="range" min="0.1" max="10" value="1" step="0.1" data-control="rate"></div><div class="grid grid-cols-4 gap-2"><input type="range" min="0" max="1" value="0.25" step="0.01" class="seq-step" data-step="0" data-control="steps"><input type="range" min="0" max="1" value="0.5" step="0.01" class="seq-step" data-step="1" data-control="steps"><input type="range" min="0" max="1" value="0.75" step="0.01" class="seq-step" data-step="2" data-control="steps"><input type="range" min="0" max="1" value="1" step="0.01" class="seq-step" data-step="3" data-control="steps"></div><div class="connector-container"><div class="inputs"></div><div class="outputs"><div class="connector output" data-module-id="${id}" data-name="out"></div></div></div>`;
+                        initialState = { rate: 1, steps: [0.25, 0.5, 0.75, 1] };
+                        break;
+                    // ... add all other templates
+                }
+
+                moduleEl.innerHTML = content;
+                modulesContainer.appendChild(moduleEl);
+                moduleState[id] = initialState;
+            }
+
+            // --- Render Loop ---
+            let frame = 0;
+            function renderLoop(t) {
+                const currentModules = Array.from(modulesContainer.children);
+                
+                currentModules.forEach(moduleEl => {
+                    const moduleId = moduleEl.id;
+                    const moduleType = moduleId.split('-')[0];
+                    if (moduleType === 'preview' || moduleType === 'final-output') {
+                        const canvas = moduleEl.querySelector('canvas');
+                        if (!canvas) return;
+                        const ctx = canvas.getContext('2d');
+                        if(!ctx) return;
+                        const imageData = ctx.createImageData(width, height);
+                        const data = imageData.data;
+                        
+                        for (let y = 0; y < height; y++) {
+                            for (let x = 0; x < width; x++) {
+                                const pixelIndex = (y * width + x) * 4;
+                                const pixelInputs = {};
+                                const allPixelOutputs = computeGraphForPixel(x, y, t, frame);
+
+                                connections.filter(c => c.endModule === moduleId).forEach(conn => {
+                                    pixelInputs[conn.endConnector] = allPixelOutputs[conn.startModule]?.[conn.startConnector] || 0;
+                                });
+                                
+                                data[pixelIndex]     = (pixelInputs['in-r'] || 0) * 255;
+                                data[pixelIndex + 1] = (pixelInputs['in-g'] || 0) * 255;
+                                data[pixelIndex + 2] = (pixelInputs['in-b'] || 0) * 255;
+                                data[pixelIndex + 3] = 255;
+                            }
+                        }
+                        ctx.putImageData(imageData, 0, 0);
+                    }
+                });
+
+                frame++;
+                requestAnimationFrame(renderLoop);
+            }
+            
+            function computeGraphForPixel(x, y, t, frame) {
+                const allOutputs = {};
+                const currentModules = Array.from(modulesContainer.children);
+                const processingOrder = currentModules.map(m => m.id);
+                
+                processingOrder.forEach(moduleId => {
+                    const moduleType = moduleId.split('-')[0];
+                    const moduleInputs = {};
+                    connections.filter(c => c.endModule === moduleId).forEach(conn => {
+                         moduleInputs[conn.endConnector] = allOutputs[conn.startModule]?.[conn.startConnector] || 0;
+                    });
+                    
+                    allOutputs[moduleId] = processModule(moduleId, moduleType, moduleInputs, t, frame, x, y);
+                });
+
+                return allOutputs;
+            }
+
+            function processModule(moduleId, moduleType, inputs, t, frame, x, y) {
+                const out = {};
+                const u = x / width;
+                const v = y / height;
+                const clamp = (val) => Math.max(0, Math.min(1, val));
+                const state = moduleState[moduleId] || {};
+
+                switch(moduleType) {
+                    case 'oscillator':
+                    case 'oscillator2': {
+                        let freq = (state.freq || 10) * (inputs['freq-in'] ? (inputs['freq-in'] * 2) : 1);
+                        let phase = 0;
+                        switch(state.freqMode) {
+                            case 'Locked Horizontal': phase = u * freq; break;
+                            case 'Locked Upper Vertical': phase = v * freq; break;
+                            case 'Locked Lower Vertical': phase = (1-v) * freq; break;
+                            case 'Seconds': phase = (t/1000) * freq; break;
+                            case 'Frames': phase = (frame / 60) * freq; break;
+                            case 'Free Lower Vertical': phase = (v + t/1000) * freq; break;
+                            case 'Free Upper Vertical': phase = ((1-v) + t/1000) * freq; break;
+                            case 'Free Horizontal': phase = (u + t/1000) * freq; break;
+                            default: phase = u * freq;
+                        }
+                        let val = 0;
+                        switch(state.shape) {
+                            case 'Sine': val = Math.sin(phase * 2 * Math.PI) * 0.5 + 0.5; break;
+                            case 'Square': val = (phase % 1) > 0.5 ? 1 : 0; break;
+                            case 'Triangle': val = 1 - Math.abs((phase % 1) * 2 - 1); break;
+                            case 'Parabola': val = Math.pow(Math.sin(phase * Math.PI), 2); break;
+                            case 'Double Ramp': val = (phase * 2) % 1; break;
+                            default: val = 0.5;
+                        }
+                        out['out'] = val;
+                        break;
+                    }
+                    case 'mixer': {
+                        const inA = inputs['in-a'] || 0;
+                        const inB = inputs['in-b'] || 0;
+                        out['out'] = inA * (1 - (state.balance || 0.5)) + inB * (state.balance || 0.5);
+                        break;
+                    }
+                    case 'logic': {
+                        const inA = inputs['in-a'] > 0.5;
+                        const inB = inputs['in-b'] > 0.5;
+                        let val = 0;
+                        switch(state.op) {
+                            case 'AND': val = (inA && inB) ? 1 : 0; break;
+                            case 'OR': val = (inA || inB) ? 1 : 0; break;
+                            case 'XOR': val = (inA !== inB) ? 1 : 0; break;
+                            default: val = 0;
+                        }
+                        out['out'] = val;
+                        break;
+                    }
+                    case 'ramp': {
+                        out['h-ramp'] = u;
+                        out['v-ramp'] = v;
+                        break;
+                    }
+                    case 'sequencer': {
+                        const steps = state.steps || [0.25, 0.5, 0.75, 1];
+                        const rate = state.rate || 1;
+                        const currentStep = Math.floor((t / 1000) * rate) % steps.length;
+                        out['out'] = steps[currentStep];
+                        break;
+                    }
+                    // Add other module processing logic here...
+                }
+                return out;
+            }
+            
+            // Initial module
+            spawnModule('final-output', window.innerWidth / 2 - 100, 100);
+
+            requestAnimationFrame(renderLoop);
+            
+            window.addEventListener('resize', () => {
+                patchCanvas.width = window.innerWidth;
+                patchCanvas.height = window.innerHeight;
+                drawConnections();
+            });
+        });
+    </script>
+</body>
+</html>
