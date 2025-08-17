@@ -18,18 +18,15 @@
         }
         .editor {
             background-color: #1F2937; /* bg-gray-800 */
-            border-color: #4B5563; /* border-gray-600 */
+            border-color: #374151; /* border-gray-700 */
             color: #F3F4F6; /* text-gray-100 */
             font-family: 'Roboto Mono', monospace;
-            min-height: 400px;
+            min-height: 450px;
+            border-width: 1px;
         }
-        .elvis-border { border-color: #FBBF24; /* amber-400 */ }
-        .tcb-border { border-color: #3B82F6; /* blue-500 */ }
-        .colonel-border { border-color: #EC4899; /* pink-500 */ }
-        
-        .elvis-shadow { box-shadow: 0 0 15px rgba(251, 191, 36, 0.4); }
-        .tcb-shadow { box-shadow: 0 0 15px rgba(59, 130, 246, 0.4); }
-        .colonel-shadow { box-shadow: 0 0 15px rgba(236, 72, 153, 0.4); }
+        .elvis-text { color: #FBBF24; /* amber-400 */ }
+        .tcb-text { color: #3B82F6; /* blue-500 */ }
+        .colonel-text { color: #EC4899; /* pink-500 */ }
 
         .log-panel {
             background-color: #000;
@@ -49,20 +46,12 @@
         }
     </style>
 </head>
-<body class="text-white p-4 sm:p-6 md:p-8">
+<body class="text-white p-4">
 
-    <header class="text-center mb-8">
-        <h1 class="title-font text-5xl md:text-6xl font-bold tracking-wider">GRACELAND</h1>
-        <p class="text-gray-400 text-lg">An Audio Programming Language Prototype</p>
-    </header>
-
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
         <!-- Elvis Window -->
-        <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg p-4 border-2 elvis-border elvis-shadow transition-all duration-300">
-            <h2 class="title-font text-3xl text-amber-400 mb-3 flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-12v10c0 1.105-1.343 2-3 2s-3-.895-3-2V3.5" /></svg>
-                Elvis (The Sound)
-            </h2>
+        <div>
+            <h2 class="title-font text-xl elvis-text mb-2">Elvis</h2>
             <textarea id="elvis-code" class="w-full p-3 rounded-md editor" spellcheck="false">// Aphex Twin Example Track
 instrument "Acid Bass" {
     bass_osc = osc(sawtooth)
@@ -112,11 +101,8 @@ instrument "Warped Piano" {
         </div>
 
         <!-- TCB Window -->
-        <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg p-4 border-2 tcb-border tcb-shadow transition-all duration-300">
-            <h2 class="title-font text-3xl text-blue-500 mb-3 flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
-                TCB (The Patterns)
-            </h2>
+        <div>
+            <h2 class="title-font text-xl tcb-text mb-2">TCB</h2>
             <textarea id="tcb-code" class="w-full p-3 rounded-md editor" spellcheck="false">// Create musical sequences for your instruments.
 
 sequence "Drill Beat" for "Kick Drum" {
@@ -213,11 +199,8 @@ sequence "Sad Melody B" for "Warped Piano" {
         </div>
 
         <!-- The Colonel Window -->
-        <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg p-4 border-2 colonel-border colonel-shadow transition-all duration-300">
-            <h2 class="title-font text-3xl text-pink-500 mb-3 flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                The Colonel (The Structure)
-            </h2>
+        <div>
+            <h2 class="title-font text-xl colonel-text mb-2">The Colonel</h2>
             <textarea id="colonel-code" class="w-full p-3 rounded-md editor" spellcheck="false">// Arrange your sequences into a final song.
 
 song "Gristle" {
@@ -253,14 +236,13 @@ song "Gristle" {
         </div>
     </div>
 
-    <div class="text-center mb-6">
-        <button id="run-button" class="title-font bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-10 rounded-lg text-2xl transition-all duration-300 transform hover:scale-105 shadow-lg">
+    <div class="text-center my-4">
+        <button id="run-button" class="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-6 rounded-lg text-lg transition-all duration-300">
             Play Song
         </button>
     </div>
 
-    <div>
-        <h3 class="text-xl font-bold mb-2 text-gray-300">Playback Log</h3>
+    <div class="px-2">
         <div id="log-output" class="log-panel"></div>
     </div>
 
@@ -565,3 +547,4 @@ song "Gristle" {
     </script>
 </body>
 </html>
+
