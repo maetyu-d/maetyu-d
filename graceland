@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Graceland Audio Language Prototype</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Righteous&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Roboto Mono', monospace;
+            background-color: #111827; /* bg-gray-900 */
+        }
+        .title-font {
+            font-family: 'Righteous', cursive;
+        }
+        .editor {
+            background-color: #1F2937; /* bg-gray-800 */
+            border-color: #4B5563; /* border-gray-600 */
+            color: #F3F4F6; /* text-gray-100 */
+            font-family: 'Roboto Mono', monospace;
+            min-height: 400px;
+        }
+        .elvis-border { border-color: #FBBF24; /* amber-400 */ }
+        .tcb-border { border-color: #3B82F6; /* blue-500 */ }
+        .colonel-border { border-color: #EC4899; /* pink-500 */ }
+        
+        .elvis-shadow { box-shadow: 0 0 15px rgba(251, 191, 36, 0.4); }
+        .tcb-shadow { box-shadow: 0 0 15px rgba(59, 130, 246, 0.4); }
+        .colonel-shadow { box-shadow: 0 0 15px rgba(236, 72, 153, 0.4); }
+
+        .log-panel {
+            background-color: #000;
+            color: #00ff00;
+            font-family: 'Roboto Mono', monospace;
+            height: 200px;
+            overflow-y: auto;
+            border: 1px solid #374151; /* gray-700 */
+            padding: 1rem;
+            border-radius: 0.5rem;
+        }
+        #run-button.playing {
+            background-color: #DC2626; /* red-600 */
+        }
+        #run-button.playing:hover {
+            background-color: #B91C1C; /* red-700 */
+        }
+    </style>
+</head>
+<body class="text-white p-4 sm:p-6 md:p-8">
+
+    <header class="text-center mb-8">
+        <h1 class="title-font text-5xl md:text-6xl font-bold tracking-wider">GRACELAND</h1>
+        <p class="text-gray-400 text-lg">An Audio Programming Language Prototype</p>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <!-- Elvis Window -->
+        <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg p-4 border-2 elvis-border elvis-shadow transition-all duration-300">
+            <h2 class="title-font text-3xl text-amber-400 mb-3 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-12v10c0 1.105-1.343 2-3 2s-3-.895-3-2V3.5" /></svg>
+                Elvis (The Sound)
+            </h2>
+            <textarea id="elvis-code" class="w-full p-3 rounded-md editor" spellcheck="false">// Aphex Twin Example Track
+instrument "Acid Bass" {
+    bass_osc = osc(sawtooth)
+    filter_env = env(0.01, 0.1, 0, 0)
+    amp_env = env(0.01, 0.2, 0.0, 0.2)
+    bass_filter = filter(lp, 300, 15) // High resonance (q=15)
+    bass_amp = amp
+
+    bass_osc -> bass_filter -> bass_amp
+
+    bass_osc.freq = @freq
+    bass_filter.freq = filter_env(@gate) * 8000 * @vel + 200
+    bass_amp.level = amp_env(@gate) * @vel
+}
+
+instrument "Kick Drum" {
+    pitch_env = env(0.0, 0.05, 0, 0)
+    kick_osc = osc(sine)
+    amp_env = env(0.0, 0.3, 0, 0)
+    kick_amp = amp
+
+    kick_osc -> kick_amp
+
+    kick_osc.freq = pitch_env(@gate) * 80 + 60
+    kick_amp.level = amp_env(@gate) * @vel
+}
+
+instrument "Glitch Perc" {
+    perc_osc = osc(noise)
+    amp_env = env(0.0, 0.05, 0, 0)
+    perc_amp = amp
+    
+    perc_osc -> perc_amp
+    perc_amp.level = amp_env(@gate) * @vel
+}
+
+instrument "Warped Piano" {
+    pad_osc = osc(triangle)
+    amp_env = env(0.3, 1.5, 0.1, 2.0)
+    pad_amp = amp
+
+    pad_osc -> pad_amp
+    pad_osc.freq = @freq
+    pad_amp.level = amp_env(@gate) * @vel * 0.4
+}
+            </textarea>
+        </div>
+
+        <!-- TCB Window -->
+        <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg p-4 border-2 tcb-border tcb-shadow transition-all duration-300">
+            <h2 class="title-font text-3xl text-blue-500 mb-3 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
+                TCB (The Patterns)
+            </h2>
+            <textarea id="tcb-code" class="w-full p-3 rounded-md editor" spellcheck="false">// Create musical sequences for your instruments.
+
+sequence "Drill Beat" for "Kick Drum" {
+    length: 8 beats
+    0.0: 'C2', 0.5, 127
+    1.5: 'C2', 0.5, 100
+    2.0: 'C2', 0.5, 127
+    3.0: 'C2', 0.5, 127
+    4.0: 'C2', 0.5, 127
+    5.75: 'C2', 0.5, 110
+    6.0: 'C2', 0.5, 127
+    7.0: 'C2', 0.5, 127
+    7.5: 'C2', 0.5, 100
+}
+
+sequence "Drill Beat Fill" for "Kick Drum" {
+    length: 8 beats
+    0.0: 'C2', 0.5, 127
+    0.75: 'C2', 0.25, 90
+    1.5: 'C2', 0.5, 100
+    2.0: 'C2', 0.5, 127
+    2.75: 'C2', 0.25, 90
+    3.0: 'C2', 0.5, 127
+    3.5: 'C2', 0.5, 110
+    4.0: 'C2', 0.5, 127
+    5.5: 'C2', 0.25, 90
+    5.75: 'C2', 0.5, 110
+    6.0: 'C2', 0.5, 127
+    7.0: 'C2', 0.5, 127
+    7.5: 'C2', 0.5, 100
+}
+
+sequence "Glitches" for "Glitch Perc" {
+    length: 4 beats
+    0.75: 'C5', 0.1, 90
+    1.25: 'C5', 0.1, 120
+    1.5:  'C5', 0.1, 70
+    1.75: 'C5', 0.1, 127
+    2.5:  'C5', 0.1, 100
+    3.0:  'C5', 0.1, 80
+    3.25: 'C5', 0.1, 110
+    3.5:  'C5', 0.1, 90
+    3.75: 'C5', 0.1, 127
+}
+
+sequence "Acid Pattern" for "Acid Bass" {
+    length: 8 beats
+    0.0: 'C2', 0.2, 120
+    1.5: 'G2', 0.2, 100
+    2.0: 'C2', 0.2, 120
+    3.5: 'A1', 0.2, 110
+    4.0: 'C2', 0.2, 120
+    5.5: 'G2', 0.2, 100
+    6.0: 'C2', 0.2, 120
+    7.5: 'F2', 0.2, 110
+}
+
+sequence "Acid Pattern B" for "Acid Bass" {
+    length: 8 beats
+    0.0: 'F2', 0.2, 120
+    1.5: 'C3', 0.2, 100
+    2.0: 'F2', 0.2, 120
+    3.5: 'D2', 0.2, 110
+    4.0: 'F2', 0.2, 120
+    5.5: 'C3', 0.2, 100
+    6.0: 'F2', 0.2, 120
+    7.5: 'A2', 0.2, 110
+}
+
+sequence "Sad Melody" for "Warped Piano" {
+    length: 16 beats
+    0.0: 'A3', 2, 90
+    2.5: 'E4', 1, 80
+    4.0: 'C4', 2, 100
+    6.5: 'G3', 1, 70
+    8.0: 'A3', 2, 95
+    10.5: 'F4', 1, 85
+    12.0: 'D4', 2, 105
+    14.5: 'E4', 1, 75
+}
+
+sequence "Sad Melody B" for "Warped Piano" {
+    length: 16 beats
+    0.0: 'A4', 2, 90
+    2.5: 'E5', 1, 80
+    4.0: 'C5', 2, 100
+    6.5: 'G4', 1, 70
+    8.0: 'A4', 2, 95
+    10.5: 'F5', 1, 85
+    12.0: 'D5', 2, 105
+    14.5: 'E5', 1, 75
+}
+            </textarea>
+        </div>
+
+        <!-- The Colonel Window -->
+        <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg p-4 border-2 colonel-border colonel-shadow transition-all duration-300">
+            <h2 class="title-font text-3xl text-pink-500 mb-3 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                The Colonel (The Structure)
+            </h2>
+            <textarea id="colonel-code" class="w-full p-3 rounded-md editor" spellcheck="false">// Arrange your sequences into a final song.
+
+song "Gristle" {
+    tempo = 172
+
+    // --- SECTION 1 (Beats 0-32) ---
+    // Intro with just drums, building intensity
+    at 0 loop "Drill Beat" for 32 beats
+    at 0 loop "Glitches" for 32 beats
+
+    // --- SECTION 2 (Beats 32-64) ---
+    // Bass and first melody come in
+    at 32 loop "Acid Pattern" for 32 beats
+    at 32 loop "Sad Melody" for 32 beats
+    
+    // --- SECTION 3 (Beats 64-96) ---
+    // Climax with more intense patterns
+    at 64 loop "Drill Beat Fill" for 32 beats
+    at 64 loop "Glitches" for 32 beats
+    at 64 loop "Acid Pattern B" for 32 beats
+    at 64 loop "Sad Melody B" for 32 beats
+
+    // --- SECTION 4 (Beats 96-112) ---
+    // Breakdown - drums and bass drop out
+    at 96 loop "Sad Melody" for 16 beats
+    
+    // --- SECTION 5 (Beats 112-128) ---
+    // Outro - bring the main beat back
+    at 112 loop "Drill Beat" for 16 beats
+    at 112 loop "Glitches" for 16 beats
+}
+            </textarea>
+        </div>
+    </div>
+
+    <div class="text-center mb-6">
+        <button id="run-button" class="title-font bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-10 rounded-lg text-2xl transition-all duration-300 transform hover:scale-105 shadow-lg">
+            Play Song
+        </button>
+    </div>
+
+    <div>
+        <h3 class="text-xl font-bold mb-2 text-gray-300">Playback Log</h3>
+        <div id="log-output" class="log-panel"></div>
+    </div>
+
+    <script>
+        // --- Graceland Web Audio Interpreter ---
+        const elvisCode = document.getElementById('elvis-code');
+        const tcbCode = document.getElementById('tcb-code');
+        const colonelCode = document.getElementById('colonel-code');
+        const runButton = document.getElementById('run-button');
+        const logOutput = document.getElementById('log-output');
+
+        let audioContext;
+        let isPlaying = false;
+        let scheduledEvents = [];
+        let stopTimeout = null;
+
+        // --- Logger ---
+        const logger = {
+            clear: () => logOutput.innerHTML = '',
+            log: (message, color = '#00ff00') => {
+                const line = document.createElement('div');
+                line.textContent = message;
+                line.style.color = color;
+                logOutput.appendChild(line);
+                logOutput.scrollTop = logOutput.scrollHeight;
+            },
+            info: (message) => logger.log(`[INFO] ${message}`, '#87CEEB'),
+            error: (message) => logger.log(`[ERROR] ${message}`, '#FF6347'),
+            event: (message) => logger.log(message, '#FFFFFF')
+        };
+
+        // --- Audio Utilities ---
+        function noteToFreq(note) {
+            const A4 = 440;
+            const notes = { 'C': -9, 'C#':-8, 'D': -7, 'D#':-6, 'E': -5, 'F': -4, 'F#':-3, 'G': -2, 'G#':-1, 'A': 0, 'A#':1, 'B': 2 };
+            const octave = parseInt(note.slice(-1), 10);
+            const key = note.slice(0, -1).toUpperCase();
+            const semitones = notes[key] + (octave - 4) * 12;
+            return A4 * Math.pow(2, semitones / 12);
+        }
+
+        // --- Parser Functions ---
+        function parseElvis(code) {
+            const instruments = new Map();
+            const instrumentRegex = /instrument\s+"([^"]+)"\s*\{([\s\S]*?)\}/g;
+            let match;
+            while ((match = instrumentRegex.exec(code)) !== null) {
+                const name = match[1];
+                const body = match[2];
+                instruments.set(name, { name, definition: body });
+                logger.info(`Defined Instrument: "${name}"`);
+            }
+            return instruments;
+        }
+
+        function parseTCB(code, instruments) {
+            const sequences = new Map();
+            const sequenceRegex = /sequence\s+"([^"]+)"\s+for\s+"([^"]+)"\s*\{([\s\S]*?)\}/g;
+            let match;
+            while ((match = sequenceRegex.exec(code)) !== null) {
+                const name = match[1];
+                const instrumentName = match[2];
+                const content = match[3];
+
+                if (!instruments.has(instrumentName)) {
+                    logger.error(`Sequence "${name}" uses undefined instrument "${instrumentName}".`);
+                    continue;
+                }
+
+                const lengthMatch = content.match(/length:\s*(\d+\.?\d*)\s*beats/);
+                const length = lengthMatch ? parseFloat(lengthMatch[1]) : 4;
+                
+                const notes = [];
+                const noteRegex = /(\d+\.?\d*):\s*'([^']*)',\s*(\d+\.?\d*),\s*(\d+)/g;
+                let noteMatch;
+                while((noteMatch = noteRegex.exec(content)) !== null) {
+                    notes.push({
+                        beat: parseFloat(noteMatch[1]),
+                        pitch: noteMatch[2],
+                        duration: parseFloat(noteMatch[3]),
+                        velocity: parseInt(noteMatch[4], 10)
+                    });
+                }
+
+                sequences.set(name, { name, instrumentName, length, notes });
+                logger.info(`Parsed Sequence: "${name}" for instrument "${instrumentName}" (${notes.length} notes).`);
+            }
+            return sequences;
+        }
+
+        function parseColonel(code) {
+            const song = { tempo: 120, timeline: [] };
+            const songRegex = /song\s+"([^"]+)"\s*\{([\s\S]*?)\}/;
+            const songMatch = code.match(songRegex);
+            if (!songMatch) {
+                logger.error("No song definition found.");
+                return null;
+            }
+
+            const content = songMatch[2];
+            const tempoMatch = content.match(/tempo\s*=\s*(\d+)/);
+            if (tempoMatch) song.tempo = parseInt(tempoMatch[1], 10);
+            logger.info(`Song tempo set to ${song.tempo} BPM.`);
+
+            const commandRegex = /at\s+(\d+\.?\d*)\s+(loop|play)\s+"([^"]+)"(?:\s+for\s+(\d+\.?\d*)\s+beats)?/g;
+            let commandMatch;
+            while ((commandMatch = commandRegex.exec(content)) !== null) {
+                const startBeat = parseFloat(commandMatch[1]);
+                const type = commandMatch[2];
+                const seqName = commandMatch[3];
+                const loopDuration = commandMatch[4] ? parseFloat(commandMatch[4]) : 0;
+                song.timeline.push({ type, seqName, startBeat, loopDuration });
+            }
+            return song;
+        }
+
+        // --- Audio Engine ---
+        function playNote(instrument, note, startTime, tempo) {
+            const { definition } = instrument;
+            const freq = note.pitch.toLowerCase() === 'noise' ? 0 : noteToFreq(note.pitch);
+            const vel = note.velocity / 127.0;
+            const noteDurationBeats = note.duration;
+            const noteDurationSecs = noteDurationBeats * (60.0 / tempo);
+
+            const osc = audioContext.createOscillator();
+            const amp = audioContext.createGain();
+            const nodes = [osc, amp];
+
+            // --- Signal Path ---
+            const pathMatch = definition.match(/(\w+)\s*->\s*(\w+)(?:\s*->\s*(\w+))?/);
+            let filterNode;
+            if (pathMatch && pathMatch[3]) { // osc -> filter -> amp
+                filterNode = audioContext.createBiquadFilter();
+                osc.connect(filterNode);
+                filterNode.connect(amp);
+                nodes.push(filterNode);
+            } else { // osc -> amp
+                osc.connect(amp);
+            }
+            amp.connect(audioContext.destination);
+            
+            // --- Parameter Control ---
+            const oscTypeMatch = definition.match(/osc\(([^)]+)\)/);
+            osc.type = oscTypeMatch ? (oscTypeMatch[1] === 'noise' ? 'sawtooth' : oscTypeMatch[1]) : 'sine';
+            if (oscTypeMatch[1] === 'noise') {
+                 osc.frequency.setValueAtTime(10, 0); 
+            } else {
+                 osc.frequency.setValueAtTime(freq, startTime);
+            }
+
+            if (filterNode) {
+                const filterMatch = definition.match(/filter\(([^,]+),\s*([^,]+),\s*([^)]+)\)/);
+                filterNode.type = filterMatch[1].trim() === 'lp' ? 'lowpass' : 'highpass';
+                filterNode.frequency.value = parseFloat(filterMatch[2]);
+                filterNode.Q.value = parseFloat(filterMatch[3]);
+            }
+
+            // --- Envelopes ---
+            const envRegex = /(\w+)\s*=\s*env\(([^)]+)\)/g;
+            let envMatch;
+            const envs = {};
+            while((envMatch = envRegex.exec(definition)) !== null) {
+                envs[envMatch[1]] = envMatch[2].split(',').map(v => parseFloat(v.trim()));
+            }
+
+            const controlRegex = /(\w+)\.(\w+)\s*=\s*([^;\n]+)/g;
+            let controlMatch;
+            while((controlMatch = controlRegex.exec(definition)) !== null) {
+                const [, nodeName, param, expr] = controlMatch;
+                const targetNode = nodeName.includes('filter') ? filterNode : (nodeName.includes('osc') ? osc : amp);
+                
+                const paramName = (param === 'level') ? 'gain' : (param === 'freq' ? 'frequency' : param);
+                const targetParam = targetNode ? targetNode[paramName] : undefined;
+
+                if (!targetParam || typeof targetParam.setValueAtTime !== 'function') {
+                    logger.error(`Invalid parameter "${param}" for node "${nodeName}"`);
+                    continue;
+                }
+
+                if (expr.includes('@gate')) {
+                    const envName = expr.match(/(\w+)\(@gate\)/)[1];
+                    const [a, d, s, r] = envs[envName];
+                    
+                    let peakVal = vel;
+                    if(expr.includes('*')) {
+                        const multMatch = expr.match(/\*\s*([\d.]+)/);
+                        if (multMatch) peakVal *= parseFloat(multMatch[1]);
+                    }
+                     if(expr.includes('+')) {
+                        const addMatch = expr.match(/\+\s*([\d.]+)/);
+                        if (addMatch) peakVal += parseFloat(addMatch[1]);
+                    }
+
+                    const initialVal = paramName === 'frequency' ? freq : 0;
+                    const sustainVal = paramName === 'frequency' ? freq : peakVal * s;
+                    
+                    targetParam.setValueAtTime(initialVal, startTime);
+                    targetParam.linearRampToValueAtTime(peakVal, startTime + a);
+                    targetParam.linearRampToValueAtTime(sustainVal, startTime + a + d);
+                    
+                    const releaseStart = startTime + Math.max(0, noteDurationSecs - r);
+                    if (releaseStart > startTime + a + d) {
+                        targetParam.setValueAtTime(sustainVal, releaseStart);
+                    }
+                    targetParam.linearRampToValueAtTime(initialVal, releaseStart + r);
+                }
+            }
+            
+            osc.start(startTime);
+            osc.stop(startTime + noteDurationSecs + 2.0); // Add long buffer for release tail
+            nodes.forEach(n => scheduledEvents.push(n));
+        }
+
+        function scheduleSong(song, sequences, instruments) {
+            const now = audioContext.currentTime;
+            const secondsPerBeat = 60.0 / song.tempo;
+            let songDurationBeats = 0;
+
+            song.timeline.forEach(event => {
+                const seq = sequences.get(event.seqName);
+                if (!seq) {
+                    logger.error(`Sequence "${event.seqName}" not found for scheduling.`);
+                    return;
+                }
+                const instrument = instruments.get(seq.instrumentName);
+                if (!instrument) {
+                    logger.error(`Instrument "${seq.instrumentName}" not found for scheduling.`);
+                    return;
+                }
+
+                const duration = event.type === 'loop' ? event.loopDuration : seq.length;
+                songDurationBeats = Math.max(songDurationBeats, event.startBeat + duration);
+                
+                for (let beat = 0; beat < duration; beat += seq.length) {
+                    seq.notes.forEach(note => {
+                        const noteStartTime = now + (event.startBeat + beat + note.beat) * secondsPerBeat;
+                        if(noteStartTime < audioContext.currentTime) return; // Don't schedule in the past
+                        playNote(instrument, note, noteStartTime, song.tempo);
+                        const logTime = (event.startBeat + beat + note.beat).toFixed(2);
+                        logger.event(`[Beat ${logTime}] ${seq.instrumentName}: Note ${note.pitch}`);
+                    });
+                }
+            });
+            return songDurationBeats * secondsPerBeat;
+        }
+
+        function stopAll() {
+            if(stopTimeout) clearTimeout(stopTimeout);
+            if (!audioContext) return;
+            scheduledEvents.forEach(node => {
+                try { node.disconnect(); } catch (e) {}
+            });
+            scheduledEvents = [];
+            isPlaying = false;
+            runButton.textContent = "Play Song";
+            runButton.classList.remove('playing');
+            logger.info("Playback stopped.");
+        }
+
+        // --- Main Execution ---
+        runButton.addEventListener('click', () => {
+            if (isPlaying) {
+                stopAll();
+                return;
+            }
+
+            if (!audioContext || audioContext.state === 'closed') {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+
+            logger.clear();
+            logger.log("Parsing code...");
+            
+            try {
+                const instruments = parseElvis(elvisCode.value);
+                if (instruments.size === 0) throw new Error("Parsing failed: No instruments defined.");
+
+                const sequences = parseTCB(tcbCode.value, instruments);
+                if (sequences.size === 0) throw new Error("Parsing failed: No sequences defined.");
+
+                const song = parseColonel(colonelCode.value, sequences);
+                if (!song) throw new Error("Parsing failed: No song defined.");
+
+                isPlaying = true;
+                runButton.textContent = "Stop";
+                runButton.classList.add('playing');
+                logger.event(`--- Starting Playback ---`);
+                
+                const songDurationSecs = scheduleSong(song, sequences, instruments);
+                
+                stopTimeout = setTimeout(stopAll, (songDurationSecs + 3) * 1000); // Add buffer for release tails
+
+            } catch (e) {
+                logger.error(e.message);
+                stopAll();
+            }
+        });
+
+    </script>
+</body>
+</html>
