@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Graceland Audio Language Prototype</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/split.js/dist/split.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Righteous&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -12,17 +13,25 @@
         body {
             font-family: 'Roboto Mono', monospace;
             background-color: #111827; /* bg-gray-900 */
+            overflow: hidden; /* Prevent body scrollbars */
         }
         .title-font {
             font-family: 'Righteous', cursive;
+        }
+        .editor-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            padding: 0 0.5rem;
         }
         .editor {
             background-color: #1F2937; /* bg-gray-800 */
             border-color: #374151; /* border-gray-700 */
             color: #F3F4F6; /* text-gray-100 */
             font-family: 'Roboto Mono', monospace;
-            min-height: 450px;
             border-width: 1px;
+            flex-grow: 1; /* Make textarea fill available space */
+            resize: none;
         }
         .elvis-text { color: #FBBF24; /* amber-400 */ }
         .tcb-text { color: #3B82F6; /* blue-500 */ }
@@ -32,7 +41,7 @@
             background-color: #000;
             color: #00ff00;
             font-family: 'Roboto Mono', monospace;
-            height: 200px;
+            height: 150px; /* Reduced height */
             overflow-y: auto;
             border: 1px solid #374151; /* gray-700 */
             padding: 1rem;
@@ -44,13 +53,24 @@
         #run-button.playing:hover {
             background-color: #B91C1C; /* red-700 */
         }
+        .gutter {
+            background-color: #4B5563; /* gray-600 */
+        }
+        .gutter.gutter-horizontal {
+            cursor: col-resize;
+        }
+        .split-container {
+            display: flex;
+            flex-direction: row;
+            height: calc(100vh - 180px); /* Adjust height based on controls/log */
+        }
     </style>
 </head>
 <body class="text-white p-4">
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+    <div id="split-container" class="split-container mb-4">
         <!-- Elvis Window -->
-        <div>
+        <div id="elvis-column" class="editor-container">
             <h2 class="title-font text-xl elvis-text mb-2">Elvis</h2>
             <textarea id="elvis-code" class="w-full p-3 rounded-md editor" spellcheck="false">// Aphex Twin Example Track
 instrument "Acid Bass" {
@@ -101,7 +121,7 @@ instrument "Warped Piano" {
         </div>
 
         <!-- TCB Window -->
-        <div>
+        <div id="tcb-column" class="editor-container">
             <h2 class="title-font text-xl tcb-text mb-2">TCB</h2>
             <textarea id="tcb-code" class="w-full p-3 rounded-md editor" spellcheck="false">// Create musical sequences for your instruments.
 
@@ -199,7 +219,7 @@ sequence "Sad Melody B" for "Warped Piano" {
         </div>
 
         <!-- The Colonel Window -->
-        <div>
+        <div id="colonel-column" class="editor-container">
             <h2 class="title-font text-xl colonel-text mb-2">The Colonel</h2>
             <textarea id="colonel-code" class="w-full p-3 rounded-md editor" spellcheck="false">// Arrange your sequences into a final song.
 
@@ -236,7 +256,7 @@ song "Gristle" {
         </div>
     </div>
 
-    <div class="text-center my-4">
+    <div class="text-center my-2">
         <button id="run-button" class="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-6 rounded-lg text-lg transition-all duration-300">
             Play Song
         </button>
@@ -247,6 +267,14 @@ song "Gristle" {
     </div>
 
     <script>
+        // --- Initialize Split Panes ---
+        Split(['#elvis-column', '#tcb-column', '#colonel-column'], {
+            sizes: [33.3, 33.3, 33.3],
+            gutterSize: 8,
+            minSize: 250,
+            cursor: 'col-resize',
+        });
+
         // --- Graceland Web Audio Interpreter ---
         const elvisCode = document.getElementById('elvis-code');
         const tcbCode = document.getElementById('tcb-code');
