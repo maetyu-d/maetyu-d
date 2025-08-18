@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Waltz Grid Synthesizer (Triple Ring)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Major+Mono+Display&family=Roboto+Mono:wght@400;700&display=swap');
+        body {
+            font-family: 'Roboto-Mono', monospace;
+            overscroll-behavior: none;
+            overflow: hidden;
+        }
+        .title-font {
+            font-family: 'Major-Mono-Display', monospace;
+        }
+        #synth-container svg {
+            width: 100%;
+            height: 100%;
+        }
+        .control-hub {
+            transition: all 0.2s ease-in-out;
+        }
+        .control-hub:hover {
+            transform: scale(1.05);
+        }
+        .toggle-cell {
+            cursor: pointer;
+            transition: all 0.1s ease-in-out;
+        }
+        .toggle-cell:hover {
+            stroke: white;
+            stroke-width: 2px;
+        }
+        .playhead {
+            transition: transform 0.05s linear;
+        }
+        .tempo-pulse {
+            animation: pulse 0.5s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 0.7; }
+            50% { transform: scale(1.05); opacity: 1; }
+            100% { transform: scale(1); opacity: 0.7; }
+        }
+        .op-btn.active {
+            background-color: #ec4899; /* pink-500 */
+            color: white;
+        }
+        .snake-head {
+            transition: all 0.2s ease-out;
+        }
+        input[type=range]:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 flex flex-col items-center justify-center min-h-screen p-4 antialiased">
+
+    <div class="w-full max-w-2xl mx-auto text-center mb-1">
+        <h1 class="title-font text-3xl md:text-5xl font-bold text-white">RadialSynth III</h1>
+        <p class="text-gray-400 text-sm sm:text-base">A Generative Triple-Ring Matrix</p>
+    </div>
+
+    <!-- Controls -->
+    <div class="bg-gray-800 p-2 rounded-lg shadow-lg mb-1 flex flex-col gap-2">
+        <div class="flex items-center justify-center gap-4">
+            <button id="random-btn" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg transition-all duration-200 shadow-md text-sm">
+                Randomize
+            </button>
+            <div class="flex items-center gap-2">
+                <label for="density-slider" class="font-medium text-sm">Density</label>
+                <input type="range" id="density-slider" min="0" max="1" value="0.3" step="0.01" class="w-24">
+            </div>
+            <div class="flex items-center gap-2">
+                <label for="tempo-slider" class="font-medium text-sm">Tempo</label>
+                <input type="range" id="tempo-slider" min="60" max="180" value="120" class="w-24">
+            </div>
+        </div>
+        <div class="flex items-center justify-center gap-2">
+             <button id="snake-a-btn" class="op-btn bg-sky-600 hover:bg-sky-700 text-white font-bold py-1 px-3 rounded-lg transition-all duration-200 text-xs">Snake A</button>
+             <button id="snake-b-btn" class="op-btn bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-bold py-1 px-3 rounded-lg transition-all duration-200 text-xs">Snake B</button>
+             <button id="gate-majority-btn" class="op-btn bg-gray-600 hover:bg-gray-700 text-white font-bold py-1 px-3 rounded-lg transition-all duration-200 text-xs">Gate Majority</button>
+             <button id="snake-transfer-btn" class="op-btn bg-gray-600 hover:bg-gray-700 text-white font-bold py-1 px-3 rounded-lg transition-all duration-200 text-xs">Snake Transfer</button>
+             <button id="density-tempo-btn" class="op-btn bg-gray-600 hover:bg-gray-700 text-white font-bold py-1 px-3 rounded-lg transition-all duration-200 text-xs">Density &gt; Tempo</button>
+        </div>
+    </div>
+
+    <div id="synth-container" class="w-[90vw] h-[90vw] sm:w-[80vh] sm:h-[80vh] max-w-[800px] max-h-[800px] relative">
+        <!-- SVG interface will be generated here -->
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const container = document.getElementById('synth-container');
+        const randomBtn = document.getElementById('random-btn');
+        const densitySlider = document.getElementById('density-slider');
+        const tempoSlider = document.getElementById('tempo-slider');
+        const gateMajorityBtn = document.getElementById('gate-majority-btn');
+        const snakeABtn = document.getElementById('snake-a-btn');
+        const snakeBBtn = document.getElementById('snake-b-btn');
+        const snakeTransferBtn = document.getElementById('snake-transfer-btn');
+        const densityTempoBtn = document.getElementById('density-tempo-btn');
+        const SVG_NS = "http://www.w3.org/2000/svg";
+
+        // --- Grid Configuration ---
+        const ROWS_PER_PATTERN = 16;
+        const NUM_PATTERNS = 3;
+        const TOTAL_ROWS = ROWS_PER_PATTERN * NUM_PATTERNS;
+        const COLS = 32;
+        const gridState = Array(TOTAL_ROWS).fill(null).map(() => Array(COLS).fill(false));
+        const cellElements = Array(TOTAL_ROWS).fill(null).map(() => Array(COLS).fill(null));
+
+        // --- Operation States ---
+        let isGateMajorityActive = false;
+        let isSnakeAActive = true;
+        let isSnakeBActive = true;
+        let isSnakeTransferActive = false;
+        let isDensityTempoActive = false;
+
+        // --- Audio Engine (Tone.js) ---
+        let synths = {};
+        let isPlaying = false;
+        let sequence;
+        let tempoDisplay;
+
+        const createSynth = () => {
+            const pitchShift = new Tone.PitchShift({ pitch: 7, wet: 0.3, windowSize: 0.1 }).toDestination();
+            const feedbackDelay = new Tone.FeedbackDelay("8n", 0.4).connect(pitchShift);
+            const synth = new Tone.Synth({
+                oscillator: { type: 'sine' },
+                envelope: { attack: 0.1, decay: 0.5, sustain: 0.4, release: 2 }
+            }).connect(feedbackDelay);
+            return { synth };
+        };
+        synths.A = createSynth();
+        synths.B = createSynth();
+        synths.C = createSynth();
+        
+        // --- Core Sequencer Logic ---
+        const scale = [11, 9, 8, 6, 4, 3, 1]; 
+        const notes = ["B", "A#", "A", "G#", "G", "F#", "F", "E", "D#", "D", "C#", "C"];
+
+        sequence = new Tone.Sequence((time, step) => {
+            processStep(step, 'A', time);
+            processStep(step, 'B', time);
+            processStep(step, 'C', time);
+
+            Tone.Draw.schedule(() => {
+                const angle = (step / COLS) * 360 - 90;
+                playhead.setAttribute('transform', `rotate(${angle})`);
+            }, time);
+        }, Array.from(Array(COLS).keys()), '16n');
+
+
+        function processStep(col, patternId, time) {
+            const { synth } = synths[patternId];
+            const patternIndex = patternId.charCodeAt(0) - 65; // A=0, B=1, C=2
+            const baseRow = patternIndex * ROWS_PER_PATTERN;
+            
+            let triggerGate = gridState[baseRow + 12][col];
+
+            if (isGateMajorityActive) {
+                const gateA = gridState[12][col];
+                const gateB = gridState[ROWS_PER_PATTERN + 12][col];
+                const gateC = gridState[ROWS_PER_PATTERN * 2 + 12][col];
+                const gateSum = (gateA ? 1 : 0) + (gateB ? 1 : 0) + (gateC ? 1 : 0);
+                triggerGate = gateSum >= 2;
+            }
+
+            if (triggerGate) {
+                let noteToPlay = null;
+                for (let i = 0; i < 12; i++) {
+                    if (gridState[baseRow + i][col]) { noteToPlay = notes[i] + '4'; break; }
+                }
+                if (noteToPlay) {
+                    const accent = ((gridState[baseRow+13][col]?4:0) + (gridState[baseRow+14][col]?2:0) + (gridState[baseRow+15][col]?1:0)) / 7.0;
+                    const velocity = 0.2 + accent * 0.8;
+                    synth.triggerAttackRelease(noteToPlay, "16t", time, velocity);
+                }
+            }
+        }
+        
+        // --- Snake Logic ---
+        const snakes = {
+            A: { x: 0, y: 0, el: null, color: '#38bdf8', copiedPitchRow: null, copiedFromPattern: null },
+            B: { x: 15, y: 0, el: null, color: '#f472b6', copiedPitchRow: null, copiedFromPattern: null }
+        };
+
+        setInterval(() => {
+            if (!isPlaying) return;
+            if (isSnakeAActive) updateSnake('A');
+            if (isSnakeBActive) updateSnake('B');
+            if (isDensityTempoActive) updateTempoFromDensity();
+        }, 200);
+
+        function updateSnake(snakeId) {
+            const snake = snakes[snakeId];
+            
+            snake.x = (snake.x + 1) % COLS;
+            const currentPatternIndex = Math.floor(snake.y / ROWS_PER_PATTERN);
+            let newPatternIndex = currentPatternIndex;
+            while (newPatternIndex === currentPatternIndex) {
+                newPatternIndex = Math.floor(Math.random() * NUM_PATTERNS);
+            }
+            const newRowInPattern = Math.floor(Math.random() * ROWS_PER_PATTERN);
+            snake.y = newPatternIndex * ROWS_PER_PATTERN + newRowInPattern;
+
+            if (gridState[snake.y][snake.x]) {
+                const touchedRow = snake.y;
+                const touchedCol = snake.x;
+                const patternIndex = Math.floor(touchedRow / ROWS_PER_PATTERN);
+                const rowInPattern = touchedRow % ROWS_PER_PATTERN;
+
+                if (rowInPattern < 12) { // Is a pitch cell
+                    if (isSnakeTransferActive) {
+                        if (snake.copiedPitchRow !== null && snake.copiedFromPattern !== patternIndex) {
+                            gridState[touchedRow][touchedCol] = false;
+                            gridState[patternIndex * ROWS_PER_PATTERN + snake.copiedPitchRow][touchedCol] = true;
+                        }
+                        snake.copiedPitchRow = rowInPattern;
+                        snake.copiedFromPattern = patternIndex;
+                        snake.el.setAttribute('stroke-width', 3.5);
+                    } else {
+                        gridState[touchedRow][touchedCol] = false;
+                        const baseRow = patternIndex * ROWS_PER_PATTERN;
+                        const randomNoteIndexInScale = Math.floor(Math.random() * scale.length);
+                        const newPitchRowInPattern = scale[randomNoteIndexInScale];
+                        gridState[baseRow + newPitchRowInPattern][touchedCol] = true;
+                    }
+                    updateGridGUI();
+                }
+            } else if (isSnakeTransferActive) {
+                 snake.copiedPitchRow = null;
+                 snake.copiedFromPattern = null;
+                 snake.el.setAttribute('stroke-width', 2);
+            }
+            
+            const cell = cellElements[snake.y][snake.x];
+            if (cell) {
+                const pos = cell.pos;
+                snake.el.setAttribute('cx', pos.x);
+                snake.el.setAttribute('cy', pos.y);
+            }
+        }
+
+        // --- Density to Tempo Logic ---
+        function updateTempoFromDensity() {
+            const baseRow = ROWS_PER_PATTERN * 2; // Pattern C
+            let densityCount = 0;
+            for (let c = 0; c < COLS; c++) {
+                if (gridState[baseRow + 12][c]) {
+                    densityCount++;
+                }
+            }
+            const density = densityCount / COLS;
+            const minTempo = 60;
+            const maxTempo = 180;
+            const newTempo = maxTempo - (density * (maxTempo - minTempo));
+            Tone.Transport.bpm.value = newTempo;
+            if (tempoDisplay) {
+                tempoDisplay.textContent = Math.round(newTempo);
+            }
+        }
+
+        // --- GUI Generation ---
+        const svg = document.createElementNS(SVG_NS, 'svg');
+        svg.setAttribute('viewBox', '-120 -120 240 240');
+        container.appendChild(svg);
+        
+        const defs = document.createElementNS(SVG_NS, 'defs');
+        const filter = document.createElementNS(SVG_NS, 'filter');
+        filter.setAttribute('id', 'glow');
+        const feGaussianBlur = document.createElementNS(SVG_NS, 'feGaussianBlur');
+        feGaussianBlur.setAttribute('stdDeviation', '2.5');
+        feGaussianBlur.setAttribute('result', 'coloredBlur');
+        const feMerge = document.createElementNS(SVG_NS, 'feMerge');
+        const feMergeNode1 = document.createElementNS(SVG_NS, 'feMergeNode');
+        feMergeNode1.setAttribute('in', 'coloredBlur');
+        const feMergeNode2 = document.createElementNS(SVG_NS, 'feMergeNode');
+        feMergeNode2.setAttribute('in', 'SourceGraphic');
+        feMerge.appendChild(feMergeNode1);
+        feMerge.appendChild(feMergeNode2);
+        filter.appendChild(feGaussianBlur);
+        filter.appendChild(feMerge);
+        defs.appendChild(filter);
+        svg.appendChild(defs);
+
+        const mainGroup = document.createElementNS(SVG_NS, 'g');
+        svg.appendChild(mainGroup);
+
+        const patternConfig = [
+            { id: 'A', baseRadius: 50, color: '#38bdf8' },
+            { id: 'B', baseRadius: 80, color: '#f472b6' },
+            { id: 'C', baseRadius: 110, color: '#34d399' }
+        ];
+        const rowConfig = [
+            { rows: 12, name: 'Pitch', size: 1.8 },
+            { rows: 1, name: 'Gate', size: 3.5 },
+            { rows: 3, name: 'Accent', size: 2.2 }
+        ];
+
+        patternConfig.forEach((pConfig, pIndex) => {
+            let currentRadius = pConfig.baseRadius;
+            let currentRow = 0;
+            const baseRowOffset = pIndex * ROWS_PER_PATTERN;
+
+            rowConfig.forEach(rConfig => {
+                for (let r = 0; r < rConfig.rows; r++) {
+                    const radius = currentRadius - r * (rConfig.size * 1.2);
+                    for (let c = 0; c < COLS; c++) {
+                        const angle = (c / COLS) * 2 * Math.PI - Math.PI / 2;
+                        const x = Math.cos(angle) * radius;
+                        const y = Math.sin(angle) * radius;
+                        const cell = document.createElementNS(SVG_NS, 'rect');
+                        cell.setAttribute('x', x - rConfig.size / 2); cell.setAttribute('y', y - rConfig.size / 2);
+                        cell.setAttribute('width', rConfig.size); cell.setAttribute('height', rConfig.size);
+                        cell.setAttribute('fill', 'rgba(255,255,255,0.1)'); cell.setAttribute('stroke', 'rgba(0,0,0,0.2)');
+                        cell.setAttribute('rx', 0.5); cell.classList.add('toggle-cell');
+                        
+                        const cellRow = baseRowOffset + currentRow + r;
+                        cellElements[cellRow][c] = { element: cell, color: pConfig.color, pos: {x: x, y: y} };
+                        cell.addEventListener('click', () => {
+                            gridState[cellRow][c] = !gridState[cellRow][c];
+                            cell.setAttribute('fill', gridState[cellRow][c] ? pConfig.color : 'rgba(255,255,255,0.1)');
+                        });
+                        mainGroup.appendChild(cell);
+                    }
+                }
+                currentRadius -= rConfig.rows * (rConfig.size * 1.2) + 2;
+                currentRow += rConfig.rows;
+            });
+        });
+
+        // --- Central Hub & Controls ---
+        const hubGroup = document.createElementNS(SVG_NS, 'g');
+        hubGroup.classList.add('control-hub'); svg.appendChild(hubGroup);
+        const hubBg = document.createElementNS(SVG_NS, 'circle');
+        hubBg.setAttribute('cx', 0); hubBg.setAttribute('cy', 0); hubBg.setAttribute('r', 15);
+        hubBg.setAttribute('fill', '#1f2937'); hubGroup.appendChild(hubBg);
+        const startStopText = document.createElementNS(SVG_NS, 'text');
+        startStopText.setAttribute('x', 0); startStopText.setAttribute('y', -1); startStopText.setAttribute('fill', '#34d399');
+        startStopText.setAttribute('font-size', '6px'); startStopText.setAttribute('text-anchor', 'middle');
+        startStopText.setAttribute('font-weight', 'bold'); startStopText.textContent = 'Start';
+        hubGroup.appendChild(startStopText);
+        
+        tempoDisplay = document.createElementNS(SVG_NS, 'text');
+        tempoDisplay.setAttribute('x', 0); tempoDisplay.setAttribute('y', 5); tempoDisplay.setAttribute('fill', 'white');
+        tempoDisplay.setAttribute('font-size', '4px'); tempoDisplay.setAttribute('text-anchor', 'middle');
+        tempoDisplay.textContent = '120';
+        hubGroup.appendChild(tempoDisplay);
+        
+        hubGroup.style.cursor = 'pointer';
+        hubGroup.addEventListener('click', async () => {
+            await Tone.start(); isPlaying = !isPlaying;
+            if (isPlaying) {
+                if(!isDensityTempoActive) Tone.Transport.bpm.value = tempoSlider.value;
+                Tone.Transport.start(); sequence.start(0);
+                startStopText.textContent = 'Stop'; startStopText.setAttribute('fill', '#ef4444');
+                hubBg.classList.add('tempo-pulse'); hubBg.style.animationDuration = `${60 / Tone.Transport.bpm.value}s`;
+            } else {
+                Tone.Transport.stop(); sequence.stop(); startStopText.textContent = 'Start';
+                startStopText.setAttribute('fill', '#34d399'); playhead.setAttribute('transform', 'rotate(-90)');
+                hubBg.classList.remove('tempo-pulse');
+            }
+        });
+
+        // --- Playhead ---
+        const playhead = document.createElementNS(SVG_NS, 'line');
+        playhead.setAttribute('x1', 0); playhead.setAttribute('y1', 0); playhead.setAttribute('x2', 0);
+        playhead.setAttribute('y2', -115); playhead.setAttribute('stroke', 'rgba(255,255,255,0.5)');
+        playhead.setAttribute('stroke-width', '1');
+        playhead.setAttribute('transform', 'rotate(-90)');
+        playhead.classList.add('playhead'); svg.insertBefore(playhead, mainGroup);
+
+        // --- Snake GUI ---
+        Object.keys(snakes).forEach(id => {
+            const snake = snakes[id];
+            const el = document.createElementNS(SVG_NS, 'circle');
+            el.setAttribute('r', 4);
+            el.setAttribute('fill', snake.color + '80');
+            el.setAttribute('stroke', snake.color);
+            el.setAttribute('stroke-width', 2);
+            el.setAttribute('filter', 'url(#glow)');
+            el.classList.add('snake-head');
+            snake.el = el;
+            svg.appendChild(el);
+        });
+
+        // --- Initial Control State Setup ---
+        function setInitialControlStates() {
+            snakeABtn.classList.toggle('active', isSnakeAActive);
+            snakes.A.el.style.visibility = isSnakeAActive ? 'visible' : 'hidden';
+            snakeBBtn.classList.toggle('active', isSnakeBActive);
+            snakes.B.el.style.visibility = isSnakeBActive ? 'visible' : 'hidden';
+            gateMajorityBtn.classList.toggle('active', isGateMajorityActive);
+            snakeTransferBtn.classList.toggle('active', isSnakeTransferActive);
+            densityTempoBtn.classList.toggle('active', isDensityTempoActive);
+        }
+        
+        setInitialControlStates();
+
+        // --- Control Logic ---
+        function randomizeGrid() {
+            const density = parseFloat(densitySlider.value);
+            for (let r = 0; r < TOTAL_ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    gridState[r][c] = false;
+                }
+            }
+            for (let c = 0; c < COLS; c++) {
+                for (let p = 0; p < NUM_PATTERNS; p++) {
+                    if (Math.random() < density) {
+                        const baseRow = p * ROWS_PER_PATTERN;
+                        const randomNoteIndex = Math.floor(Math.random() * scale.length);
+                        gridState[baseRow + scale[randomNoteIndex]][c] = true;
+                        gridState[baseRow + 12][c] = true;
+                    }
+                }
+            }
+            isGateMajorityActive = Math.random() < 0.5;
+            isSnakeTransferActive = Math.random() < 0.5;
+            isDensityTempoActive = Math.random() < 0.5;
+            setInitialControlStates();
+            updateGridGUI();
+        }
+
+        function updateGridGUI() {
+            for (let r = 0; r < TOTAL_ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    const cell = cellElements[r][c];
+                    if (cell) cell.element.setAttribute('fill', gridState[r][c] ? cell.color : 'rgba(255,255,255,0.1)');
+                }
+            }
+        }
+        
+        randomBtn.addEventListener('click', randomizeGrid);
+        gateMajorityBtn.addEventListener('click', () => { isGateMajorityActive = !isGateMajorityActive; gateMajorityBtn.classList.toggle('active'); });
+        snakeABtn.addEventListener('click', () => { 
+            isSnakeAActive = !isSnakeAActive; 
+            snakeABtn.classList.toggle('active');
+            snakes.A.el.style.visibility = isSnakeAActive ? 'visible' : 'hidden';
+        });
+        snakeBBtn.addEventListener('click', () => { 
+            isSnakeBActive = !isSnakeBActive; 
+            snakeBBtn.classList.toggle('active');
+            snakes.B.el.style.visibility = isSnakeBActive ? 'visible' : 'hidden';
+        });
+        snakeTransferBtn.addEventListener('click', () => { 
+            isSnakeTransferActive = !isSnakeTransferActive; 
+            snakeTransferBtn.classList.toggle('active');
+            snakes.A.copiedPitchRow = null;
+            snakes.B.copiedPitchRow = null;
+            snakes.A.el.setAttribute('stroke-width', 2);
+            snakes.B.el.setAttribute('stroke-width', 2);
+        });
+        densityTempoBtn.addEventListener('click', () => { 
+            isDensityTempoActive = !isDensityTempoActive; 
+            densityTempoBtn.classList.toggle('active');
+            tempoSlider.disabled = isDensityTempoActive;
+            if (!isDensityTempoActive) {
+                Tone.Transport.bpm.value = tempoSlider.value;
+                tempoDisplay.textContent = tempoSlider.value;
+            }
+        });
+        tempoSlider.addEventListener('input', (e) => {
+            if (!isDensityTempoActive) {
+                const newTempo = e.target.value;
+                Tone.Transport.bpm.value = newTempo;
+                tempoDisplay.textContent = newTempo;
+            }
+        });
+    });
+    </script>
+</body>
+</html>
