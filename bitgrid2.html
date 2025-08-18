@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitgrid Synthesizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <style>
+        :root {
+            --bg-color: #111827;
+            --cell-off-color: #374151;
+            --cell-on-color: #0ea5e9;
+            --playhead-color: rgba(255, 255, 255, 0.2);
+            --note-track-bg: #1f2937;
+            --mod-track-bg: #312e81;
+            --param-waveform-bg: rgba(74, 222, 128, 0.1);
+            --param-length-bg: rgba(251, 191, 36, 0.1);
+            --header-bg: #4b5563;
+            --header-text: #e5e7eb;
+            font-family: 'Inter', sans-serif;
+        }
+        body {
+            background-color: var(--bg-color);
+            color: #f3f4f6;
+            overscroll-behavior: none;
+        }
+        /* Custom scrollbar for a more fitting aesthetic */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+
+        #grid-container {
+            touch-action: none; /* Prevent scrolling on mobile while drawing */
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(33, 1fr); /* 1 for header + 32 for cells */
+            grid-template-rows: repeat(33, 1fr); /* 1 for header + 32 for cells */
+            gap: 2px;
+            position: relative;
+            aspect-ratio: 1 / 1;
+        }
+        
+        /* Playhead visualization */
+        .playhead {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: calc(100% / 33); /* Width of one cell */
+            background-color: var(--playhead-color);
+            left: calc(var(--playhead-col, 0) * (100% / 33));
+            transition: left 0.05s linear;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .header {
+            background-color: var(--header-bg);
+            color: var(--header-text);
+            font-size: 0.6rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 2px;
+        }
+
+        .cell {
+            background-color: var(--cell-off-color);
+            border-radius: 2px;
+            cursor: pointer;
+            transition: background-color 0.1s ease, transform 0.1s ease;
+            position: relative;
+        }
+        .cell:hover {
+            transform: scale(1.1);
+            z-index: 20;
+        }
+        .cell.on {
+            background-color: var(--cell-on-color);
+            box-shadow: 0 0 8px var(--cell-on-color);
+        }
+        .cell.triggered {
+            animation: pulse 0.2s 1;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.3); }
+            100% { transform: scale(1); }
+        }
+
+        /* Visual hints for parameter columns */
+        .cell[data-col='0'], .cell[data-col='1'], .cell[data-col='2'] { background-color: var(--param-waveform-bg); }
+        .cell[data-col='0'].on, .cell[data-col='1'].on, .cell[data-col='2'].on { background-color: #22c55e; box-shadow: 0 0 8px #22c55e; }
+        
+        .cell[data-col='27'], .cell[data-col='28'], .cell[data-col='29'], .cell[data-col='30'], .cell[data-col='31'] {
+            background-color: var(--param-length-bg);
+        }
+        .cell[data-col='27'].on, .cell[data-col='28'].on, .cell[data-col='29'].on, .cell[data-col='30'].on, .cell[data-col='31'].on {
+            background-color: #f59e0b; box-shadow: 0 0 8px #f59e0b;
+        }
+
+        /* Distinguish Modulator tracks */
+        .row-header.mod-track { background-color: var(--mod-track-bg); }
+        .cell.mod-track { background-color: #4338ca; }
+        .cell.mod-track.on { background-color: #a5b4fc; box-shadow: 0 0 8px #a5b4fc; }
+
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-900 text-gray-100 flex flex-col items-center justify-center min-h-screen p-4 antialiased">
+
+    <div class="w-full max-w-4xl mx-auto">
+        <header class="text-center mb-4">
+            <h1 class="text-3xl font-bold text-sky-400" style="font-family: 'Roboto Mono', monospace;">Bitgrid</h1>
+            <p class="text-gray-400">A 32x32 cellular automaton for audio synthesis.</p>
+        </header>
+
+        <div id="controls" class="flex flex-wrap items-center justify-center gap-4 mb-4 p-4 bg-gray-800 rounded-lg shadow-lg">
+            <button id="play-button" class="px-6 py-2 bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-md transition-all duration-200 shadow-md w-24">
+                Play
+            </button>
+            <div class="flex items-center space-x-2">
+                <label for="bpm-slider" class="text-sm font-medium">BPM</label>
+                <input type="range" id="bpm-slider" min="30" max="240" value="120" class="w-32 md:w-48">
+                <span id="bpm-display" class="text-sm font-mono bg-gray-700 px-2 py-1 rounded-md">120</span>
+            </div>
+             <button id="clear-button" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-md transition-all duration-200 shadow-md">
+                Clear
+            </button>
+            <button id="random-button" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-md transition-all duration-200 shadow-md">
+                Random
+            </button>
+            <button id="help-button" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-md transition-all duration-200 shadow-md">
+                Help
+            </button>
+        </div>
+
+        <div id="grid-container" class="w-full max-w-2xl mx-auto">
+            <div class="grid">
+                <div class="playhead"></div>
+                <!-- Grid will be populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+    
+    <!-- Help Modal -->
+    <div id="help-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-gray-800 rounded-lg shadow-2xl p-6 max-w-3xl w-full text-gray-300 border border-gray-700 overflow-y-auto max-h-full">
+            <h2 class="text-2xl font-bold mb-4 text-sky-400">How Bitgrid Works</h2>
+            <div class="space-y-4 text-sm">
+                <p>Bitgrid is a sequencer where the grid itself is the program. The playhead sweeps from left to right, and active switches trigger events. Some switches define behavior, while others trigger actions.</p>
+                
+                <div>
+                    <h3 class="font-semibold text-lg text-white mb-2">Note Track Parameters</h3>
+                    <p>Parameters for a note track are set by switches in its own row:</p>
+                    <ul class="list-disc list-inside space-y-1">
+                        <li><strong class="text-green-400">Cols 0-2 (Synth Type):</strong> These three switches select the synthesis engine for the track. The options are Sine, Triangle, Saw, Square, FM, AM, Pluck, and Membrane (drum).</li>
+                        <li><strong class="text-yellow-400">Cols 27-31 (Pattern Length):</strong> These five switches set the length of the pattern for this row (1-32 steps).</li>
+                        <li><strong>Cols 3-26 (Triggers):</strong> An active switch in this range will play a note on that beat.</li>
+                    </ul>
+                </div>
+
+                 <div>
+                    <h3 class="font-semibold text-lg text-white mb-2">Modulator Tracks (Rows 24-31)</h3>
+                    <p>An active switch in a modulator track performs an action on a target track. The target is determined by the <span class="italic">total number of active switches</span> in the modulator's row.</p>
+                    <ul class="list-disc list-inside space-y-2">
+                        <li><strong>Row 24 (Length Mod):</strong> Modulates the <strong class="text-yellow-400">Length</strong> of its target note track.</li>
+                        <li><strong>Row 25 (Random Synth Mod):</strong> Sets the <strong class="text-green-400">Synth Type</strong> of its target note track to a new, random type.</li>
+                        <li><strong>Row 26 (Pattern Copy):</strong> <strong class="text-sky-400">Copies its own pattern</strong> to the trigger section of its target note track.</li>
+                        <li><strong>Row 27 (Pitch Offset):</strong> Adds a pitch offset to its target note track for one step.</li>
+                        <li><strong>Row 28 (Horizontal Flip):</strong> Flips the trigger pattern of its target note track horizontally.</li>
+                        <li><strong>Row 29 (Rotate Pattern):</strong> Rotates the trigger pattern of its target note track one step to the right.</li>
+                        <li><strong>Row 30 (Modulator Copy):</strong> Copies its own pattern to another <strong class="text-indigo-400">Modulator Track</strong>.</li>
+                        <li><strong>Row 31 (Note-to-Mod Feedback):</strong> If a note plays, this modulator flips the corresponding switch on a target <strong class="text-indigo-400">Modulator Track</strong>.</li>
+                    </ul>
+                </div>
+            </div>
+            <button id="close-help" class="mt-6 w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded">Got It</button>
+        </div>
+    </div>
+
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- CONSTANTS AND CONFIGURATION ---
+            const GRID_SIZE = 32;
+            const NOTE_TRACKS = 24;
+            const MOD_TRACKS = 8;
+            const PENTATONIC_SCALE = ['C', 'D#', 'F', 'G', 'A#'];
+            
+            // Expanded synthesis options
+            const SYNTH_CONFIGS = [
+                { name: 'Sine', type: Tone.Synth, options: { oscillator: { type: 'sine' } } },
+                { name: 'Triangle', type: Tone.Synth, options: { oscillator: { type: 'triangle' } } },
+                { name: 'Sawtooth', type: Tone.Synth, options: { oscillator: { type: 'sawtooth' } } },
+                { name: 'Square', type: Tone.Synth, options: { oscillator: { type: 'square' } } },
+                { name: 'FM', type: Tone.FMSynth, options: { harmonicity: 1.5, modulationIndex: 5 } },
+                { name: 'AM', type: Tone.AMSynth, options: { harmonicity: 2 } },
+                { name: 'Pluck', type: Tone.PluckSynth, options: { attackNoise: 0.5, dampening: 4000 } },
+                { name: 'Membrane', type: Tone.MembraneSynth, options: { pitchDecay: 0.05, octaves: 10 } }
+            ];
+            const SYNTH_TYPE_BITS = 3; // 2^3 = 8 options
+
+            // --- STATE MANAGEMENT ---
+            let gridState = Array(GRID_SIZE).fill(0).map(() => Array(GRID_SIZE).fill(false));
+            let trackSynths = []; // Will hold all synth instances for all tracks
+            let isPlaying = false;
+            let currentStep = 0;
+            let isMouseDown = false;
+            let lastToggledCell = null;
+
+            // --- DOM ELEMENTS ---
+            const gridContainer = document.querySelector('.grid');
+            const playButton = document.getElementById('play-button');
+            const bpmSlider = document.getElementById('bpm-slider');
+            const bpmDisplay = document.getElementById('bpm-display');
+            const clearButton = document.getElementById('clear-button');
+            const randomButton = document.getElementById('random-button');
+            const helpButton = document.getElementById('help-button');
+            const helpModal = document.getElementById('help-modal');
+            const closeHelpButton = document.getElementById('close-help');
+
+            // --- AUDIO INITIALIZATION ---
+            function setupAudio() {
+                const limiter = new Tone.Limiter(-6).toDestination();
+                trackSynths = [];
+                for (let i = 0; i < NOTE_TRACKS; i++) {
+                    const synthsForTrack = {};
+                    SYNTH_CONFIGS.forEach(config => {
+                        const synth = new config.type(config.options).connect(limiter);
+                        synthsForTrack[config.name] = synth;
+                    });
+                    trackSynths.push(synthsForTrack);
+                }
+            }
+
+            // --- GRID UI & INTERACTION ---
+            function createGridUI() {
+                gridContainer.innerHTML = '<div class="playhead"></div>';
+                gridContainer.appendChild(document.createElement('div'));
+                for (let i = 0; i < GRID_SIZE; i++) {
+                    const header = document.createElement('div');
+                    header.classList.add('header', 'col-header'); header.textContent = i;
+                    gridContainer.appendChild(header);
+                }
+                for (let row = 0; row < GRID_SIZE; row++) {
+                    const rowHeader = document.createElement('div');
+                    rowHeader.classList.add('header', 'row-header'); rowHeader.textContent = row;
+                    if (row >= NOTE_TRACKS) rowHeader.classList.add('mod-track');
+                    gridContainer.appendChild(rowHeader);
+                    for (let col = 0; col < GRID_SIZE; col++) {
+                        const cell = document.createElement('div');
+                        cell.classList.add('cell');
+                        cell.dataset.row = row; cell.dataset.col = col;
+                        if (row >= NOTE_TRACKS) cell.classList.add('mod-track');
+                        gridContainer.appendChild(cell);
+                    }
+                }
+                updateGridUI();
+            }
+            
+            function updateGridUI() {
+                for (let row = 0; row < GRID_SIZE; row++) {
+                    for (let col = 0; col < GRID_SIZE; col++) {
+                        const cell = gridContainer.querySelector(`.cell[data-row='${row}'][data-col='${col}']`);
+                        if (cell) cell.classList.toggle('on', gridState[row][col]);
+                    }
+                }
+            }
+            
+            function toggleCell(cellElement, forceState) {
+                if (!cellElement) return;
+                const row = parseInt(cellElement.dataset.row), col = parseInt(cellElement.dataset.col);
+                const newState = forceState !== undefined ? forceState : !gridState[row][col];
+                if (gridState[row][col] !== newState) {
+                    gridState[row][col] = newState;
+                    cellElement.classList.toggle('on', newState);
+                }
+            }
+            
+            // --- HELPER FUNCTIONS ---
+            const bitsToNum = (bits) => bits.reduce((acc, bit, i) => acc + (bit ? 1 << (bits.length - 1 - i) : 0), 0);
+            const numToBits = (num, bitCount) => Array.from({ length: bitCount }, (_, i) => (num >> (bitCount - 1 - i)) & 1 === 1);
+            const countActive = (arr) => arr.filter(Boolean).length;
+            const getPitch = (trackIndex) => `${PENTATONIC_SCALE[trackIndex % PENTATONIC_SCALE.length]}${Math.floor(trackIndex / PENTATONIC_SCALE.length) + 2}`;
+            
+            function randomizeGrid() {
+                for (let row = 0; row < GRID_SIZE; row++) {
+                    for (let col = 0; col < GRID_SIZE; col++) {
+                        gridState[row][col] = Math.random() > 0.85;
+                    }
+                }
+            }
+
+            // --- SEQUENCER LOGIC ---
+            const loop = new Tone.Loop(time => {
+                // 1. FEEDBACK PHASE (Note -> Mod)
+                if (gridState[31][currentStep]) {
+                    for (let noteRow = 0; noteRow < NOTE_TRACKS; noteRow++) {
+                        if (gridState[noteRow][currentStep]) {
+                            const targetModTrack = (noteRow % MOD_TRACKS) + NOTE_TRACKS;
+                            gridState[targetModTrack][currentStep] = !gridState[targetModTrack][currentStep];
+                            break;
+                        }
+                    }
+                }
+
+                // 2. MODIFY PHASE (Mod -> Grid)
+                for (let row = NOTE_TRACKS; row < GRID_SIZE; row++) {
+                    if (gridState[row][currentStep]) {
+                        const modRow = gridState[row];
+                        const activeCount = countActive(modRow);
+                        const targetNoteTrack = activeCount % NOTE_TRACKS;
+                        
+                        switch(row) {
+                            case 24: // Modulate Length
+                                const newLengthBits = numToBits((currentStep % 31) + 1, 5);
+                                for(let i = 0; i < 5; i++) gridState[targetNoteTrack][27 + i] = newLengthBits[i];
+                                break;
+                            case 25: // Random Synth Type
+                                const randomSynthIndex = Math.floor(Math.random() * SYNTH_CONFIGS.length);
+                                const newSynthBits = numToBits(randomSynthIndex, SYNTH_TYPE_BITS);
+                                for(let i = 0; i < SYNTH_TYPE_BITS; i++) gridState[targetNoteTrack][i] = newSynthBits[i];
+                                break;
+                            case 26: // Copy pattern to Note Track
+                                for(let i = SYNTH_TYPE_BITS; i < 27; i++) gridState[targetNoteTrack][i] = modRow[i];
+                                break;
+                            case 27: // Pitch Offset handled in play phase
+                                break;
+                            case 28: // Horizontal Flip
+                                const pattern = gridState[targetNoteTrack].slice(SYNTH_TYPE_BITS, 27).reverse();
+                                for(let i = 0; i < pattern.length; i++) gridState[targetNoteTrack][SYNTH_TYPE_BITS + i] = pattern[i];
+                                break;
+                            case 29: // Rotate Pattern
+                                const triggers = gridState[targetNoteTrack].slice(SYNTH_TYPE_BITS, 27);
+                                triggers.unshift(triggers.pop());
+                                for(let i = 0; i < triggers.length; i++) gridState[targetNoteTrack][SYNTH_TYPE_BITS + i] = triggers[i];
+                                break;
+                            case 30: // Copy pattern to Mod Track
+                                const targetModTrack = (activeCount % MOD_TRACKS) + NOTE_TRACKS;
+                                if (targetModTrack !== row) {
+                                    for(let i = 0; i < GRID_SIZE; i++) gridState[targetModTrack][i] = modRow[i];
+                                }
+                                break;
+                        }
+                    }
+                }
+
+                // 3. PLAY PHASE (Process Note Tracks)
+                for (let row = 0; row < NOTE_TRACKS; row++) {
+                    const trackState = gridState[row];
+                    const patternLength = bitsToNum(trackState.slice(27, 32)) || GRID_SIZE;
+                    
+                    if (currentStep < patternLength && trackState[currentStep + SYNTH_TYPE_BITS]) {
+                        const synthTypeIndex = bitsToNum(trackState.slice(0, SYNTH_TYPE_BITS));
+                        const config = SYNTH_CONFIGS[synthTypeIndex];
+                        const synth = trackSynths[row][config.name];
+                        let pitch = getPitch(row);
+
+                        if (gridState[27][currentStep]) {
+                            const activeCount = countActive(gridState[27]);
+                            if (row === (activeCount % NOTE_TRACKS)) {
+                                const offset = (currentStep - 16);
+                                pitch = Tone.Frequency(pitch).transpose(offset);
+                            }
+                        }
+                        
+                        synth.triggerAttackRelease(pitch, '16n', time);
+                        
+                        const cell = gridContainer.querySelector(`.cell[data-row='${row}'][data-col='${currentStep + SYNTH_TYPE_BITS}']`);
+                        if(cell) {
+                            cell.classList.add('triggered');
+                            setTimeout(() => cell.classList.remove('triggered'), 200);
+                        }
+                    }
+                }
+                
+                // 4. UPDATE & ADVANCE
+                requestAnimationFrame(() => {
+                    updateGridUI();
+                    gridContainer.style.setProperty('--playhead-col', currentStep + 1);
+                });
+                currentStep = (currentStep + 1) % GRID_SIZE;
+            }, '16n');
+
+            // --- EVENT LISTENERS ---
+            playButton.addEventListener('click', async () => {
+                if (Tone.context.state !== 'running') {
+                    await Tone.start();
+                    setupAudio();
+                }
+                isPlaying = !isPlaying;
+                if (isPlaying) {
+                    Tone.Transport.start();
+                    loop.start(0);
+                    playButton.textContent = 'Stop';
+                    playButton.classList.replace('bg-sky-500', 'bg-pink-500');
+                    playButton.classList.replace('hover:bg-sky-600', 'hover:bg-pink-600');
+                } else {
+                    Tone.Transport.stop();
+                    loop.stop();
+                    currentStep = 0;
+                    gridContainer.style.setProperty('--playhead-col', 0);
+                    playButton.textContent = 'Play';
+                    playButton.classList.replace('bg-pink-500', 'bg-sky-500');
+                    playButton.classList.replace('hover:bg-pink-600', 'hover:bg-sky-600');
+                }
+            });
+
+            bpmSlider.addEventListener('input', (e) => {
+                Tone.Transport.bpm.value = e.target.value;
+                bpmDisplay.textContent = e.target.value;
+            });
+
+            clearButton.addEventListener('click', () => {
+                gridState = Array(GRID_SIZE).fill(0).map(() => Array(GRID_SIZE).fill(false));
+                updateGridUI();
+            });
+
+            randomButton.addEventListener('click', () => {
+                randomizeGrid();
+                updateGridUI();
+            });
+
+            helpButton.addEventListener('click', () => helpModal.classList.remove('hidden'));
+            closeHelpButton.addEventListener('click', () => helpModal.classList.add('hidden'));
+
+            const handlePointerDown = (e) => { /* ... */ };
+            const handlePointerMove = (e) => { /* ... */ };
+            const handlePointerUp = () => { /* ... */ };
+            // Grid drawing listeners remain the same
+            gridContainer.addEventListener('mousedown', (e) => { if (e.target.classList.contains('cell')) { isMouseDown = true; const forceState = !gridState[e.target.dataset.row][e.target.dataset.col]; toggleCell(e.target, forceState); lastToggledCell = e.target; } });
+            gridContainer.addEventListener('mouseover', (e) => { if (isMouseDown && e.target.classList.contains('cell') && e.target !== lastToggledCell) { const forceState = gridState[lastToggledCell.dataset.row][lastToggledCell.dataset.col]; toggleCell(e.target, forceState); } });
+            window.addEventListener('mouseup', () => { isMouseDown = false; lastToggledCell = null; });
+            gridContainer.addEventListener('touchstart', (e) => { e.preventDefault(); if (e.target.classList.contains('cell')) { isMouseDown = true; const forceState = !gridState[e.target.dataset.row][e.target.dataset.col]; toggleCell(e.target, forceState); lastToggledCell = e.target; } }, { passive: false });
+            gridContainer.addEventListener('touchmove', (e) => { e.preventDefault(); if (isMouseDown) { const touch = e.touches[0]; const element = document.elementFromPoint(touch.clientX, touch.clientY); if (element && element.classList.contains('cell') && element !== lastToggledCell) { const forceState = gridState[lastToggledCell.dataset.row][lastToggledCell.dataset.col]; toggleCell(element, forceState); } } }, { passive: false });
+            window.addEventListener('touchend', () => { isMouseDown = false; lastToggledCell = null; });
+
+
+            // --- INITIALIZATION ---
+            createGridUI();
+        });
+    </script>
+</body>
+</html>
