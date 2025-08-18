@@ -8,49 +8,61 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
     <style>
         :root {
-            --bg-color: #111827;
-            --cell-off-color: #374151;
-            --cell-on-color: #0ea5e9;
-            --playhead-color: rgba(255, 255, 255, 0.2);
-            --note-track-bg: #1f2937;
-            --mod-track-bg: #312e81;
-            --param-waveform-bg: rgba(74, 222, 128, 0.1);
-            --param-length-bg: rgba(251, 191, 36, 0.1);
-            --header-bg: #4b5563;
-            --header-text: #e5e7eb;
+            --bg-color-dark: #0f172a;
+            --bg-color-light: #1e293b;
+            --cell-off-color: #334155;
+            --cell-on-note: #22d3ee;
+            --playhead-color: rgba(251, 146, 60, 0.5);
+            --header-bg: #475569;
+            --header-text: #cbd5e1;
+            
+            /* Role-based colors */
+            --mod-len: #f59e0b;      /* Amber */
+            --mod-synth: #14b8a6;    /* Teal */
+            --mod-pitch: #ec4899;    /* Pink */
+            --mod-bitwise: #818cf8;  /* Indigo */
+            --mod-transform: #ef4444;/* Red */
+            --mod-data: #78716c;      /* Stone */
+            
             font-family: 'Inter', sans-serif;
         }
         body {
-            background-color: var(--bg-color);
-            color: #f3f4f6;
+            background-color: var(--bg-color-dark);
+            background-image: radial-gradient(circle at top left, var(--bg-color-light) 0%, var(--bg-color-dark) 40%);
+            color: #f1f5f9;
             overscroll-behavior: none;
         }
-        /* Custom scrollbar for a more fitting aesthetic */
+        /* Custom scrollbar */
         ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #1f2937; }
-        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
 
         #grid-container {
-            touch-action: none; /* Prevent scrolling on mobile while drawing */
+            touch-action: none;
+            padding: 1rem;
+            background-color: rgba(0,0,0,0.2);
+            border-radius: 1rem;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05), inset 0 2px 4px 0 rgba(255,255,255,0.05);
         }
 
         .grid {
             display: grid;
-            grid-template-columns: repeat(33, 1fr); /* 1 for header + 32 for cells */
-            grid-template-rows: repeat(33, 1fr); /* 1 for header + 32 for cells */
-            gap: 2px;
+            grid-template-columns: repeat(33, 1fr);
+            grid-template-rows: repeat(33, 1fr);
+            gap: 3px;
             position: relative;
             aspect-ratio: 1 / 1;
         }
         
-        /* Playhead visualization */
         .playhead {
             position: absolute;
             top: 0;
             bottom: 0;
-            width: calc(100% / 33); /* Width of one cell */
+            width: calc(100% / 33);
             background-color: var(--playhead-color);
+            border-right: 2px solid var(--mod-len);
+            box-shadow: 0 0 15px var(--mod-len);
             left: calc(var(--playhead-col, 0) * (100% / 33));
             transition: left 0.05s linear;
             z-index: 10;
@@ -58,54 +70,48 @@
         }
 
         .header {
-            background-color: var(--header-bg);
+            background-color: transparent;
             color: var(--header-text);
             font-size: 0.6rem;
+            font-weight: 500;
             display: flex;
             align-items: center;
             justify-content: center;
-            border-radius: 2px;
         }
 
         .cell {
             background-color: var(--cell-off-color);
-            border-radius: 2px;
+            border-radius: 3px;
             cursor: pointer;
-            transition: background-color 0.1s ease, transform 0.1s ease;
+            transition: all 0.1s ease;
             position: relative;
+            border: 1px solid rgba(0,0,0,0.2);
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);
         }
         .cell:hover {
-            transform: scale(1.1);
+            transform: scale(1.2);
             z-index: 20;
+            border-color: #fff;
         }
         .cell.on {
-            background-color: var(--cell-on-color);
-            box-shadow: 0 0 8px var(--cell-on-color);
+            background-color: var(--cell-on-note);
+            box-shadow: 0 0 10px var(--cell-on-note), inset 0 1px 1px rgba(255,255,255,0.2);
+            border-color: rgba(255,255,255,0.3);
         }
-        .cell.triggered {
-            animation: pulse 0.2s 1;
-        }
+        .cell.triggered { animation: pulse 0.2s 1; }
         @keyframes pulse {
             0% { transform: scale(1); }
-            50% { transform: scale(1.3); }
+            50% { transform: scale(1.4); }
             100% { transform: scale(1); }
         }
 
-        /* Visual hints for parameter columns */
-        .cell[data-col='0'], .cell[data-col='1'], .cell[data-col='2'] { background-color: var(--param-waveform-bg); }
-        .cell[data-col='0'].on, .cell[data-col='1'].on, .cell[data-col='2'].on { background-color: #22c55e; box-shadow: 0 0 8px #22c55e; }
-        
-        .cell[data-col='27'], .cell[data-col='28'], .cell[data-col='29'], .cell[data-col='30'], .cell[data-col='31'] {
-            background-color: var(--param-length-bg);
-        }
-        .cell[data-col='27'].on, .cell[data-col='28'].on, .cell[data-col='29'].on, .cell[data-col='30'].on, .cell[data-col='31'].on {
-            background-color: #f59e0b; box-shadow: 0 0 8px #f59e0b;
-        }
-
-        /* Distinguish Modulator tracks */
-        .row-header.mod-track { background-color: var(--mod-track-bg); }
-        .cell.mod-track { background-color: #4338ca; }
-        .cell.mod-track.on { background-color: #a5b4fc; box-shadow: 0 0 8px #a5b4fc; }
+        /* Color coding for modulator roles */
+        .mod-len-track.on { background-color: var(--mod-len); box-shadow: 0 0 10px var(--mod-len); }
+        .mod-synth-track.on { background-color: var(--mod-synth); box-shadow: 0 0 10px var(--mod-synth); }
+        .mod-pitch-track.on { background-color: var(--mod-pitch); box-shadow: 0 0 10px var(--mod-pitch); }
+        .mod-bitwise-track.on { background-color: var(--mod-bitwise); box-shadow: 0 0 10px var(--mod-bitwise); }
+        .mod-transform-track.on { background-color: var(--mod-transform); box-shadow: 0 0 10px var(--mod-transform); }
+        .mod-data-track.on { background-color: var(--mod-data); box-shadow: 0 0 10px var(--mod-data); }
 
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -114,28 +120,28 @@
 </head>
 <body class="bg-gray-900 text-gray-100 flex flex-col items-center justify-center min-h-screen p-4 antialiased">
 
-    <div class="w-full max-w-4xl mx-auto">
-        <header class="text-center mb-4">
-            <h1 class="text-3xl font-bold text-sky-400" style="font-family: 'Roboto Mono', monospace;">Bitgrid</h1>
-            <p class="text-gray-400">A 32x32 cellular automaton for audio synthesis.</p>
+    <div class="w-full max-w-5xl mx-auto">
+        <header class="text-center mb-6">
+            <h1 class="text-4xl font-bold text-sky-400 tracking-wider" style="font-family: 'Roboto Mono', monospace;">Bitgrid</h1>
+            <p class="text-slate-400 mt-1">A 32x32 generative audio automaton.</p>
         </header>
 
-        <div id="controls" class="flex flex-wrap items-center justify-center gap-4 mb-4 p-4 bg-gray-800 rounded-lg shadow-lg">
-            <button id="play-button" class="px-6 py-2 bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-md transition-all duration-200 shadow-md w-24">
+        <div id="controls" class="flex flex-wrap items-center justify-center gap-4 mb-6 p-4 bg-slate-800/50 rounded-xl shadow-lg border border-slate-700">
+            <button id="play-button" class="px-6 py-2 bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-lg transition-all duration-200 shadow-md hover:shadow-sky-400/30 w-28">
                 Play
             </button>
-            <div class="flex items-center space-x-2">
-                <label for="bpm-slider" class="text-sm font-medium">BPM</label>
+            <div class="flex items-center space-x-3">
+                <label for="bpm-slider" class="text-sm font-medium text-slate-300">BPM</label>
                 <input type="range" id="bpm-slider" min="30" max="240" value="120" class="w-32 md:w-48">
-                <span id="bpm-display" class="text-sm font-mono bg-gray-700 px-2 py-1 rounded-md">120</span>
+                <span id="bpm-display" class="text-sm font-mono bg-slate-700 px-3 py-1 rounded-md w-14 text-center">120</span>
             </div>
-             <button id="clear-button" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-md transition-all duration-200 shadow-md">
+             <button id="clear-button" class="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg transition-all duration-200 shadow-md hover:shadow-rose-500/30">
                 Clear
             </button>
-            <button id="random-button" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-md transition-all duration-200 shadow-md">
+            <button id="random-button" class="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg transition-all duration-200 shadow-md hover:shadow-purple-500/30">
                 Random
             </button>
-            <button id="help-button" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-md transition-all duration-200 shadow-md">
+            <button id="help-button" class="px-5 py-2 bg-slate-600 hover:bg-slate-700 text-white font-bold rounded-lg transition-all duration-200 shadow-md">
                 Help
             </button>
         </div>
@@ -149,16 +155,16 @@
     </div>
     
     <!-- Help Modal -->
-    <div id="help-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50 hidden">
-        <div class="bg-gray-800 rounded-lg shadow-2xl p-6 max-w-3xl w-full text-gray-300 border border-gray-700 overflow-y-auto max-h-full">
+    <div id="help-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-slate-800 border border-slate-700 rounded-xl shadow-2xl p-6 max-w-3xl w-full text-slate-300 overflow-y-auto max-h-full">
             <h2 class="text-2xl font-bold mb-4 text-sky-400">How Bitgrid Works</h2>
             <div class="space-y-4 text-sm">
                 <p>Bitgrid is a sequencer where the grid itself is the program. The playhead sweeps from left to right, and active switches trigger events. Some switches define behavior, while others trigger actions.</p>
                 
                  <div>
                     <h3 class="font-semibold text-lg text-white mb-2">Implicit Sound Modulation</h3>
-                    <p>The sound engine now reacts dynamically to the patterns on the grid:</p>
-                    <ul class="list-disc list-inside space-y-1">
+                    <p>The sound engine reacts dynamically to the patterns on the grid:</p>
+                    <ul class="list-disc list-inside space-y-1 pl-2">
                         <li><strong>Pattern Density → Envelope:</strong> The number of active notes in a track's sequence determines its envelope. Sparse patterns have a long, ambient decay, while dense patterns become short and percussive.</li>
                         <li><strong>Note Concurrency → Filter:</strong> A master low-pass filter opens and closes based on how many notes are playing at the same time. More simultaneous notes create a brighter, more open sound.</li>
                     </ul>
@@ -166,20 +172,20 @@
 
                  <div>
                     <h3 class="font-semibold text-lg text-white mb-2">Modulator Tracks (Rows 24-31)</h3>
-                    <p>Modulators modify note tracks or other modulators. The target is determined by the <span class="italic">total number of active switches</span> in the modulator's row.</p>
-                    <ul class="list-disc list-inside space-y-2">
-                        <li><strong>Row 24 (Length Mod):</strong> Modulates the <strong class="text-yellow-400">Length</strong> of its target note track.</li>
-                        <li><strong>Row 25 (Random Synth Mod):</strong> Sets the <strong class="text-green-400">Synth Type</strong> of its target note track to a new, random type.</li>
-                        <li><strong>Row 26 (Pitch Offset):</strong> Adds a pitch offset to its target note track for one step.</li>
-                        <li><strong>Row 27 (XOR Operator):</strong> Performs a bitwise XOR between its own pattern and the target note track's pattern.</li>
-                        <li><strong>Row 28 (OR Operator):</strong> Performs a bitwise OR (combines notes) between its pattern and the target's.</li>
-                        <li><strong>Row 29 (AND Operator):</strong> Performs a bitwise AND (filters notes) between its pattern and the target's.</li>
-                        <li><strong>Row 30 (Multi-Transform Trigger):</strong> This is a powerful operator. When triggered, it applies a <strong class="text-purple-400">stack of transformations</strong> to its target. The transformations themselves are selected on Row 31.</li>
-                        <li><strong>Row 31 (Transformation Selector):</strong> This row is <strong class="text-purple-400">data only</strong>; it does not trigger actions. Its active switches determine which transformations Row 30 will apply. The first 6 columns correspond to: <strong>Invert, Flip, Rotate Left, Rotate Right, Shift Left, Shift Right</strong>.</li>
+                    <p>Modulators modify note tracks. The target is determined by the <span class="italic">total number of active switches</span> in the modulator's row.</p>
+                    <ul class="list-disc list-inside space-y-2 pl-2">
+                        <li><strong><span style="color: var(--mod-len)">Row 24 (Length Mod):</span></strong> Modulates the <strong class="text-yellow-400">Length</strong> of its target note track.</li>
+                        <li><strong><span style="color: var(--mod-synth)">Row 25 (Random Synth Mod):</span></strong> Sets the <strong class="text-green-400">Synth Type</strong> of its target note track to a new, random type.</li>
+                        <li><strong><span style="color: var(--mod-pitch)">Row 26 (Pitch Offset):</span></strong> Adds a pitch offset to its target note track for one step.</li>
+                        <li><strong><span style="color: var(--mod-bitwise)">Row 27 (XOR Operator):</span></strong> Performs a bitwise XOR between its own pattern and the target note track's pattern.</li>
+                        <li><strong><span style="color: var(--mod-bitwise)">Row 28 (OR Operator):</span></strong> Performs a bitwise OR (combines notes) between its pattern and the target's.</li>
+                        <li><strong><span style="color: var(--mod-bitwise)">Row 29 (AND Operator):</span></strong> Performs a bitwise AND (filters notes) between its pattern and the target's.</li>
+                        <li><strong><span style="color: var(--mod-transform)">Row 30 (Multi-Transform Trigger):</span></strong> Applies a <strong class="text-purple-400">stack of transformations</strong> to its target. The transformations are selected on Row 31.</li>
+                        <li><strong><span style="color: var(--mod-data)">Row 31 (Transformation Selector):</span></strong> This row is <strong class="text-purple-400">data only</strong>. Its active switches determine which transformations Row 30 will apply. The first 6 columns correspond to: <strong>Invert, Flip, Rotate Left, Rotate Right, Shift Left, Shift Right</strong>.</li>
                     </ul>
                 </div>
             </div>
-            <button id="close-help" class="mt-6 w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded">Got It</button>
+            <button id="close-help" class="mt-6 w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded-lg">Got It</button>
         </div>
     </div>
 
@@ -237,7 +243,7 @@
                     SYNTH_CONFIGS.forEach(config => {
                         const synthOptions = { 
                             ...config.options, 
-                            volume: -12, // Lower individual synth volume
+                            volume: -15, // Lowered individual synth volume further
                             envelope: { attack: 0.01, decay: 0.2, sustain: 0.5, release: 1.0 } 
                         };
                         const synth = new config.type(synthOptions).connect(masterFilter);
@@ -259,13 +265,23 @@
                 for (let row = 0; row < GRID_SIZE; row++) {
                     const rowHeader = document.createElement('div');
                     rowHeader.classList.add('header', 'row-header'); rowHeader.textContent = row;
-                    if (row >= NOTE_TRACKS) rowHeader.classList.add('mod-track');
                     gridContainer.appendChild(rowHeader);
                     for (let col = 0; col < GRID_SIZE; col++) {
                         const cell = document.createElement('div');
                         cell.classList.add('cell');
                         cell.dataset.row = row; cell.dataset.col = col;
-                        if (row >= NOTE_TRACKS) cell.classList.add('mod-track');
+                        
+                        // Add role-based classes for styling
+                        if (row >= NOTE_TRACKS) {
+                            switch(row) {
+                                case 24: cell.classList.add('mod-len-track'); break;
+                                case 25: cell.classList.add('mod-synth-track'); break;
+                                case 26: cell.classList.add('mod-pitch-track'); break;
+                                case 27: case 28: case 29: cell.classList.add('mod-bitwise-track'); break;
+                                case 30: cell.classList.add('mod-transform-track'); break;
+                                case 31: cell.classList.add('mod-data-track'); break;
+                            }
+                        }
                         gridContainer.appendChild(cell);
                     }
                 }
