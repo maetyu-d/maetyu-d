@@ -145,6 +145,9 @@
             <button id="random-button" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-md transition-all duration-200 shadow-md">
                 Random
             </button>
+            <button id="record-button" class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white font-bold rounded-md transition-all duration-200 shadow-md">
+                Record
+            </button>
             <button id="help-button" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-md transition-all duration-200 shadow-md">
                 Help
             </button>
@@ -171,6 +174,7 @@
                         <li><strong>BPM:</strong> Controls the master tempo.</li>
                         <li><strong>Crush %:</strong> Sets the probability that any triggered note will be passed through a bitcrusher effect.</li>
                         <li><strong>Density %:</strong> Controls the density of switches when using the <strong>Random</strong> button.</li>
+                        <li><strong>Record:</strong> Click once to start recording, click again to stop and download the lossless audio as a .wav file.</li>
                     </ul>
                 </div>
 
@@ -222,8 +226,9 @@
             let gridState = Array(GRID_SIZE).fill(0).map(() => Array(GRID_SIZE).fill(false));
             let cellElements = [];
             let trackSynths = [];
-            let masterFilter, bitCrusher;
+            let masterFilter, bitCrusher, recorder;
             let isPlaying = false;
+            let isRecording = false;
             let masterStep = 0;
             let isMouseDown = false;
             let lastToggledCell = null;
@@ -241,6 +246,7 @@
             const densityDisplay = document.getElementById('density-display');
             const clearButton = document.getElementById('clear-button');
             const randomButton = document.getElementById('random-button');
+            const recordButton = document.getElementById('record-button');
             const helpButton = document.getElementById('help-button');
             const helpModal = document.getElementById('help-modal');
             const closeHelpButton = document.getElementById('close-help');
@@ -248,7 +254,8 @@
             // --- AUDIO INITIALIZATION ---
             function setupAudio() {
                 const limiter = new Tone.Limiter(-6).toDestination();
-                bitCrusher = new Tone.BitCrusher(4).connect(limiter);
+                recorder = new Tone.Recorder();
+                bitCrusher = new Tone.BitCrusher(4).connect(limiter).connect(recorder);
                 bitCrusher.wet.value = 0;
                 masterFilter = new Tone.Filter(20000, "lowpass").connect(bitCrusher);
                 
@@ -507,6 +514,34 @@
                 randomizeGrid();
             });
 
+            recordButton.addEventListener('click', async () => {
+                if (!isPlaying && !isRecording) {
+                    recordButton.textContent = "Play First";
+                    setTimeout(() => { recordButton.textContent = "Record" }, 1500);
+                    return;
+                }
+
+                isRecording = !isRecording;
+                if (isRecording) {
+                    await recorder.start();
+                    recordButton.textContent = 'Stop Rec';
+                    recordButton.classList.replace('bg-gray-500', 'bg-red-700');
+                    recordButton.classList.replace('hover:bg-gray-600', 'hover:bg-red-800');
+                } else {
+                    const recording = await recorder.stop();
+                    const url = URL.createObjectURL(recording);
+                    const anchor = document.createElement('a');
+                    anchor.download = 'bitgrid_recording.webm';
+                    anchor.href = url;
+                    anchor.click();
+                    URL.revokeObjectURL(url);
+
+                    recordButton.textContent = 'Record';
+                    recordButton.classList.replace('bg-red-700', 'bg-gray-500');
+                    recordButton.classList.replace('hover:bg-red-800', 'hover:bg-gray-600');
+                }
+            });
+
             helpButton.addEventListener('click', () => helpModal.classList.remove('hidden'));
             closeHelpButton.addEventListener('click', () => helpModal.classList.add('hidden'));
             
@@ -524,3 +559,4 @@
     </script>
 </body>
 </html>
+
