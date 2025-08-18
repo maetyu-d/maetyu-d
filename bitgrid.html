@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitgrid Synthesizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <style>
+        :root {
+            --bg-color: #111827;
+            --cell-off-color: #374151;
+            --cell-on-color: #0ea5e9;
+            --playhead-color: rgba(255, 255, 255, 0.2);
+            --note-track-bg: #1f2937;
+            --mod-track-bg: #312e81;
+            --param-waveform-bg: rgba(74, 222, 128, 0.1);
+            --param-length-bg: rgba(251, 191, 36, 0.1);
+            --header-bg: #4b5563;
+            --header-text: #e5e7eb;
+            font-family: 'Inter', sans-serif;
+        }
+        body {
+            background-color: var(--bg-color);
+            color: #f3f4f6;
+            overscroll-behavior: none;
+        }
+        /* Custom scrollbar for a more fitting aesthetic */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+
+        #grid-container {
+            touch-action: none; /* Prevent scrolling on mobile while drawing */
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(33, 1fr); /* 1 for header + 32 for cells */
+            grid-template-rows: repeat(33, 1fr); /* 1 for header + 32 for cells */
+            gap: 2px;
+            position: relative;
+            aspect-ratio: 1 / 1;
+        }
+        
+        /* Playhead visualization */
+        .playhead {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: calc(100% / 33); /* Width of one cell */
+            background-color: var(--playhead-color);
+            left: calc(var(--playhead-col, 0) * (100% / 33));
+            transition: left 0.05s linear;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .header {
+            background-color: var(--header-bg);
+            color: var(--header-text);
+            font-size: 0.6rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 2px;
+        }
+
+        .cell {
+            background-color: var(--cell-off-color);
+            border-radius: 2px;
+            cursor: pointer;
+            transition: background-color 0.1s ease, transform 0.1s ease;
+            position: relative;
+        }
+        .cell:hover {
+            transform: scale(1.1);
+            z-index: 20;
+        }
+        .cell.on {
+            background-color: var(--cell-on-color);
+            box-shadow: 0 0 8px var(--cell-on-color);
+        }
+        .cell.triggered {
+            animation: pulse 0.2s 1;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.3); }
+            100% { transform: scale(1); }
+        }
+
+        /* Visual hints for parameter columns */
+        .cell[data-col='0'], .cell[data-col='1'] { background-color: var(--param-waveform-bg); }
+        .cell[data-col='0'].on, .cell[data-col='1'].on { background-color: #22c55e; box-shadow: 0 0 8px #22c55e; }
+        
+        .cell[data-col='27'], .cell[data-col='28'], .cell[data-col='29'], .cell[data-col='30'], .cell[data-col='31'] {
+            background-color: var(--param-length-bg);
+        }
+        .cell[data-col='27'].on, .cell[data-col='28'].on, .cell[data-col='29'].on, .cell[data-col='30'].on, .cell[data-col='31'].on {
+            background-color: #f59e0b; box-shadow: 0 0 8px #f59e0b;
+        }
+
+        /* Distinguish Modulator tracks */
+        .row-header.mod-track { background-color: var(--mod-track-bg); }
+        .cell.mod-track { background-color: #4338ca; }
+        .cell.mod-track.on { background-color: #a5b4fc; box-shadow: 0 0 8px #a5b4fc; }
+
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-900 text-gray-100 flex flex-col items-center justify-center min-h-screen p-4 antialiased">
+
+    <div class="w-full max-w-4xl mx-auto">
+        <header class="text-center mb-4">
+            <h1 class="text-3xl font-bold text-sky-400" style="font-family: 'Roboto Mono', monospace;">Bitgrid</h1>
+            <p class="text-gray-400">A 32x32 cellular automaton for audio synthesis.</p>
+        </header>
+
+        <div id="controls" class="flex flex-wrap items-center justify-center gap-4 mb-4 p-4 bg-gray-800 rounded-lg shadow-lg">
+            <button id="play-button" class="px-6 py-2 bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-md transition-all duration-200 shadow-md w-24">
+                Play
+            </button>
+            <div class="flex items-center space-x-2">
+                <label for="bpm-slider" class="text-sm font-medium">BPM</label>
+                <input type="range" id="bpm-slider" min="30" max="240" value="120" class="w-32 md:w-48">
+                <span id="bpm-display" class="text-sm font-mono bg-gray-700 px-2 py-1 rounded-md">120</span>
+            </div>
+             <button id="clear-button" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-md transition-all duration-200 shadow-md">
+                Clear
+            </button>
+            <button id="random-button" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-md transition-all duration-200 shadow-md">
+                Random
+            </button>
+            <button id="help-button" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-md transition-all duration-200 shadow-md">
+                Help
+            </button>
+        </div>
+
+        <div id="grid-container" class="w-full max-w-2xl mx-auto">
+            <div class="grid">
+                <div class="playhead"></div>
+                <!-- Grid will be populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+    
+    <!-- Help Modal -->
+    <div id="help-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-gray-800 rounded-lg shadow-2xl p-6 max-w-2xl w-full text-gray-300 border border-gray-700">
+            <h2 class="text-2xl font-bold mb-4 text-sky-400">How Bitgrid Works</h2>
+            <div class="space-y-4 text-sm">
+                <p>Bitgrid is a sequencer where the grid itself is the program. The playhead sweeps from left to right, and active switches trigger events. Some switches define behavior, while others trigger actions.</p>
+                
+                <div>
+                    <h3 class="font-semibold text-lg text-white mb-2">Track Types</h3>
+                    <ul class="list-disc list-inside space-y-1">
+                        <li><span class="font-bold text-green-400">Rows 0-23 (Note Tracks):</span> These produce sound. Each row is a unique pitch in a pentatonic scale.</li>
+                        <li><span class="font-bold text-indigo-400">Rows 24-31 (Modulator Tracks):</span> These modify the grid in real-time, creating evolving patterns. They don't make sound directly.</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h3 class="font-semibold text-lg text-white mb-2">Note Track Parameters</h3>
+                    <p>Parameters for a note track are set by switches in its own row:</p>
+                    <ul class="list-disc list-inside space-y-1">
+                        <li><strong class="text-green-400">Cols 0-1 (Waveform):</strong> These two switches select the oscillator shape (Sine, Triangle, Sawtooth, Square).</li>
+                        <li><strong class="text-yellow-400">Cols 27-31 (Pattern Length):</strong> These five switches set the length of the pattern for this row (1-32 steps), allowing for polyrhythms.</li>
+                        <li><strong>Cols 2-26 (Triggers):</strong> An active switch in this range will play a note on that beat.</li>
+                    </ul>
+                </div>
+
+                 <div>
+                    <h3 class="font-semibold text-lg text-white mb-2">Modulator Tracks</h3>
+                    <p>An active switch in a modulator track performs an action on a target note track.</p>
+                    <ul class="list-disc list-inside space-y-1">
+                        <li><strong>Target Track:</strong> The target is determined by the <span class="italic">total number of active switches</span> in the modulator's row (e.g., 5 active switches target Note Track 5).</li>
+                        <li><strong>Action Value:</strong> The value of the modification is determined by the <span class="italic">current position of the playhead</span> (0-31).</li>
+                        <li><strong>Row 24 (Blue):</strong> Modulates the <strong class="text-yellow-400">Length</strong> of its target track.</li>
+                        <li><strong>Row 25 (Blue):</strong> Modulates the <strong class="text-green-400">Waveform</strong> of its target track.</li>
+                        <li><strong>Rows 26-31 (Blue):</strong> <strong class="text-sky-400">Copies its own pattern</strong> to the trigger section of its target track. This allows for complex, generative sequences.</li>
+                    </ul>
+                </div>
+            </div>
+            <button id="close-help" class="mt-6 w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded">Got It</button>
+        </div>
+    </div>
+
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- CONSTANTS AND CONFIGURATION ---
+            const GRID_SIZE = 32;
+            const NOTE_TRACKS = 24;
+            const MOD_TRACKS = 8;
+            const PENTATONIC_SCALE = ['C', 'D#', 'F', 'G', 'A#'];
+            const WAVEFORMS = ['sine', 'triangle', 'sawtooth', 'square'];
+
+            // --- STATE MANAGEMENT ---
+            let gridState = Array(GRID_SIZE).fill(0).map(() => Array(GRID_SIZE).fill(false));
+            let synths = [];
+            let isPlaying = false;
+            let currentStep = 0;
+            let isMouseDown = false;
+            let lastToggledCell = null;
+
+            // --- DOM ELEMENTS ---
+            const gridContainer = document.querySelector('.grid');
+            const playhead = document.querySelector('.playhead');
+            const playButton = document.getElementById('play-button');
+            const bpmSlider = document.getElementById('bpm-slider');
+            const bpmDisplay = document.getElementById('bpm-display');
+            const clearButton = document.getElementById('clear-button');
+            const randomButton = document.getElementById('random-button');
+            const helpButton = document.getElementById('help-button');
+            const helpModal = document.getElementById('help-modal');
+            const closeHelpButton = document.getElementById('close-help');
+
+            // --- AUDIO INITIALIZATION ---
+            function setupAudio() {
+                // Master output with a limiter to prevent clipping
+                const limiter = new Tone.Limiter(-6).toDestination();
+
+                // Create a synth for each note track
+                for (let i = 0; i < NOTE_TRACKS; i++) {
+                    const synth = new Tone.Synth({
+                        oscillator: { type: 'sine' },
+                        envelope: { attack: 0.01, decay: 0.2, sustain: 0.1, release: 0.1 }
+                    }).connect(limiter); // Connect directly to the limiter (reverb removed)
+                    synths.push(synth);
+                }
+            }
+
+            // --- GRID UI & INTERACTION ---
+            function createGridUI() {
+                gridContainer.innerHTML = '<div class="playhead"></div>'; // Clear and add playhead
+                
+                // Column Headers
+                gridContainer.appendChild(document.createElement('div')); // Top-left corner
+                for (let i = 0; i < GRID_SIZE; i++) {
+                    const header = document.createElement('div');
+                    header.classList.add('header', 'col-header');
+                    header.textContent = i;
+                    gridContainer.appendChild(header);
+                }
+
+                // Rows with headers and cells
+                for (let row = 0; row < GRID_SIZE; row++) {
+                    const rowHeader = document.createElement('div');
+                    rowHeader.classList.add('header', 'row-header');
+                    rowHeader.textContent = row;
+                    if (row >= NOTE_TRACKS) rowHeader.classList.add('mod-track');
+                    gridContainer.appendChild(rowHeader);
+
+                    for (let col = 0; col < GRID_SIZE; col++) {
+                        const cell = document.createElement('div');
+                        cell.classList.add('cell');
+                        cell.dataset.row = row;
+                        cell.dataset.col = col;
+                        if (row >= NOTE_TRACKS) cell.classList.add('mod-track');
+                        gridContainer.appendChild(cell);
+                    }
+                }
+                updateGridUI();
+            }
+            
+            function updateGridUI() {
+                for (let row = 0; row < GRID_SIZE; row++) {
+                    for (let col = 0; col < GRID_SIZE; col++) {
+                        const cell = gridContainer.querySelector(`.cell[data-row='${row}'][data-col='${col}']`);
+                        if (cell) {
+                            cell.classList.toggle('on', gridState[row][col]);
+                        }
+                    }
+                }
+            }
+            
+            function toggleCell(cellElement, forceState) {
+                if (!cellElement) return;
+                const row = parseInt(cellElement.dataset.row);
+                const col = parseInt(cellElement.dataset.col);
+                
+                const currentState = gridState[row][col];
+                const newState = forceState !== undefined ? forceState : !currentState;
+
+                if (currentState !== newState) {
+                    gridState[row][col] = newState;
+                    cellElement.classList.toggle('on', newState);
+                }
+            }
+            
+            // --- HELPER FUNCTIONS ---
+            const bitsToNum = (bits) => bits.reduce((acc, bit, i) => acc + (bit ? 1 << (bits.length - 1 - i) : 0), 0);
+            const numToBits = (num, bitCount) => Array.from({ length: bitCount }, (_, i) => (num >> (bitCount - 1 - i)) & 1 === 1);
+            const countActive = (arr) => arr.filter(Boolean).length;
+            const getPitch = (trackIndex) => {
+                const octave = Math.floor(trackIndex / PENTATONIC_SCALE.length) + 2;
+                const note = PENTATONIC_SCALE[trackIndex % PENTATONIC_SCALE.length];
+                return `${note}${octave}`;
+            };
+            
+            function randomizeGrid() {
+                for (let row = 0; row < GRID_SIZE; row++) {
+                    for (let col = 0; col < GRID_SIZE; col++) {
+                        // Adjust the threshold to change density. 0.85 means ~15% chance of being on.
+                        gridState[row][col] = Math.random() > 0.85;
+                    }
+                }
+            }
+
+
+            // --- SEQUENCER LOGIC ---
+            const loop = new Tone.Loop(time => {
+                // 1. MODIFY PHASE: Process modulators first to alter the grid state
+                for (let row = NOTE_TRACKS; row < GRID_SIZE; row++) {
+                    if (gridState[row][currentStep]) {
+                        const modRow = gridState[row];
+                        const targetTrack = countActive(modRow) % NOTE_TRACKS;
+                        const value = currentStep;
+
+                        // Row 24: Modulate Length
+                        if (row === 24) {
+                            const newLengthBits = numToBits((value % 31) + 1, 5);
+                            for(let i = 0; i < 5; i++) {
+                                gridState[targetTrack][27 + i] = newLengthBits[i];
+                            }
+                        }
+                        // Row 25: Modulate Waveform
+                        else if (row === 25) {
+                            const newWaveformBits = numToBits(value % WAVEFORMS.length, 2);
+                            gridState[targetTrack][0] = newWaveformBits[0];
+                            gridState[targetTrack][1] = newWaveformBits[1];
+                        }
+                        // Rows 26-31: Copy pattern
+                        else {
+                            for(let i = 2; i < 27; i++) { // Copy to trigger section
+                                gridState[targetTrack][i] = modRow[i];
+                            }
+                        }
+                    }
+                }
+
+                // 2. PLAY PHASE: Process note tracks with the (potentially modified) state
+                for (let row = 0; row < NOTE_TRACKS; row++) {
+                    const trackState = gridState[row];
+                    const lengthBits = trackState.slice(27, 32);
+                    const patternLength = bitsToNum(lengthBits) || GRID_SIZE;
+                    
+                    if (currentStep % patternLength === currentStep) {
+                        const stepInPattern = currentStep % patternLength;
+                        if (trackState[stepInPattern]) {
+                             // Get parameters for this note
+                            const waveformBits = trackState.slice(0, 2);
+                            const waveformIndex = bitsToNum(waveformBits);
+                            const pitch = getPitch(row);
+
+                            // Update synth and trigger
+                            synths[row].oscillator.type = WAVEFORMS[waveformIndex];
+                            synths[row].triggerAttackRelease(pitch, '16n', time);
+                            
+                            // UI feedback
+                            const cell = gridContainer.querySelector(`.cell[data-row='${row}'][data-col='${stepInPattern}']`);
+                            if(cell) {
+                                cell.classList.add('triggered');
+                                setTimeout(() => cell.classList.remove('triggered'), 200);
+                            }
+                        }
+                    }
+                }
+                
+                // 3. UPDATE & ADVANCE
+                requestAnimationFrame(() => {
+                    updateGridUI();
+                    gridContainer.style.setProperty('--playhead-col', currentStep + 1);
+                });
+                currentStep = (currentStep + 1) % GRID_SIZE;
+            }, '16n');
+
+            // --- EVENT LISTENERS ---
+            playButton.addEventListener('click', async () => {
+                if (Tone.context.state !== 'running') {
+                    await Tone.start();
+                    setupAudio();
+                    console.log('AudioContext started');
+                }
+                isPlaying = !isPlaying;
+                if (isPlaying) {
+                    Tone.Transport.start();
+                    loop.start(0);
+                    playButton.textContent = 'Stop';
+                    playButton.classList.replace('bg-sky-500', 'bg-pink-500');
+                    playButton.classList.replace('hover:bg-sky-600', 'hover:bg-pink-600');
+                } else {
+                    Tone.Transport.stop();
+                    loop.stop();
+                    currentStep = 0;
+                    gridContainer.style.setProperty('--playhead-col', 0);
+                    playButton.textContent = 'Play';
+                    playButton.classList.replace('bg-pink-500', 'bg-sky-500');
+                    playButton.classList.replace('hover:bg-pink-600', 'hover:bg-sky-600');
+                }
+            });
+
+            bpmSlider.addEventListener('input', (e) => {
+                const bpm = e.target.value;
+                Tone.Transport.bpm.value = bpm;
+                bpmDisplay.textContent = bpm;
+            });
+
+            clearButton.addEventListener('click', () => {
+                gridState = Array(GRID_SIZE).fill(0).map(() => Array(GRID_SIZE).fill(false));
+                updateGridUI();
+            });
+
+            randomButton.addEventListener('click', () => {
+                randomizeGrid();
+                updateGridUI();
+            });
+
+            helpButton.addEventListener('click', () => helpModal.classList.remove('hidden'));
+            closeHelpButton.addEventListener('click', () => helpModal.classList.add('hidden'));
+
+            // Grid interaction for drawing
+            gridContainer.addEventListener('mousedown', e => {
+                if (e.target.classList.contains('cell')) {
+                    isMouseDown = true;
+                    const forceState = !gridState[e.target.dataset.row][e.target.dataset.col];
+                    toggleCell(e.target, forceState);
+                    lastToggledCell = e.target;
+                }
+            });
+
+            gridContainer.addEventListener('mouseover', e => {
+                if (isMouseDown && e.target.classList.contains('cell') && e.target !== lastToggledCell) {
+                     const forceState = gridState[lastToggledCell.dataset.row][lastToggledCell.dataset.col];
+                     toggleCell(e.target, forceState);
+                }
+            });
+            
+            // For mobile/touch drawing
+            gridContainer.addEventListener('touchstart', e => {
+                e.preventDefault();
+                if (e.target.classList.contains('cell')) {
+                    isMouseDown = true;
+                    const forceState = !gridState[e.target.dataset.row][e.target.dataset.col];
+                    toggleCell(e.target, forceState);
+                    lastToggledCell = e.target;
+                }
+            }, { passive: false });
+
+            gridContainer.addEventListener('touchmove', e => {
+                e.preventDefault();
+                if (isMouseDown) {
+                    const touch = e.touches[0];
+                    const element = document.elementFromPoint(touch.clientX, touch.clientY);
+                    if (element && element.classList.contains('cell') && element !== lastToggledCell) {
+                        const forceState = gridState[lastToggledCell.dataset.row][lastToggledCell.dataset.col];
+                        toggleCell(element, forceState);
+                    }
+                }
+            }, { passive: false });
+
+
+            window.addEventListener('mouseup', () => { isMouseDown = false; lastToggledCell = null; });
+            window.addEventListener('touchend', () => { isMouseDown = false; lastToggledCell = null; });
+
+            // --- INITIALIZATION ---
+            createGridUI();
+        });
+    </script>
+</body>
+</html>
