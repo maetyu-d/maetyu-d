@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>32x32 Audio Grid Processor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            touch-action: manipulation;
+        }
+        .grid-cell {
+            width: 2.5vmin;
+            height: 2.5vmin;
+            max-width: 25px;
+            max-height: 25px;
+            border: 1px solid #374151; /* gray-700 */
+            transition: background-color 0.1s ease;
+            cursor: pointer;
+        }
+        .grid-cell.active {
+            background-color: #f59e0b; /* amber-500 */
+        }
+        .playhead {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 2.5vmin;
+            max-width: 25px;
+            background-color: rgba(255, 255, 255, 0.2);
+            pointer-events: none;
+            transition: left 0.05s linear;
+        }
+        .row-label {
+            width: 160px;
+            font-size: 0.7rem;
+            text-align: right;
+            padding-right: 8px;
+            color: #9ca3af; /* gray-400 */
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-7xl mx-auto">
+        <div class="text-center mb-4">
+            <h1 class="text-2xl md:text-3xl font-bold tracking-tighter">Grid Processor</h1>
+            <p class="text-gray-400">A 32x32 environment for live audio programming.</p>
+        </div>
+
+        <!-- Controls -->
+        <div class="flex flex-wrap items-center justify-center gap-4 mb-4 bg-gray-800 p-3 rounded-lg">
+            <button id="start-stop-btn" class="px-6 py-2 bg-amber-600 hover:bg-amber-500 rounded-md font-semibold transition-all">Start</button>
+            <div class="flex items-center space-x-2">
+                <label for="bpm" class="text-sm">BPM:</label>
+                <input type="range" id="bpm" min="40" max="240" value="120" class="w-32">
+                <span id="bpm-value" class="w-10 text-center">120</span>
+            </div>
+             <div class="flex items-center space-x-2">
+                <label for="volume" class="text-sm">Master Vol:</label>
+                <input type="range" id="volume" min="-40" max="0" value="-6" step="1" class="w-32">
+                <span id="volume-value" class="w-10 text-center">-6 dB</span>
+            </div>
+            <div class="border-l border-gray-600 h-8 mx-2"></div>
+            <button id="random-btn" class="px-6 py-2 bg-sky-600 hover:bg-sky-500 rounded-md font-semibold transition-all">Random</button>
+            <div class="flex items-center space-x-2">
+                <label for="density" class="text-sm">Density:</label>
+                <input type="range" id="density" min="0" max="1" value="0.2" step="0.01" class="w-32">
+                <span id="density-value" class="w-10 text-center">20%</span>
+            </div>
+        </div>
+
+        <!-- Grid and Labels -->
+        <div class="flex justify-center">
+            <div class="flex flex-col justify-start text-xs">
+                <!-- Row Labels will be injected here by JS -->
+            </div>
+            <div id="grid-container" class="relative grid" style="grid-template-columns: repeat(32, 1fr);">
+                <!-- Grid cells will be injected here by JS -->
+                <div id="playhead" class="playhead"></div>
+            </div>
+        </div>
+        
+        <div id="message-box" class="fixed top-5 left-1/2 -translate-x-1/2 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg hidden"></div>
+
+    </div>
+
+    <script>
+        // --- DOM Elements ---
+        const gridContainer = document.getElementById('grid-container');
+        const playhead = document.getElementById('playhead');
+        const startStopBtn = document.getElementById('start-stop-btn');
+        const bpmSlider = document.getElementById('bpm');
+        const bpmValue = document.getElementById('bpm-value');
+        const volumeSlider = document.getElementById('volume');
+        const volumeValue = document.getElementById('volume-value');
+        const messageBox = document.getElementById('message-box');
+        const labelsContainer = document.querySelector('.flex.flex-col.justify-start');
+        const randomBtn = document.getElementById('random-btn');
+        const densitySlider = document.getElementById('density');
+        const densityValue = document.getElementById('density-value');
+
+
+        // --- Constants & State ---
+        const GRID_SIZE = 32;
+        let gridState = Array(GRID_SIZE).fill(0).map(() => Array(GRID_SIZE).fill(0));
+        let audioInitialized = false;
+
+        // --- Row Function Definitions ---
+        const rowFunctions = [
+            // --- SYNTH PATTERNS (Rows 0-7) ---
+            { name: 'SYNTH: Note C4', type: 'Synth Note' },
+            { name: 'SYNTH: Note D4', type: 'Synth Note' },
+            { name: 'SYNTH: Note E4', type: 'Synth Note' },
+            { name: 'SYNTH: Note F#4', type: 'Synth Note' },
+            { name: 'SYNTH: Note G#4', type: 'Synth Note' },
+            { name: 'SYNTH: Note A#4', type: 'Synth Note' },
+            { name: 'SYNTH: Note C5', type: 'Synth Note' },
+            { name: 'SYNTH: Note D5', type: 'Synth Note' },
+            
+            // --- GUITAR FX (Rows 8-15) ---
+            { name: 'GUITAR: Toggle Distortion', type: 'Guitar FX' },
+            { name: 'GUITAR: Pulse Delay Feedback', type: 'Guitar FX' },
+            { name: 'GUITAR: Toggle Phaser', type: 'Guitar FX' },
+            { name: 'GUITAR: Pulse Reverb Decay', type: 'Guitar FX' },
+            { name: 'GUITAR: Mute Input', type: 'Guitar FX' },
+            { name: 'GUITAR: Un-Mute Input', type: 'Guitar FX' },
+            { name: 'GUITAR: Toggle Comb Filter', type: 'Guitar FX' },
+            { name: 'GUITAR: Pulse Comb Freq', type: 'Guitar FX' },
+
+            // --- SYNTH FX & MOD (Rows 16-23) ---
+            { name: 'SYNTH: Pulse Filter Freq', type: 'Synth FX' },
+            { name: 'SYNTH: Pulse Reverb Mix', type: 'Synth FX' },
+            { name: 'SYNTH: Pitch Bend Up', type: 'Synth Mod' },
+            { name: 'SYNTH: Pitch Bend Down', type: 'Synth Mod' },
+            { name: 'SYNTH: Toggle Comb Filter', type: 'Synth FX' },
+            { name: 'SYNTH: Pulse Comb Freq', type: 'Synth FX' },
+            { name: 'SYNTH: Random Note Trigger', type: 'Synth Mod' },
+            { name: 'SYNTH: Chord Trigger', type: 'Synth Mod' },
+
+            // --- GLOBAL & SEQUENCE MOD (Rows 24-31) ---
+            { name: 'GLOBAL: BPM Up', type: 'Global Mod' },
+            { name: 'GLOBAL: BPM Down', type: 'Global Mod' },
+            { name: 'SEQ: Reset Synth Length', type: 'Sequence Mod' },
+            { name: 'SEQ: Set Synth Length', type: 'Sequence Mod' },
+            { name: 'SEQ: Reset Guitar FX Length', type: 'Sequence Mod' },
+            { name: 'SEQ: Set Guitar FX Length', type: 'Sequence Mod' },
+            { name: 'SEQ: JUMP to step', type: 'Sequence Mod' },
+            { name: 'SEQ: Reverse Direction', type: 'Sequence Mod' }
+        ];
+
+        // --- Audio Nodes ---
+        let userMedia, synth, guitarVolume, guitarDistortion, guitarDelay, guitarPhaser, guitarReverb, guitarCombFilter, guitarCombFilterWetDry;
+        let synthFilter, synthReverb, synthPanner, synthCombFilter, synthCombFilterWetDry;
+        
+        let sequence;
+        let sequenceLengths = {
+            synth: GRID_SIZE,
+            guitar: GRID_SIZE
+        };
+        let sequenceDirection = 1; // 1 for forward, -1 for reverse
+
+        // --- UI Initialization ---
+        function createGrid() {
+            labelsContainer.innerHTML = ''; // Clear existing labels
+            gridContainer.innerHTML = `<div id="playhead" class="playhead"></div>`; // Clear grid but keep playhead
+            for (let row = 0; row < GRID_SIZE; row++) {
+                // Create Row Label
+                const label = document.createElement('div');
+                label.className = 'row-label flex items-center justify-end';
+                label.style.height = '2.5vmin';
+                label.style.maxHeight = '25px';
+                label.textContent = rowFunctions[row].name;
+                labelsContainer.appendChild(label);
+
+                // Create Grid Cells for the row
+                for (let col = 0; col < GRID_SIZE; col++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'grid-cell';
+                    cell.dataset.row = row;
+                    cell.dataset.col = col;
+                    gridContainer.appendChild(cell);
+                }
+            }
+        }
+
+        // --- Message Box ---
+        function showMessage(text) {
+            messageBox.textContent = text;
+            messageBox.classList.remove('hidden');
+            setTimeout(() => {
+                messageBox.classList.add('hidden');
+            }, 3000);
+        }
+
+        // --- Audio Setup ---
+        async function initializeAudio() {
+            try {
+                // Master Volume
+                Tone.getDestination().volume.value = volumeSlider.value;
+
+                // Input Chain (Guitar)
+                userMedia = new Tone.UserMedia();
+                await userMedia.open();
+                
+                guitarVolume = new Tone.Volume(0).toDestination();
+                
+                guitarCombFilterWetDry = new Tone.CrossFade(0).connect(guitarVolume);
+                guitarCombFilter = new Tone.FeedbackCombFilter(0.1, 0.5);
+
+                guitarDistortion = new Tone.Distortion(0);
+                guitarDistortion.connect(guitarCombFilterWetDry.a); // Dry path
+                guitarDistortion.connect(guitarCombFilter);         // Wet path
+                guitarCombFilter.connect(guitarCombFilterWetDry.b); // Wet path
+
+                guitarDelay = new Tone.FeedbackDelay("8n", 0).connect(guitarDistortion);
+                guitarPhaser = new Tone.Phaser({ frequency: 0.5, octaves: 3, baseFrequency: 350 }).connect(guitarDelay);
+                guitarReverb = new Tone.Reverb(1.5).connect(guitarPhaser);
+                userMedia.connect(guitarReverb);
+
+                // Synth Chain
+                synthPanner = new Tone.Panner(0).toDestination();
+                synthReverb = new Tone.Reverb(1.5).connect(synthPanner);
+                synthFilter = new Tone.Filter(20000, 'lowpass').connect(synthReverb);
+
+                synthCombFilterWetDry = new Tone.CrossFade(0).connect(synthFilter);
+                synthCombFilter = new Tone.FeedbackCombFilter(0.1, 0.5);
+
+                synth = new Tone.PolySynth(Tone.Synth, {
+                    oscillator: { type: 'fatsawtooth' },
+                    envelope: { attack: 0.01, decay: 0.2, sustain: 0.1, release: 0.1 }
+                });
+                synth.connect(synthCombFilterWetDry.a); // Dry path
+                synth.connect(synthCombFilter);         // Wet path
+                synthCombFilter.connect(synthCombFilterWetDry.b); // Wet path
+                
+                // Set initial transport settings
+                Tone.Transport.bpm.value = bpmSlider.value;
+                
+                audioInitialized = true;
+                startStopBtn.textContent = 'Stop';
+                startStopBtn.classList.remove('bg-amber-600', 'hover:bg-amber-500');
+                startStopBtn.classList.add('bg-red-600', 'hover:bg-red-500');
+
+            } catch (error) {
+                console.error("Audio initialization failed:", error);
+                showMessage("Could not access microphone. Please allow microphone access.");
+                return;
+            }
+            
+            // --- Sequencer Logic ---
+            const steps = Array.from(Array(GRID_SIZE).keys());
+            sequence = new Tone.Sequence((time, col) => {
+                // Determine the current column based on direction
+                const currentCol = sequenceDirection === 1 ? col : (GRID_SIZE - 1) - col;
+
+                // Update visual playhead
+                Tone.Draw.schedule(() => {
+                    const cellWidth = gridContainer.children[1].offsetWidth; // Use child 1 to avoid playhead
+                    playhead.style.left = `${currentCol * cellWidth}px`;
+                }, time);
+
+                // Process each row for the current step
+                for (let row = 0; row < GRID_SIZE; row++) {
+                    let stepIsActive = false;
+                    
+                    // Apply sequence length modulation
+                    if (row >= 0 && row <= 7 || row >= 16 && row <= 23) { // Synth rows
+                        const synthStep = currentCol % sequenceLengths.synth;
+                        if(gridState[row][synthStep] === 1) stepIsActive = true;
+                    } else if (row >= 8 && row <= 15) { // Guitar rows
+                        const guitarStep = currentCol % sequenceLengths.guitar;
+                        if(gridState[row][guitarStep] === 1) stepIsActive = true;
+                    } else { // Global rows
+                        if(gridState[row][currentCol] === 1) stepIsActive = true;
+                    }
+
+                    if (stepIsActive) {
+                        executeRowFunction(row, currentCol, time);
+                    }
+                }
+            }, steps, '16n').start(0);
+        }
+
+        // --- Row Function Execution ---
+        function executeRowFunction(row, col, time) {
+            const notes = ['C4', 'D4', 'E4', 'F#4', 'G#4', 'A#4', 'C5', 'D5'];
+            switch (row) {
+                // --- Synth Notes ---
+                case 0: case 1: case 2: case 3: case 4: case 5: case 6: case 7:
+                    synth.triggerAttackRelease(notes[row], '16n', time);
+                    break;
+
+                // --- Guitar FX ---
+                case 8: guitarDistortion.wet.value = 1 - guitarDistortion.wet.value; break;
+                case 9: guitarDelay.feedback.rampTo(0.7, 0.05, time); 
+                        setTimeout(() => guitarDelay.feedback.rampTo(0, 0.5), Tone.Time('16n').toMilliseconds());
+                        break;
+                case 10: guitarPhaser.wet.value = 1 - guitarPhaser.wet.value; break;
+                case 11: guitarReverb.decay = 5; 
+                         setTimeout(() => guitarReverb.decay = 1.5, Tone.Time('8n').toMilliseconds());
+                         break;
+                case 12: userMedia.mute = true; break;
+                case 13: userMedia.mute = false; break;
+                case 14: guitarCombFilterWetDry.fade.value = 1 - guitarCombFilterWetDry.fade.value; break;
+                case 15: 
+                    guitarCombFilter.resonance.rampTo(0.9, 0.05, time); 
+                    setTimeout(() => guitarCombFilter.resonance.rampTo(0.5, 0.5), Tone.Time('16n').toMilliseconds());
+                    break;
+
+                // --- Synth FX & Mod ---
+                case 16: synthFilter.frequency.rampTo(5000, 0.05, time); 
+                         setTimeout(() => synthFilter.frequency.rampTo(20000, 0.5), Tone.Time('16n').toMilliseconds());
+                         break;
+                case 17: synthReverb.wet.rampTo(0.9, 0.05, time); 
+                         setTimeout(() => synthReverb.wet.rampTo(0.2, 0.5), Tone.Time('8n').toMilliseconds());
+                         break;
+                case 18: synth.set({ detune: 1200 }); 
+                         setTimeout(() => synth.set({ detune: 0 }), Tone.Time('8n').toMilliseconds());
+                         break;
+                case 19: synth.set({ detune: -1200 }); 
+                         setTimeout(() => synth.set({ detune: 0 }), Tone.Time('8n').toMilliseconds());
+                         break;
+                case 20: synthCombFilterWetDry.fade.value = 1 - synthCombFilterWetDry.fade.value; break;
+                case 21: 
+                    synthCombFilter.delayTime.rampTo(0.01, 0.05, time);
+                    setTimeout(() => synthCombFilter.delayTime.rampTo(0.1, 0.5), Tone.Time('16n').toMilliseconds());
+                    break;
+                case 22: // Random Note
+                    const randomNote = notes[Math.floor(Math.random() * notes.length)];
+                    synth.triggerAttackRelease(randomNote, '16n', time);
+                    break;
+                case 23: // Chord
+                    synth.triggerAttackRelease([notes[0], notes[2], notes[4]], '8n', time);
+                    break;
+
+                // --- Global & Sequence Mod ---
+                case 24: Tone.Transport.bpm.value += 5; break;
+                case 25: Tone.Transport.bpm.value -= 5; break;
+                case 26: sequenceLengths.synth = GRID_SIZE; break;
+                case 27: sequenceLengths.synth = col + 1; break;
+                case 28: sequenceLengths.guitar = GRID_SIZE; break;
+                case 29: sequenceLengths.guitar = col + 1; break;
+                case 30: // Jump
+                    const jumpTarget = (col + 1) % GRID_SIZE;
+                    const ticksPer16th = Tone.Transport.PPQ / 4;
+                    Tone.Transport.ticks = jumpTarget * ticksPer16th;
+                    break;
+                case 31: sequenceDirection *= -1; break; // Reverse
+            }
+            // Update BPM display if changed
+            if(row === 24 || row === 25) {
+                bpmSlider.value = Tone.Transport.bpm.value;
+                bpmValue.textContent = Math.round(Tone.Transport.bpm.value);
+            }
+        }
+
+        // --- Grid Manipulation ---
+        function randomizeGrid() {
+            const density = parseFloat(densitySlider.value);
+            const cells = document.querySelectorAll('.grid-cell');
+            let cellIndex = 0;
+
+            for (let row = 0; row < GRID_SIZE; row++) {
+                for (let col = 0; col < GRID_SIZE; col++) {
+                    const cell = cells[cellIndex++];
+                    if (Math.random() < density) {
+                        gridState[row][col] = 1;
+                        cell.classList.add('active');
+                    } else {
+                        gridState[row][col] = 0;
+                        cell.classList.remove('active');
+                    }
+                }
+            }
+        }
+
+        // --- Event Listeners ---
+        startStopBtn.addEventListener('click', async () => {
+            if (!audioInitialized) {
+                await Tone.start();
+                await initializeAudio();
+            }
+            
+            if (Tone.Transport.state === 'started') {
+                Tone.Transport.stop();
+                startStopBtn.textContent = 'Start';
+                startStopBtn.classList.remove('bg-red-600', 'hover:bg-red-500');
+                startStopBtn.classList.add('bg-amber-600', 'hover:bg-amber-500');
+            } else {
+                Tone.Transport.start();
+                startStopBtn.textContent = 'Stop';
+                startStopBtn.classList.remove('bg-amber-600', 'hover:bg-amber-500');
+                startStopBtn.classList.add('bg-red-600', 'hover:bg-red-500');
+            }
+        });
+
+        gridContainer.addEventListener('click', (e) => {
+            if (e.target.classList.contains('grid-cell')) {
+                const row = parseInt(e.target.dataset.row);
+                const col = parseInt(e.target.dataset.col);
+                
+                // Toggle state
+                gridState[row][col] = gridState[row][col] === 1 ? 0 : 1;
+                e.target.classList.toggle('active');
+            }
+        });
+
+        bpmSlider.addEventListener('input', (e) => {
+            const newBpm = e.target.value;
+            bpmValue.textContent = newBpm;
+            if (audioInitialized) {
+                Tone.Transport.bpm.value = newBpm;
+            }
+        });
+
+        volumeSlider.addEventListener('input', (e) => {
+            const newVol = e.target.value;
+            volumeValue.textContent = `${newVol} dB`;
+            if (audioInitialized) {
+                Tone.getDestination().volume.rampTo(newVol, 0.1);
+            }
+        });
+
+        randomBtn.addEventListener('click', randomizeGrid);
+
+        densitySlider.addEventListener('input', (e) => {
+            const newDensity = parseFloat(e.target.value);
+            densityValue.textContent = `${Math.round(newDensity * 100)}%`;
+        });
+
+        window.addEventListener('resize', () => {
+             if (Tone.Transport.state === 'started') {
+                const cellWidth = gridContainer.children[1].offsetWidth;
+                const currentCol = Math.floor((Tone.Transport.ticks / (Tone.Transport.PPQ / 4)) % GRID_SIZE);
+                playhead.style.left = `${currentCol * cellWidth}px`;
+             }
+        });
+
+        // --- Initial Setup Call ---
+        createGrid();
+    </script>
+</body>
+</html>
