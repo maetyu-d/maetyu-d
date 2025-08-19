@@ -144,9 +144,9 @@
             { name: 'SYNTH: Chord Trigger', type: 'Synth Mod' },
 
             // --- GLOBAL & SEQUENCE MOD (Rows 24-31) ---
-            { name: 'GLOBAL: BPM Up', type: 'Global Mod' },
-            { name: 'GLOBAL: BPM Down', type: 'Global Mod' },
-            { name: 'SEQ: Reset Synth Length', type: 'Sequence Mod' },
+            { name: 'SEQ: Rate 0.5x', type: 'Sequence Mod' },
+            { name: 'SEQ: Rate 1x (Normal)', type: 'Sequence Mod' },
+            { name: 'SEQ: Rate 2x', type: 'Sequence Mod' },
             { name: 'SEQ: Set Synth Length', type: 'Sequence Mod' },
             { name: 'SEQ: Reset Guitar FX Length', type: 'Sequence Mod' },
             { name: 'SEQ: Set Guitar FX Length', type: 'Sequence Mod' },
@@ -340,9 +340,9 @@
                     break;
 
                 // --- Global & Sequence Mod ---
-                case 24: Tone.Transport.bpm.value += 5; break;
-                case 25: Tone.Transport.bpm.value -= 5; break;
-                case 26: sequenceLengths.synth = GRID_SIZE; break;
+                case 24: if (sequence) sequence.playbackRate = 0.5; break;
+                case 25: if (sequence) sequence.playbackRate = 1; break;
+                case 26: if (sequence) sequence.playbackRate = 2; break;
                 case 27: sequenceLengths.synth = col + 1; break;
                 case 28: sequenceLengths.guitar = GRID_SIZE; break;
                 case 29: sequenceLengths.guitar = col + 1; break;
@@ -352,11 +352,6 @@
                     Tone.Transport.ticks = jumpTarget * ticksPer16th;
                     break;
                 case 31: sequenceDirection *= -1; break; // Reverse
-            }
-            // Update BPM display if changed
-            if(row === 24 || row === 25) {
-                bpmSlider.value = Tone.Transport.bpm.value;
-                bpmValue.textContent = Math.round(Tone.Transport.bpm.value);
             }
         }
 
@@ -435,9 +430,9 @@
         });
 
         window.addEventListener('resize', () => {
-             if (Tone.Transport.state === 'started') {
+             if (audioInitialized && Tone.Transport.state === 'started') {
                 const cellWidth = gridContainer.children[1].offsetWidth;
-                const currentCol = Math.floor((Tone.Transport.ticks / (Tone.Transport.PPQ / 4)) % GRID_SIZE);
+                const currentCol = Math.floor(sequence.progress * sequence.length);
                 playhead.style.left = `${currentCol * cellWidth}px`;
              }
         });
@@ -447,3 +442,4 @@
     </script>
 </body>
 </html>
+
