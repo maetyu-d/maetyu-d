@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fork Flinger</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Patrick Hand', cursive;
+            touch-action: none; /* Prevents scrolling on touch devices */
+        }
+        canvas {
+            background-color: #f0f8ff;
+            border-radius: 0.75rem;
+            cursor: crosshair;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            width: 100%; /* Make canvas element responsive */
+        }
+        .title-text {
+             text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+<body class="bg-amber-100 flex flex-col items-center justify-center min-h-screen p-4 overflow-hidden">
+
+    <div class="w-full max-w-4xl mx-auto text-center">
+        <h1 class="text-5xl md:text-6xl font-bold text-amber-700 title-text mb-2">Fork Flinger</h1>
+        <p class="text-amber-600 text-lg mb-4">An arrow will now point to the target at the start of each level!</p>
+
+        <div class="bg-white/60 p-4 rounded-xl shadow-inner mb-4 flex justify-around items-center text-2xl text-amber-800">
+            <div>Score: <span id="score" class="font-bold">0</span></div>
+            <div>Shots: <span id="shots" class="font-bold">0</span></div>
+        </div>
+
+        <canvas id="gameCanvas"></canvas>
+
+        <div id="message" class="text-3xl text-green-600 font-bold h-10 mt-4"></div>
+        
+        <button id="resetButton" class="mt-4 px-6 py-3 bg-red-500 text-white font-bold rounded-lg shadow-lg hover:bg-red-600 active:scale-95 transition-transform duration-150 ease-in-out">
+            New Level
+        </button>
+    </div>
+
+    <script>
+        // --- Game Setup ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const shotsEl = document.getElementById('shots');
+        const messageEl = document.getElementById('message');
+        const resetButton = document.getElementById('resetButton');
+
+        let score = 0;
+        let shots = 0;
+        let isAiming = false;
+        let launchPower = 0;
+        let launchAngle = 0;
+        let animationFrameId;
+        let obstacles = [];
+
+        // --- Camera ---
+        const camera = {
+            x: 0,
+            y: 0,
+            zoom: 1,
+            lerp: 0.05 // Smoothness of camera follow
+        };
+
+        // --- Game Objects ---
+        const fork = {
+            x: 100,
+            y: 400,
+            width: 20,
+            height: 150,
+            tineLength: 60,
+        };
+
+        const food = {
+            x: 0,
+            y: 0,
+            radius: 10,
+            velocityX: 0,
+            velocityY: 0,
+            isFlying: false,
+            rotation: 0,
+            rotationSpeed: 0.2,
+            color: '#84cc16'
+        };
+
+        const target = {
+            x: 0,
+            y: 0,
+            radius: 30,
+            emoji: '😮'
+        };
+
+        const clueArrow = {
+            pulse: 0,
+            pulseSpeed: 0.05
+        };
+        
+        // --- Physics Constants ---
+        const gravity = 0.3;
+        const maxPull = 150;
+        const bounceDamping = 0.7; // Energy lost on bounce
+
+        // --- Utility Functions ---
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            const size = container.clientWidth; // Use the full container width
+            canvas.width = size;
+            canvas.height = size * 0.625; // 16:10 aspect ratio
+            fork.y = canvas.height - 50;
+            fork.x = 100; // Keep fork position fixed relative to the start
+            fullReset();
+        }
+
+        function getMousePos(evt) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = evt.clientX || (evt.touches && evt.touches[0].clientX);
+            const clientY = evt.clientY || (evt.touches && evt.touches[0].clientY);
+            return {
+                x: (clientX - rect.left) + camera.x,
+                y: (clientY - rect.top) + camera.y
+            };
+        }
+        
+        // --- Level Generation ---
+        function isLevelPossible() {
+            const testAngles = [-Math.PI / 6, -Math.PI / 4, -Math.PI / 3]; // 30, 45, 60 degrees up
+            const launchVelocity = 25; // Max power velocity
+            const startPos = getFoodPositionOnFork();
+
+            for (const angle of testAngles) {
+                let simFood = {
+                    x: startPos.x, y: startPos.y, radius: food.radius,
+                    velocityX: Math.cos(angle) * launchVelocity,
+                    velocityY: Math.sin(angle) * launchVelocity,
+                };
+
+                let pathIsClear = true;
+                for (let step = 0; step < 300; step++) {
+                    simFood.velocityY += gravity;
+                    simFood.x += simFood.velocityX;
+                    simFood.y += simFood.velocityY;
+
+                    for (const obs of obstacles) {
+                        const closestX = Math.max(obs.x, Math.min(simFood.x, obs.x + obs.width));
+                        const closestY = Math.max(obs.y, Math.min(simFood.y, obs.y + obs.height));
+                        const dx = simFood.x - closestX;
+                        const dy = simFood.y - closestY;
+                        if ((dx * dx + dy * dy) < (simFood.radius * simFood.radius)) {
+                            pathIsClear = false;
+                            break;
+                        }
+                    }
+                    if (!pathIsClear) break;
+
+                    const dxTarget = simFood.x - target.x;
+                    const dyTarget = simFood.y - target.y;
+                    if (Math.sqrt(dxTarget * dxTarget + dyTarget * dyTarget) < target.radius * 2) {
+                        return true; // Found a clear path!
+                    }
+                    if (simFood.y > canvas.height + 200) break;
+                }
+            }
+            return false; // None of the test paths worked
+        }
+
+        function generateLevelLayout() {
+            obstacles = [];
+            const levelWidth = canvas.width * 2;
+            target.x = levelWidth * (0.7 + Math.random() * 0.25);
+            target.y = canvas.height * (0.2 + Math.random() * 0.6);
+
+            for (let i = 0; i < 5; i++) {
+                obstacles.push({
+                    x: 250 + Math.random() * (levelWidth - 400),
+                    y: Math.random() * (canvas.height - 100),
+                    width: 20 + Math.random() * 60,
+                    height: 50 + Math.random() * 100,
+                    color: '#a16207'
+                });
+            }
+        }
+
+        function spawnLevel() {
+            let attempts = 0;
+            do {
+                generateLevelLayout();
+                attempts++;
+            } while (!isLevelPossible() && attempts < 50);
+
+            if (attempts >= 50) {
+                console.warn("Could not generate a provably possible level. Generating a simpler one.");
+                obstacles.splice(0, 3); // Fallback: remove some obstacles
+            }
+        }
+
+        function getFoodPositionOnFork() {
+            const rotation = isAiming ? launchAngle - Math.PI / 2 : -Math.PI / 4;
+            const foodOffsetX = Math.cos(rotation + Math.PI / 2) * (fork.tineLength - 15);
+            const foodOffsetY = Math.sin(rotation + Math.PI / 2) * (fork.tineLength - 15);
+            return {
+                x: fork.x + foodOffsetX,
+                y: fork.y + foodOffsetY
+            };
+        }
+
+        function resetFood() {
+            food.isFlying = false;
+            food.rotation = 0;
+            const startPos = getFoodPositionOnFork();
+            food.x = startPos.x;
+            food.y = startPos.y;
+            food.velocityX = 0;
+            food.velocityY = 0;
+        }
+
+        // --- Drawing Functions ---
+        function drawWorld() {
+            ctx.save();
+            ctx.translate(-camera.x, -camera.y);
+            drawTarget();
+            drawObstacles();
+            drawFork();
+            drawFood();
+            if(isAiming) {
+                drawAimLine();
+                drawTrajectory();
+            }
+            ctx.restore();
+        }
+        
+        function drawClueArrow() {
+            // Only show if the pea is on the fork and the target is off-screen
+            if (food.isFlying || (target.x > camera.x && target.x < camera.x + canvas.width)) {
+                return;
+            }
+
+            // Calculate the arrow's position on the edge of the screen, clamped to view
+            const arrowX = canvas.width - 40;
+            const arrowY = Math.max(40, Math.min(canvas.height - 40, target.y));
+
+            ctx.save();
+            
+            // Pulsing effect
+            ctx.globalAlpha = 0.5 + Math.sin(clueArrow.pulse) * 0.5;
+
+            // Draw the arrow shape
+            ctx.fillStyle = '#ef4444'; // red-500
+            ctx.beginPath();
+            ctx.moveTo(arrowX - 15, arrowY - 15);
+            ctx.lineTo(arrowX, arrowY);
+            ctx.lineTo(arrowX - 15, arrowY + 15);
+            ctx.closePath();
+            ctx.fill();
+
+            // Draw text
+            ctx.font = "20px 'Patrick Hand', cursive";
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+            ctx.fillText("Target!", arrowX - 25, arrowY);
+
+            ctx.restore();
+        }
+
+        function drawFork() {
+            ctx.save();
+            ctx.translate(fork.x, fork.y);
+            const rotation = isAiming ? launchAngle - Math.PI / 2 : -Math.PI / 4;
+            ctx.rotate(rotation);
+            ctx.fillStyle = '#a16207';
+            ctx.beginPath();
+            ctx.roundRect(-fork.width / 2, 0, fork.width, fork.height, 10);
+            ctx.fill();
+            ctx.strokeStyle = '#d1d5db';
+            ctx.lineWidth = 5;
+            for (let i = 0; i < 4; i++) {
+                const tineX = -fork.width / 2 + 3 + i * (fork.width-6)/3;
+                ctx.beginPath();
+                ctx.moveTo(tineX, 0);
+                ctx.lineTo(tineX, -fork.tineLength);
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        function drawFood() {
+            if (!food.isFlying) {
+                const pos = getFoodPositionOnFork();
+                food.x = pos.x;
+                food.y = pos.y;
+            }
+            ctx.save();
+            ctx.translate(food.x, food.y);
+            ctx.rotate(food.rotation);
+            ctx.beginPath();
+            ctx.arc(0, 0, food.radius, 0, Math.PI * 2);
+            ctx.fillStyle = food.color;
+            ctx.fill();
+            ctx.strokeStyle = '#4d7c0f';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(food.radius / 2, 0, food.radius / 4, 0, Math.PI * 2);
+            ctx.fillStyle = '#4d7c0f';
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function drawTarget() {
+            ctx.font = `${target.radius * 2}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(target.emoji, target.x, target.y);
+        }
+
+        function drawObstacles() {
+            obstacles.forEach(obs => {
+                ctx.fillStyle = obs.color;
+                ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+            });
+        }
+
+        function drawAimLine() {
+            ctx.beginPath();
+            ctx.moveTo(fork.x, fork.y);
+            ctx.lineTo(aimPos.x, aimPos.y);
+            ctx.strokeStyle = `rgba(239, 68, 68, ${launchPower / maxPull})`;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+        }
+        
+        function drawTrajectory() {
+            const startPos = getFoodPositionOnFork();
+            const tempFood = { ...food, x: startPos.x, y: startPos.y };
+            const launchVelocity = (launchPower / maxPull) * 25;
+            tempFood.velocityX = Math.cos(launchAngle) * launchVelocity;
+            tempFood.velocityY = Math.sin(launchAngle) * launchVelocity;
+            
+            ctx.beginPath();
+            ctx.moveTo(tempFood.x, tempFood.y);
+            ctx.setLineDash([5, 10]);
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.lineWidth = 2;
+
+            for (let i = 0; i < 150; i++) {
+                tempFood.velocityY += gravity;
+                tempFood.x += tempFood.velocityX;
+                tempFood.y += tempFood.velocityY;
+                ctx.lineTo(tempFood.x, tempFood.y);
+            }
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // --- Game Logic ---
+        function update() {
+            clueArrow.pulse = (clueArrow.pulse + clueArrow.pulseSpeed) % (Math.PI * 2);
+
+            if (food.isFlying) {
+                food.rotation += food.rotationSpeed;
+                food.velocityY += gravity;
+                food.x += food.velocityX;
+                food.y += food.velocityY;
+
+                obstacles.forEach(obs => {
+                    const closestX = Math.max(obs.x, Math.min(food.x, obs.x + obs.width));
+                    const closestY = Math.max(obs.y, Math.min(food.y, obs.y + obs.height));
+                    const dx = food.x - closestX;
+                    const dy = food.y - closestY;
+                    if ((dx * dx + dy * dy) < (food.radius * food.radius)) {
+                        const overlapX = food.radius - Math.abs(dx);
+                        const overlapY = food.radius - Math.abs(dy);
+                        if (overlapX > overlapY) {
+                            food.velocityY *= -bounceDamping;
+                            food.y += food.velocityY > 0 ? overlapY : -overlapY;
+                        } else {
+                            food.velocityX *= -bounceDamping;
+                            food.x += food.velocityX > 0 ? overlapX : -overlapX;
+                        }
+                    }
+                });
+
+                const dxTarget = food.x - target.x;
+                const dyTarget = food.y - target.y;
+                if (Math.sqrt(dxTarget*dxTarget + dyTarget*dyTarget) < food.radius + target.radius) {
+                    score++;
+                    scoreEl.textContent = score;
+                    messageEl.textContent = 'YUM!';
+                    target.emoji = '😋';
+                    setTimeout(() => {
+                        messageEl.textContent = '';
+                        target.emoji = '😮';
+                        resetGame();
+                    }, 1000);
+                }
+
+                if (food.y > canvas.height + 100) {
+                    resetFood();
+                    messageEl.textContent = 'Miss!';
+                    setTimeout(() => messageEl.textContent = '', 1000);
+                }
+            }
+
+            let targetX = 0;
+            if (food.isFlying) {
+                targetX = food.x - canvas.width / 4;
+            }
+            camera.x += (targetX - camera.x) * camera.lerp;
+        }
+        
+        function gameLoop() {
+            update();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawWorld();
+            drawClueArrow(); // Draw clue on top of everything, not affected by camera
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        // --- Event Handlers ---
+        let aimPos = { x: 0, y: 0 };
+        
+        function startAim(e) {
+            if (food.isFlying) return;
+            isAiming = true;
+            aim(e);
+        }
+
+        function aim(e) {
+            if (!isAiming) return;
+            aimPos = getMousePos(e);
+            const pivotX = fork.x;
+            const pivotY = fork.y;
+            const dx = aimPos.x - pivotX;
+            const dy = aimPos.y - pivotY;
+            launchAngle = Math.atan2(dy, dx) + Math.PI;
+            launchPower = Math.min(Math.sqrt(dx * dx + dy * dy), maxPull);
+        }
+
+        function endAim() {
+            if (!isAiming) return;
+            isAiming = false;
+            
+            if (launchPower > 10) {
+                food.isFlying = true;
+                shots++;
+                shotsEl.textContent = shots;
+                const launchVelocity = (launchPower / maxPull) * 25;
+                food.velocityX = Math.cos(launchAngle) * launchVelocity;
+                food.velocityY = Math.sin(launchAngle) * launchVelocity;
+            }
+            launchPower = 0;
+        }
+
+        function resetGame() {
+            shots = 0;
+            shotsEl.textContent = shots;
+            messageEl.textContent = '';
+            spawnLevel();
+            resetFood();
+        }
+        
+        function fullReset() {
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            score = 0;
+            scoreEl.textContent = score;
+            resetGame();
+            gameLoop();
+        }
+
+        // --- Initialize ---
+        canvas.addEventListener('mousedown', startAim);
+        window.addEventListener('mousemove', aim);
+        window.addEventListener('mouseup', endAim);
+        canvas.addEventListener('touchstart', startAim);
+        window.addEventListener('touchmove', aim);
+        window.addEventListener('touchend', endAim);
+        resetButton.addEventListener('click', fullReset);
+        window.addEventListener('resize', resizeCanvas);
+
+        resizeCanvas();
+
+    </script>
+</body>
+</html>
