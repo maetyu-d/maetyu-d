@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Chaotic Attractors</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overscroll-behavior: none;
+        }
+        canvas {
+            display: block;
+            cursor: grab;
+        }
+        canvas:active {
+            cursor: grabbing;
+        }
+        .param-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #4f46e5;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        .param-slider::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: #4f46e5;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white overflow-hidden flex h-screen">
+
+    <!-- Main Canvas -->
+    <div class="flex-grow relative">
+        <canvas id="attractorCanvas"></canvas>
+        <div id="attractor-title" class="absolute top-4 left-4 text-2xl font-bold text-white/80"></div>
+    </div>
+
+    <!-- Control Panel -->
+    <div class="w-full sm:w-80 bg-gray-800/80 backdrop-blur-sm shadow-2xl p-6 overflow-y-auto h-screen flex flex-col">
+        <div class="flex-grow">
+            <h1 class="text-2xl font-bold mb-1 text-indigo-300">Chaotic Attractors</h1>
+            <p class="text-sm text-gray-400 mb-6">Explore the beauty of deterministic chaos.</p>
+
+            <!-- Attractor Selection -->
+            <div class="mb-6">
+                <label for="attractorSelect" class="block text-sm font-medium text-gray-300 mb-2">Choose an Attractor</label>
+                <select id="attractorSelect" class="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option value="lorenz">Lorenz</option>
+                    <option value="dejong">De Jong</option>
+                    <option value="clifford">Clifford</option>
+                    <option value="aizawa">Aizawa</option>
+                </select>
+            </div>
+
+            <!-- Parameters -->
+            <div id="paramsContainer" class="space-y-4">
+                <!-- Parameters will be dynamically inserted here -->
+            </div>
+             <div class="mt-6 p-4 bg-gray-900/50 rounded-lg">
+                <h3 class="font-semibold text-indigo-300 mb-2">Description</h3>
+                <p id="attractorDescription" class="text-sm text-gray-400"></p>
+            </div>
+        </div>
+
+        <!-- Reset Button -->
+        <div class="mt-6">
+             <button id="resetButton" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition duration-300">
+                Reset Simulation
+            </button>
+        </div>
+    </div>
+
+
+    <script>
+        const canvas = document.getElementById('attractorCanvas');
+        const ctx = canvas.getContext('2d');
+        const attractorSelect = document.getElementById('attractorSelect');
+        const paramsContainer = document.getElementById('paramsContainer');
+        const resetButton = document.getElementById('resetButton');
+        const attractorTitle = document.getElementById('attractor-title');
+        const attractorDescription = document.getElementById('attractorDescription');
+
+
+        let particles = [];
+        const numParticles = 5000;
+        let animationFrameId;
+
+        let currentAttractor;
+        let params = {};
+        let scale = 1;
+        
+        // For 3D rotation
+        let angleX = 0;
+        let angleY = 0;
+        let isDragging = false;
+        let lastMouseX = 0;
+        let lastMouseY = 0;
+
+        const attractors = {
+            lorenz: {
+                name: "Lorenz",
+                description: "A 3D structure resembling a butterfly's wings. It's one of the most famous chaotic systems, arising from simplified models of atmospheric convection. Drag the canvas to rotate.",
+                init: () => {
+                    params = { a: 10, b: 28, c: 8 / 3 };
+                    particles = [];
+                    for (let i = 0; i < numParticles; i++) {
+                        particles.push({ x: Math.random() * 2 - 1, y: Math.random() * 2 - 1, z: Math.random() * 20 + 10 });
+                    }
+                },
+                update: (p) => {
+                    const dt = 0.01;
+                    const dx = params.a * (p.y - p.x);
+                    const dy = p.x * (params.b - p.z) - p.y;
+                    const dz = p.x * p.y - params.c * p.z;
+                    p.x += dx * dt;
+                    p.y += dy * dt;
+                    p.z += dz * dt;
+                },
+                draw: () => {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.globalAlpha = 0.3;
+                    ctx.fillStyle = '#a78bfa'; // A nice violet color
+
+                    const cosX = Math.cos(angleX);
+                    const sinX = Math.sin(angleX);
+                    const cosY = Math.cos(angleY);
+                    const sinY = Math.sin(angleY);
+
+                    particles.forEach(p => {
+                        // 3D rotation and projection
+                        let y1 = p.y * cosX - p.z * sinX;
+                        let z1 = p.y * sinX + p.z * cosX;
+                        let x1 = p.x * cosY - z1 * sinY;
+                        let z2 = p.x * sinY + z1 * cosY;
+
+                        const projX = x1 * scale + canvas.width / 2;
+                        const projY = y1 * scale + canvas.height / 2;
+                        
+                        if (projX > 0 && projX < canvas.width && projY > 0 && projY < canvas.height) {
+                           ctx.fillRect(projX, projY, 1, 1);
+                        }
+                        currentAttractor.update(p);
+                    });
+                },
+                params: [
+                    { name: 'a (σ)', min: -20, max: 20, step: 0.1, value: 10 },
+                    { name: 'b (ρ)', min: 0, max: 50, step: 0.1, value: 28 },
+                    { name: 'c (β)', min: 0, max: 10, step: 0.01, value: 8/3 },
+                ]
+            },
+            dejong: {
+                name: "De Jong",
+                description: "A 2D attractor defined by trigonometric functions. Tweaking its four parameters can lead to an incredible variety of organic and geometric shapes.",
+                init: () => {
+                    params = { a: -2.0, b: -2.0, c: -1.2, d: 2.0 };
+                    particles = Array.from({ length: numParticles }, () => ({ x: Math.random(), y: Math.random() }));
+                },
+                update: (p) => {
+                    const { a, b, c, d } = params;
+                    const x_new = Math.sin(a * p.y) - Math.cos(b * p.x);
+                    const y_new = Math.sin(c * p.x) - Math.cos(d * p.y);
+                    p.x = x_new;
+                    p.y = y_new;
+                },
+                draw: () => {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.globalAlpha = 0.3;
+                    ctx.fillStyle = '#60a5fa'; // A nice blue color
+
+                    particles.forEach(p => {
+                        const px = p.x * scale + canvas.width / 2;
+                        const py = p.y * scale + canvas.height / 2;
+                        ctx.fillRect(px, py, 1, 1);
+                        currentAttractor.update(p);
+                    });
+                },
+                params: [
+                    { name: 'a', min: -3, max: 3, step: 0.01, value: -2.0 },
+                    { name: 'b', min: -3, max: 3, step: 0.01, value: -2.0 },
+                    { name: 'c', min: -3, max: 3, step: 0.01, value: -1.2 },
+                    { name: 'd', min: -3, max: 3, step: 0.01, value: 2.0 },
+                ]
+            },
+            clifford: {
+                name: "Clifford",
+                description: "Another 2D trigonometric attractor. It often produces intricate, fractal-like patterns that can be highly sensitive to small changes in its parameters.",
+                init: () => {
+                    params = { a: -1.4, b: 1.6, c: 1.0, d: 0.7 };
+                    particles = Array.from({ length: numParticles }, () => ({ x: Math.random() * 2 - 1, y: Math.random() * 2 - 1 }));
+                },
+                update: (p) => {
+                    const { a, b, c, d } = params;
+                    const x_new = Math.sin(a * p.y) + c * Math.cos(a * p.x);
+                    const y_new = Math.sin(b * p.x) + d * Math.cos(b * p.y);
+                    p.x = x_new;
+                    p.y = y_new;
+                },
+                draw: () => {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.globalAlpha = 0.3;
+                    ctx.fillStyle = '#f87171'; // A nice red color
+                    particles.forEach(p => {
+                        const px = p.x * scale + canvas.width / 2;
+                        const py = p.y * scale + canvas.height / 2;
+                        ctx.fillRect(px, py, 1, 1);
+                        currentAttractor.update(p);
+                    });
+                },
+                params: [
+                    { name: 'a', min: -2, max: 2, step: 0.01, value: -1.4 },
+                    { name: 'b', min: -2, max: 2, step: 0.01, value: 1.6 },
+                    { name: 'c', min: -2, max: 2, step: 0.01, value: 1.0 },
+                    { name: 'd', min: -2, max: 2, step: 0.01, value: 0.7 },
+                ]
+            },
+            aizawa: {
+                name: "Aizawa",
+                description: "A 3D attractor that can form a complex, spherical shell-like structure. It's a fascinating example of how chaos can create ordered, yet unpredictable, forms. Drag to rotate.",
+                init: () => {
+                    params = { a: 0.95, b: 0.7, c: 0.6, d: 3.5, e: 0.25, f: 0.1 };
+                    particles = [];
+                     // FIX: Initialize particles with random positions
+                     for (let i = 0; i < numParticles; i++) {
+                        particles.push({ 
+                            x: Math.random() * 0.2 - 0.1, 
+                            y: Math.random() * 0.2 - 0.1, 
+                            z: Math.random() * 0.2 - 0.1 
+                        });
+                    }
+                },
+                update: (p) => {
+                    const { a, b, c, d, e, f } = params;
+                    const dt = 0.01;
+                    const dx = (p.z - b) * p.x - d * p.y;
+                    const dy = d * p.x + (p.z - b) * p.y;
+                    const dz = c + a * p.z - (p.z * p.z * p.z) / 3 - (p.x * p.x + p.y * p.y) * (1 + e * p.z) + f * p.z * p.x * p.x * p.x;
+                    p.x += dx * dt;
+                    p.y += dy * dt;
+                    p.z += dz * dt;
+                },
+                draw: () => {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.globalAlpha = 0.3;
+                    ctx.fillStyle = '#34d399'; // A nice green color
+
+                    const cosX = Math.cos(angleX);
+                    const sinX = Math.sin(angleX);
+                    const cosY = Math.cos(angleY);
+                    const sinY = Math.sin(angleY);
+
+                    particles.forEach(p => {
+                        // 3D rotation and projection
+                        let y1 = p.y * cosX - p.z * sinX;
+                        let z1 = p.y * sinX + p.z * cosX;
+                        let x1 = p.x * cosY - z1 * sinY;
+                        
+                        const projX = x1 * scale + canvas.width / 2;
+                        const projY = y1 * scale + canvas.height / 2;
+                        
+                        if (projX > 0 && projX < canvas.width && projY > 0 && projY < canvas.height) {
+                           ctx.fillRect(projX, projY, 1, 1);
+                        }
+                        currentAttractor.update(p);
+                    });
+                },
+                params: [
+                    { name: 'a', min: 0, max: 2, step: 0.01, value: 0.95 },
+                    { name: 'b', min: 0, max: 2, step: 0.01, value: 0.7 },
+                    { name: 'c', min: 0, max: 2, step: 0.01, value: 0.6 },
+                    { name: 'd', min: 0, max: 5, step: 0.01, value: 3.5 },
+                    { name: 'e', min: 0, max: 1, step: 0.01, value: 0.25 },
+                    { name: 'f', min: 0, max: 1, step: 0.01, value: 0.1 },
+                ]
+            }
+        };
+
+        function createParamControls(attractor) {
+            paramsContainer.innerHTML = '';
+            attractor.params.forEach(param => {
+                const paramKey = param.name.split(' ')[0]; // Use 'a' from 'a (σ)'
+                
+                const wrapper = document.createElement('div');
+                
+                const labelWrapper = document.createElement('div');
+                labelWrapper.className = 'flex justify-between items-center mb-1';
+                
+                const label = document.createElement('label');
+                label.textContent = param.name;
+                label.className = 'text-sm font-medium text-gray-300';
+                
+                const valueSpan = document.createElement('span');
+                valueSpan.textContent = parseFloat(param.value).toFixed(2);
+                valueSpan.className = 'text-sm text-indigo-300 font-mono';
+                
+                labelWrapper.appendChild(label);
+                labelWrapper.appendChild(valueSpan);
+                
+                const slider = document.createElement('input');
+                slider.type = 'range';
+                slider.min = param.min;
+                slider.max = param.max;
+                slider.step = param.step;
+                slider.value = param.value;
+                slider.className = 'w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer param-slider';
+                
+                slider.addEventListener('input', (e) => {
+                    const newValue = parseFloat(e.target.value);
+                    params[paramKey] = newValue;
+                    valueSpan.textContent = newValue.toFixed(2);
+                    // No full reset, just let it evolve
+                });
+
+                wrapper.appendChild(labelWrapper);
+                wrapper.appendChild(slider);
+                paramsContainer.appendChild(wrapper);
+            });
+        }
+
+        function switchAttractor(name) {
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            currentAttractor = attractors[name];
+            attractorTitle.textContent = currentAttractor.name;
+            attractorDescription.textContent = currentAttractor.description;
+            
+            // Reset rotation for 3D attractors
+            angleX = 0;
+            angleY = 0;
+
+            resizeCanvas();
+            currentAttractor.init();
+            createParamControls(currentAttractor);
+            animate();
+        }
+
+        function animate() {
+            currentAttractor.draw();
+            animationFrameId = requestAnimationFrame(animate);
+        }
+
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            if (currentAttractor) {
+                // Recalculate scale based on new dimensions
+                if (currentAttractor.name === "Lorenz") {
+                    scale = Math.min(canvas.width, canvas.height) / 30;
+                } else if (currentAttractor.name === "Aizawa") {
+                    // FIX: Give Aizawa its own, larger scaling factor
+                    scale = Math.min(canvas.width, canvas.height) / 2.5;
+                } else if (currentAttractor.name === "De Jong") {
+                     scale = Math.min(canvas.width, canvas.height) / 4.5;
+                } else if (currentAttractor.name === "Clifford") {
+                     scale = Math.min(canvas.width, canvas.height) / 4;
+                }
+            }
+        }
+
+        // Event Listeners
+        attractorSelect.addEventListener('change', (e) => switchAttractor(e.target.value));
+        resetButton.addEventListener('click', () => switchAttractor(attractorSelect.value));
+        window.addEventListener('resize', () => {
+             switchAttractor(attractorSelect.value)
+        });
+        
+        // Mouse drag for rotation on 3D attractors
+        canvas.addEventListener('mousedown', (e) => {
+            if (currentAttractor.name === "Lorenz" || currentAttractor.name === "Aizawa") {
+                isDragging = true;
+                lastMouseX = e.clientX;
+                lastMouseY = e.clientY;
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const dx = e.clientX - lastMouseX;
+                const dy = e.clientY - lastMouseY;
+                angleY += dx * 0.01;
+                angleX += dy * 0.01;
+                lastMouseX = e.clientX;
+                lastMouseY = e.clientY;
+            }
+        });
+
+        // Initial setup
+        switchAttractor('lorenz');
+
+    </script>
+</body>
+</html>
