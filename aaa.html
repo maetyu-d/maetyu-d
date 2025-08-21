@@ -88,58 +88,43 @@
 
             // --- Configuration ---
             const TILE_SIZE = 10;
-            const WORLD_WIDTH_TILES = 120;
-            const WORLD_HEIGHT_TILES = 80;
-            const BOT_SPEED = 0.2; // Tiles per animation frame
+            const WORLD_WIDTH_TILES = 160; // Increased width for more towers
+            const WORLD_HEIGHT_TILES = 90;
+            const BOT_SPEED = 0.25;
 
             canvas.width = WORLD_WIDTH_TILES * TILE_SIZE;
             canvas.height = WORLD_HEIGHT_TILES * TILE_SIZE;
 
             const Tile = {
-                EMPTY: 0,
-                CONCRETE: 1,
-                FLOOR: 2,
-                STAIRS: 3,
-                LIFT_SHAFT: 4,
-                LIFT_DOOR: 5,
-                BRIDGE: 6,
+                EMPTY: 0, CONCRETE: 1, FLOOR: 2, STAIRS: 3, LIFT_SHAFT: 4, LIFT_DOOR: 5, BRIDGE: 6,
             };
 
             const COLORS = {
-                [Tile.EMPTY]: '#3a3a3a',
-                [Tile.CONCRETE]: '#8d8d8d',
-                [Tile.FLOOR]: '#b0b0b0',
-                [Tile.STAIRS]: '#d9a400',
-                [Tile.LIFT_SHAFT]: '#5a5a5a',
-                [Tile.LIFT_DOOR]: '#00b894',
-                [Tile.BRIDGE]: '#a37c58',
-                GOAL: '#ffde03',
-                FLEXI_BOT: '#ff4757',
-                LIFT_BOT: '#1e90ff',
+                [Tile.EMPTY]: '#3a3a3a', [Tile.CONCRETE]: '#8d8d8d', [Tile.FLOOR]: '#b0b0b0',
+                [Tile.STAIRS]: '#d9a400', [Tile.LIFT_SHAFT]: '#5a5a5a', [Tile.LIFT_DOOR]: '#00b894',
+                [Tile.BRIDGE]: '#a37c58', GOAL: '#ffde03', FLEXI_BOT: '#ff4757', LIFT_BOT: '#1e90ff',
                 PATH: 'rgba(255, 255, 255, 0.3)',
             };
 
-            let worldGrid = [];
-            let walkableTiles = [];
-            let bots = [];
-            let goal = null;
-            let animationFrameId;
-            let sourceCodeLines = [];
-            let codeScrollOffset = 0;
+            let worldGrid = [], walkableTiles = [], bots = [], goal = null;
+            let animationFrameId, sourceCodeLines = [], codeScrollOffset = 0;
 
             // --- World Generation ---
 
             function generateWorld() {
                 worldGrid = Array(WORLD_HEIGHT_TILES).fill(0).map(() => Array(WORLD_WIDTH_TILES).fill(Tile.EMPTY));
                 
-                const numTowers = Math.floor(Math.random() * 3) + 2; // 2 to 4 towers
-                let currentX = 5;
+                // More towers in a wider world
+                const numTowers = Math.floor(Math.random() * 4) + 5; // 5 to 8 towers
+                let currentX = 4;
 
                 for (let i = 0; i < numTowers; i++) {
-                    if (currentX >= WORLD_WIDTH_TILES - 20) break;
-                    const towerWidth = Math.floor(Math.random() * 15) + 8;
+                    if (currentX >= WORLD_WIDTH_TILES - 15) break;
+                    // Slightly narrower towers to fit more
+                    const towerWidth = Math.floor(Math.random() * 9) + 7; // 7 to 15 tiles
                     generateTower(currentX, towerWidth);
-                    currentX += towerWidth + Math.floor(Math.random() * 15) + 5; // Gap between towers
+                    // Smaller gaps between towers
+                    currentX += towerWidth + Math.floor(Math.random() * 7) + 4; // 4 to 10 tile gap
                 }
 
                 addBridges();
@@ -148,47 +133,43 @@
 
             function generateTower(startX, width) {
                 const maxHeight = WORLD_HEIGHT_TILES - 10;
-                const towerHeight = Math.floor(Math.random() * (maxHeight / 2)) + Math.floor(maxHeight / 3);
+                const towerHeight = Math.floor(Math.random() * (maxHeight / 2)) + Math.floor(maxHeight / 2.5);
                 let currentY = WORLD_HEIGHT_TILES - 1;
-
                 const moduleTypes = ['solid', 'stairs', 'lift'];
-                const numModules = Math.floor(Math.random() * 4) + 3;
+                const numModules = Math.floor(Math.random() * 5) + 4;
                 
-                let hasTransport = false;
-                for (let i = 0; i < numModules; i++) {
-                    if (currentY <= 10) break;
-                    
-                    let type = moduleTypes[Math.floor(Math.random() * moduleTypes.length)];
-                    
-                    if(i === numModules - 1 && !hasTransport && towerHeight > 20) {
-                        type = Math.random() > 0.5 ? 'stairs' : 'lift';
-                    }
-                    if (type === 'stairs' || type === 'lift') hasTransport = true;
+                let hasTransport = { stairs: false, lift: false };
+                let modules = [];
 
-                    const moduleHeight = Math.floor(Math.random() * 10) + 5;
-                    
+                for (let i=0; i < numModules; i++) {
+                    let type = moduleTypes[Math.floor(Math.random() * moduleTypes.length)];
+                    modules.push(type);
+                    if (type === 'stairs') hasTransport.stairs = true;
+                    if (type === 'lift') hasTransport.lift = true;
+                }
+                
+                // **Crucial modification**: Ensure tall towers have lifts for LiftBot accessibility
+                if (towerHeight > 40 && !hasTransport.lift) {
+                    modules[Math.floor(Math.random() * modules.length)] = 'lift';
+                }
+
+                modules.forEach(type => {
+                    if (currentY <= 15) return;
+                    const moduleHeight = Math.floor(Math.random() * 8) + 6;
                     switch(type) {
-                        case 'solid':
-                            currentY = createSolidModule(startX, currentY, width, moduleHeight);
-                            break;
-                        case 'stairs':
-                            currentY = createStairsModule(startX, currentY, width, moduleHeight);
-                            break;
-                        case 'lift':
-                             currentY = createLiftModule(startX, currentY, width, moduleHeight);
-                            break;
+                        case 'solid': currentY = createSolidModule(startX, currentY, width, moduleHeight); break;
+                        case 'stairs': currentY = createStairsModule(startX, currentY, width, moduleHeight); break;
+                        case 'lift': currentY = createLiftModule(startX, currentY, width, moduleHeight); break;
                     }
                     currentY--;
-                }
+                });
             }
 
             function createSolidModule(x, y, w, h) {
                 for (let j = 0; j < h; j++) {
-                    const ry = y - j;
-                    if (ry < 0) continue;
+                    const ry = y - j; if (ry < 0) continue;
                     for (let i = 0; i < w; i++) {
-                        const rx = x + i;
-                        if (rx >= WORLD_WIDTH_TILES) continue;
+                        const rx = x + i; if (rx >= WORLD_WIDTH_TILES) continue;
                         worldGrid[ry][rx] = (j === 0) ? Tile.FLOOR : Tile.CONCRETE;
                     }
                 }
@@ -199,15 +180,11 @@
                 const stairX = Math.random() > 0.5 ? x + 1 : x + w - 4;
                 let stairDirection = Math.random() > 0.5 ? 1 : -1;
                 let currentStairX = stairDirection === 1 ? stairX : stairX + 2;
-
                 for (let j = 0; j < h; j++) {
-                    const ry = y - j;
-                    if (ry < 0) continue;
+                    const ry = y - j; if (ry < 0) continue;
                     for (let i = 0; i < w; i++) if(worldGrid[ry][x+i] === Tile.EMPTY) worldGrid[ry][x+i] = Tile.FLOOR;
-                    
                     worldGrid[ry][currentStairX] = Tile.STAIRS;
-
-                    if (j % 2 === 1) {
+                    if (j > 0 && j % 2 === 1) {
                          currentStairX += stairDirection;
                          if (currentStairX >= stairX + 3 || currentStairX < stairX) {
                             stairDirection *= -1;
@@ -216,8 +193,7 @@
                     }
                 }
                 for (let j = 1; j < h; j++) {
-                    const ry = y - j;
-                    if (ry < 0) continue;
+                    const ry = y - j; if (ry < 0) continue;
                     for (let i = 0; i < w; i++) {
                         if (worldGrid[ry+1][x+i] === Tile.FLOOR && worldGrid[ry][x+i] === Tile.EMPTY) {
                              worldGrid[ry][x+i] = Tile.CONCRETE;
@@ -230,8 +206,7 @@
             function createLiftModule(x, y, w, h) {
                 const liftX = x + Math.floor(w / 2);
                 for(let j = 0; j < h; j++) {
-                    let ry = y - j;
-                    if (ry < 0) continue;
+                    let ry = y - j; if (ry < 0) continue;
                     for(let i = 0; i < w; i++) {
                         const rx = x + i;
                         if (rx === liftX) worldGrid[ry][rx] = Tile.LIFT_SHAFT;
@@ -250,8 +225,7 @@
                     for (let x = 0; x < WORLD_WIDTH_TILES; x++) {
                         const tile = worldGrid[y][x];
                         if (tile === Tile.CONCRETE || tile === Tile.FLOOR) {
-                            const aboveTile = worldGrid[y-1][x];
-                            if (lastConcreteX !== -1 && x - lastConcreteX > 1 && x - lastConcreteX < 20 && aboveTile === Tile.EMPTY) {
+                            if (lastConcreteX !== -1 && x - lastConcreteX > 1 && x - lastConcreteX < 15) {
                                 if ((worldGrid[y][lastConcreteX] === Tile.FLOOR) && (tile === Tile.FLOOR)) {
                                      for (let i = lastConcreteX + 1; i < x; i++) worldGrid[y][i] = Tile.BRIDGE;
                                 }
@@ -274,53 +248,58 @@
                 }
             }
 
-            function getRandomWalkableTile() {
-                if (walkableTiles.length === 0) return null;
-                return walkableTiles[Math.floor(Math.random() * walkableTiles.length)];
-            }
-
-            // --- Pathfinding (BFS) ---
+            // --- Pathfinding & Accessibility ---
 
             function findPath(start, end, rules) {
                 const queue = [{ ...start, path: [start] }];
                 const visited = new Set([`${start.x},${start.y}`]);
-                
                 while (queue.length > 0) {
                     const current = queue.shift();
                     if (current.x === end.x && current.y === end.y) return current.path;
-
                     const neighbors = getNeighbors(current.x, current.y, rules);
                     for (const neighbor of neighbors) {
                         const key = `${neighbor.x},${neighbor.y}`;
                         if (!visited.has(key)) {
                             visited.add(key);
-                            const newPath = [...current.path, neighbor];
-                            queue.push({ ...neighbor, path: newPath });
+                            queue.push({ ...neighbor, path: [...current.path, neighbor] });
                         }
                     }
                 }
                 return null;
             }
 
+            function findAllReachable(start, rules) {
+                const queue = [start];
+                const reachable = new Set([`${start.x},${start.y}`]);
+                while(queue.length > 0) {
+                    const current = queue.shift();
+                    const neighbors = getNeighbors(current.x, current.y, rules);
+                    for(const neighbor of neighbors) {
+                        const key = `${neighbor.x},${neighbor.y}`;
+                        if(!reachable.has(key)) {
+                            reachable.add(key);
+                            queue.push(neighbor);
+                        }
+                    }
+                }
+                return reachable;
+            }
+
             function getNeighbors(x, y, rules) {
                 const neighbors = [];
                 const currentTile = worldGrid[y][x];
-
                 for (const dx of [-1, 1]) {
                     if (isValid(x + dx, y, rules)) neighbors.push({ x: x + dx, y: y });
                 }
-
                 if (rules.canUseStairs) {
                     for (const dy of [-1, 1]) {
-                        const ny = y + dy;
-                        if (ny < 0 || ny >= WORLD_HEIGHT_TILES) continue;
+                        const ny = y + dy; if (ny < 0 || ny >= WORLD_HEIGHT_TILES) continue;
                         const destTile = worldGrid[ny]?.[x];
                         if ((currentTile === Tile.STAIRS || destTile === Tile.STAIRS) && isValid(x, ny, rules)) {
                             neighbors.push({ x: x, y: ny });
                         }
                     }
                 }
-
                 if (rules.canUseLifts && currentTile === Tile.LIFT_DOOR) {
                     for (let ny = 0; ny < WORLD_HEIGHT_TILES; ny++) {
                         if (ny !== y && worldGrid[ny][x] === Tile.LIFT_DOOR) {
@@ -333,7 +312,6 @@
             
             function isValid(x, y, rules) {
                 if (x < 0 || x >= WORLD_WIDTH_TILES || y < 0 || y >= WORLD_HEIGHT_TILES) return false;
-                
                 const tile = worldGrid[y][x];
                 if (tile === Tile.STAIRS) return rules.canUseStairs;
                 return tile !== Tile.EMPTY && tile !== Tile.CONCRETE && tile !== Tile.LIFT_SHAFT;
@@ -342,92 +320,60 @@
             // --- Bot Class ---
             class Bot {
                 constructor(x, y, color, rules) {
-                    this.x = x; this.y = y;
-                    this.pixelX = x * TILE_SIZE; this.pixelY = y * TILE_SIZE;
-                    this.color = color;
-                    this.rules = rules;
-                    this.path = null;
-                    this.pathIndex = 0;
+                    this.x = x; this.y = y; this.pixelX = x * TILE_SIZE; this.pixelY = y * TILE_SIZE;
+                    this.color = color; this.rules = rules; this.path = null; this.pathIndex = 0;
                 }
-
                 findNewPath() {
                     if (!goal) return;
                     const path = findPath({ x: this.x, y: this.y }, goal, this.rules);
                     this.path = (path && path.length > 1) ? path : null;
                     this.pathIndex = this.path ? 1 : 0;
                 }
-
                 update() {
-                    if (!this.path || this.pathIndex >= this.path.length) {
-                        this.findNewPath();
-                        return;
-                    }
-
+                    if (!this.path || this.pathIndex >= this.path.length) { this.findNewPath(); return; }
                     const targetNode = this.path[this.pathIndex];
-                    const targetX = targetNode.x * TILE_SIZE;
-                    const targetY = targetNode.y * TILE_SIZE;
-                    const dx = targetX - this.pixelX;
-                    const dy = targetY - this.pixelY;
+                    const targetX = targetNode.x * TILE_SIZE; const targetY = targetNode.y * TILE_SIZE;
+                    const dx = targetX - this.pixelX; const dy = targetY - this.pixelY;
                     const dist = Math.sqrt(dx * dx + dy * dy);
-                    
-                    if (dist < 1) {
+                    if (dist < 1.5) {
                         this.x = targetNode.x; this.y = targetNode.y;
                         this.pixelX = targetX; this.pixelY = targetY;
                         this.pathIndex++;
-
-                        if (this.x === goal.x && this.y === goal.y) {
-                            spawnNewGoal();
-                            bots.forEach(b => b.findNewPath());
-                        }
+                        if (this.x === goal.x && this.y === goal.y) { spawnNewGoal(); bots.forEach(b => b.findNewPath()); }
                     } else {
                         const moveSpeed = TILE_SIZE * BOT_SPEED;
-                        this.pixelX += (dx / dist) * moveSpeed;
-                        this.pixelY += (dy / dist) * moveSpeed;
+                        this.pixelX += (dx / dist) * moveSpeed; this.pixelY += (dy / dist) * moveSpeed;
                     }
                 }
-
                 draw() {
                     if (this.path) {
-                        ctx.beginPath();
-                        ctx.strokeStyle = COLORS.PATH;
-                        ctx.lineWidth = 2;
+                        ctx.beginPath(); ctx.strokeStyle = COLORS.PATH; ctx.lineWidth = 2;
                         ctx.moveTo(this.pixelX + TILE_SIZE / 2, this.pixelY + TILE_SIZE / 2);
                         for (let i = this.pathIndex; i < this.path.length; i++) {
                             ctx.lineTo(this.path[i].x * TILE_SIZE + TILE_SIZE / 2, this.path[i].y * TILE_SIZE + TILE_SIZE / 2);
                         }
                         ctx.stroke();
                     }
-                    ctx.fillStyle = this.color;
-                    ctx.fillRect(this.pixelX, this.pixelY, TILE_SIZE, TILE_SIZE);
-                    ctx.strokeStyle = '#222';
-                    ctx.strokeRect(this.pixelX, this.pixelY, TILE_SIZE, TILE_SIZE);
+                    ctx.fillStyle = this.color; ctx.fillRect(this.pixelX, this.pixelY, TILE_SIZE, TILE_SIZE);
+                    ctx.strokeStyle = '#222'; ctx.strokeRect(this.pixelX, this.pixelY, TILE_SIZE, TILE_SIZE);
                 }
             }
 
             // --- Drawing & Game Loop ---
 
             function draw() {
-                // Set the base background color
-                ctx.fillStyle = COLORS[Tile.EMPTY];
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                // --- Draw source code as animated background ---
-                ctx.fillStyle = '#2c2c2c';
-                ctx.font = '9px "Courier New", Courier, monospace';
+                ctx.fillStyle = COLORS[Tile.EMPTY]; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#2c2c2c'; ctx.font = '9px "Courier New", Courier, monospace';
                 const lineHeight = 10;
                 codeScrollOffset = (codeScrollOffset + 0.2) % lineHeight;
-
                 if (sourceCodeLines.length > 0) {
                     let lineIndex = 0;
                     for (let y = -codeScrollOffset; y < canvas.height; y += lineHeight) {
                         const line = sourceCodeLines[lineIndex % sourceCodeLines.length];
-                        ctx.fillText(line.substring(0, 200), 5, y);
+                        ctx.fillText(line.substring(0, 250), 5, y);
                         lineIndex++;
                     }
                 }
-                // --- End background drawing ---
-
-                // Draw the world grid on top of the code
                 for (let y = 0; y < WORLD_HEIGHT_TILES; y++) {
                     for (let x = 0; x < WORLD_WIDTH_TILES; x++) {
                         const tile = worldGrid[y][x];
@@ -437,15 +383,11 @@
                         }
                     }
                 }
-
-                if (goal) { // Draw goal
-                    ctx.fillStyle = COLORS.GOAL;
-                    ctx.fillRect(goal.x * TILE_SIZE, goal.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-                    ctx.strokeStyle = 'white';
-                    ctx.lineWidth = 1;
+                if (goal) {
+                    ctx.fillStyle = COLORS.GOAL; ctx.fillRect(goal.x * TILE_SIZE, goal.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                    ctx.strokeStyle = 'white'; ctx.lineWidth = 1;
                     ctx.strokeRect(goal.x * TILE_SIZE, goal.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
                 }
-                
                 bots.forEach(bot => bot.draw());
             }
 
@@ -456,33 +398,56 @@
             }
             
             function spawnNewGoal() {
-                goal = getRandomWalkableTile();
-                if(!goal) console.error("Failed to find a walkable tile for the goal!");
+                const flexiBot = bots[0]; const liftBot = bots[1];
+                if (!flexiBot || !liftBot) { goal = null; return; }
+
+                // Find all tiles reachable by each bot
+                const flexiReachable = findAllReachable(flexiBot, flexiBot.rules);
+                const liftReachable = findAllReachable(liftBot, liftBot.rules);
+                
+                // Find the intersection of the two sets
+                const commonReachable = [...flexiReachable].filter(tile => liftReachable.has(tile));
+
+                if (commonReachable.length > 0) {
+                    const goalString = commonReachable[Math.floor(Math.random() * commonReachable.length)];
+                    const [x, y] = goalString.split(',').map(Number);
+                    goal = {x, y};
+                } else {
+                    console.error("No common reachable tiles found for a new goal!");
+                    // Fallback: spawn a goal that at least one bot can reach so the game doesn't stall
+                    const fallbackTiles = [...liftReachable];
+                    if (fallbackTiles.length > 0) {
+                        const goalString = fallbackTiles[Math.floor(Math.random() * fallbackTiles.length)];
+                         const [x, y] = goalString.split(',').map(Number);
+                        goal = {x, y};
+                    } else {
+                        goal = null; // No possible goal
+                    }
+                }
             }
 
             function init() {
                 if (animationFrameId) cancelAnimationFrame(animationFrameId);
-                
-                // Capture the source code once on initialization
                 if (sourceCodeLines.length === 0) {
                      sourceCodeLines = document.documentElement.outerHTML.split('\n');
                 }
-
                 generateWorld();
-                if (walkableTiles.length < 20) {
+                if (walkableTiles.length < 50) {
                      console.log("Regenerating world: insufficient walkable tiles.");
-                     init();
-                     return;
+                     init(); return;
                 }
-
-                spawnNewGoal();
                 bots = [];
-                const startPos1 = getRandomWalkableTile();
-                const startPos2 = getRandomWalkableTile();
+                const startPos1 = walkableTiles[Math.floor(Math.random() * walkableTiles.length)];
+                let startPos2 = walkableTiles[Math.floor(Math.random() * walkableTiles.length)];
+                // Ensure bots don't start at the same spot
+                while(startPos1.x === startPos2.x && startPos1.y === startPos2.y) {
+                    startPos2 = walkableTiles[Math.floor(Math.random() * walkableTiles.length)];
+                }
                 
                 bots.push(new Bot(startPos1.x, startPos1.y, COLORS.FLEXI_BOT, { canUseStairs: true, canUseLifts: true }));
                 bots.push(new Bot(startPos2.x, startPos2.y, COLORS.LIFT_BOT, { canUseStairs: false, canUseLifts: true }));
-
+                
+                spawnNewGoal();
                 bots.forEach(b => b.findNewPath());
                 gameLoop();
             }
