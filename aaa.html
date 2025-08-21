@@ -30,7 +30,6 @@
             background-color: #333;
             border: 2px solid #555;
             margin-bottom: 20px;
-            /* This ensures a crisp, pixelated look */
             image-rendering: pixelated;
             image-rendering: -moz-crisp-edges;
             image-rendering: crisp-edges;
@@ -87,10 +86,10 @@
             const regenButton = document.getElementById('regenButton');
 
             // --- Configuration ---
-            const TILE_SIZE = 10;
-            const WORLD_WIDTH_TILES = 160; // Increased width for more towers
-            const WORLD_HEIGHT_TILES = 90;
-            const BOT_SPEED = 0.25;
+            const TILE_SIZE = 9;
+            const WORLD_WIDTH_TILES = 180;
+            const WORLD_HEIGHT_TILES = 100;
+            const BOT_SPEED = 0.2;
 
             canvas.width = WORLD_WIDTH_TILES * TILE_SIZE;
             canvas.height = WORLD_HEIGHT_TILES * TILE_SIZE;
@@ -114,123 +113,96 @@
             function generateWorld() {
                 worldGrid = Array(WORLD_HEIGHT_TILES).fill(0).map(() => Array(WORLD_WIDTH_TILES).fill(Tile.EMPTY));
                 
-                // More towers in a wider world
-                const numTowers = Math.floor(Math.random() * 4) + 5; // 5 to 8 towers
+                const numTowers = Math.floor(Math.random() * 4) + 6; // 6 to 9 towers
                 let currentX = 4;
+                let previousTower = null;
 
                 for (let i = 0; i < numTowers; i++) {
                     if (currentX >= WORLD_WIDTH_TILES - 15) break;
-                    // Slightly narrower towers to fit more
-                    const towerWidth = Math.floor(Math.random() * 9) + 7; // 7 to 15 tiles
-                    generateTower(currentX, towerWidth);
-                    // Smaller gaps between towers
-                    currentX += towerWidth + Math.floor(Math.random() * 7) + 4; // 4 to 10 tile gap
+                    const towerWidth = Math.floor(Math.random() * 9) + 8; // 8 to 16 tiles wide
+                    const towerHeight = Math.floor(Math.random() * (WORLD_HEIGHT_TILES * 0.4)) + Math.floor(WORLD_HEIGHT_TILES * 0.5);
+                    
+                    previousTower = generateTower(currentX, towerWidth, towerHeight, previousTower);
+                    
+                    const gap = Math.floor(Math.random() * 7) + 5; // 5 to 11 tile gap
+                    currentX = previousTower.endX + gap + 1;
                 }
 
-                addBridges();
+                addExtraBridges();
                 findWalkableTiles();
             }
 
-            function generateTower(startX, width) {
-                const maxHeight = WORLD_HEIGHT_TILES - 10;
-                const towerHeight = Math.floor(Math.random() * (maxHeight / 2)) + Math.floor(maxHeight / 2.5);
-                let currentY = WORLD_HEIGHT_TILES - 1;
-                const moduleTypes = ['solid', 'stairs', 'lift'];
-                const numModules = Math.floor(Math.random() * 5) + 4;
-                
-                let hasTransport = { stairs: false, lift: false };
-                let modules = [];
+            function generateTower(startX, width, height, previousTower) {
+                const liftX = startX + 1;
+                const stairAreaWidth = 3;
+                const stairStartX = startX + width - 1 - stairAreaWidth;
+                let stairCurrentX = stairStartX;
+                let stairDirection = 1;
 
-                for (let i=0; i < numModules; i++) {
-                    let type = moduleTypes[Math.floor(Math.random() * moduleTypes.length)];
-                    modules.push(type);
-                    if (type === 'stairs') hasTransport.stairs = true;
-                    if (type === 'lift') hasTransport.lift = true;
-                }
-                
-                // **Crucial modification**: Ensure tall towers have lifts for LiftBot accessibility
-                if (towerHeight > 40 && !hasTransport.lift) {
-                    modules[Math.floor(Math.random() * modules.length)] = 'lift';
-                }
-
-                modules.forEach(type => {
-                    if (currentY <= 15) return;
-                    const moduleHeight = Math.floor(Math.random() * 8) + 6;
-                    switch(type) {
-                        case 'solid': currentY = createSolidModule(startX, currentY, width, moduleHeight); break;
-                        case 'stairs': currentY = createStairsModule(startX, currentY, width, moduleHeight); break;
-                        case 'lift': currentY = createLiftModule(startX, currentY, width, moduleHeight); break;
+                // Build tower floor by floor from the bottom up
+                for (let y = WORLD_HEIGHT_TILES - 1; y > WORLD_HEIGHT_TILES - 1 - height; y--) {
+                    if (y <= 0) continue;
+                    
+                    // Lay foundation and floor structure
+                    for(let i=0; i<width; i++) {
+                        const currentX = startX + i;
+                        // Solid part below the floor
+                        worldGrid[y][currentX] = Tile.CONCRETE;
+                        // Floor surface
+                        worldGrid[y-1][currentX] = Tile.FLOOR;
                     }
-                    currentY--;
-                });
-            }
+                    
+                    // ALWAYS add a lift and stairs to every floor
+                    worldGrid[y-1][liftX] = Tile.LIFT_DOOR;
+                    worldGrid[y][liftX] = Tile.LIFT_SHAFT; // Shaft space below the door
 
-            function createSolidModule(x, y, w, h) {
-                for (let j = 0; j < h; j++) {
-                    const ry = y - j; if (ry < 0) continue;
-                    for (let i = 0; i < w; i++) {
-                        const rx = x + i; if (rx >= WORLD_WIDTH_TILES) continue;
-                        worldGrid[ry][rx] = (j === 0) ? Tile.FLOOR : Tile.CONCRETE;
-                    }
-                }
-                return y - h;
-            }
-            
-            function createStairsModule(x, y, w, h) {
-                const stairX = Math.random() > 0.5 ? x + 1 : x + w - 4;
-                let stairDirection = Math.random() > 0.5 ? 1 : -1;
-                let currentStairX = stairDirection === 1 ? stairX : stairX + 2;
-                for (let j = 0; j < h; j++) {
-                    const ry = y - j; if (ry < 0) continue;
-                    for (let i = 0; i < w; i++) if(worldGrid[ry][x+i] === Tile.EMPTY) worldGrid[ry][x+i] = Tile.FLOOR;
-                    worldGrid[ry][currentStairX] = Tile.STAIRS;
-                    if (j > 0 && j % 2 === 1) {
-                         currentStairX += stairDirection;
-                         if (currentStairX >= stairX + 3 || currentStairX < stairX) {
+                    worldGrid[y-1][stairCurrentX] = Tile.STAIRS;
+
+                    // Create zig-zag stairwell pattern
+                    if (y % 2 === 0) {
+                        stairCurrentX += stairDirection;
+                        if (stairCurrentX >= stairStartX + stairAreaWidth || stairCurrentX < stairStartX) {
                             stairDirection *= -1;
-                            currentStairX += stairDirection * 2;
+                            stairCurrentX += stairDirection; // Correct the overshoot
                         }
                     }
                 }
-                for (let j = 1; j < h; j++) {
-                    const ry = y - j; if (ry < 0) continue;
-                    for (let i = 0; i < w; i++) {
-                        if (worldGrid[ry+1][x+i] === Tile.FLOOR && worldGrid[ry][x+i] === Tile.EMPTY) {
-                             worldGrid[ry][x+i] = Tile.CONCRETE;
+
+                // **Guaranteed Connectivity**: Connect this tower to the previous one with one bridge
+                if (previousTower) {
+                    const minHeight = Math.min(height, previousTower.height);
+                    const validBridgeYs = [];
+                    // Find all possible heights to build a bridge
+                    for(let y = WORLD_HEIGHT_TILES - 2; y > WORLD_HEIGHT_TILES - minHeight; y--) {
+                        if(worldGrid[y][startX] === Tile.FLOOR && worldGrid[y][previousTower.endX] === Tile.FLOOR) {
+                            validBridgeYs.push(y);
+                        }
+                    }
+                    if (validBridgeYs.length > 0) {
+                        const bridgeY = validBridgeYs[Math.floor(Math.random() * validBridgeYs.length)];
+                        for(let x = previousTower.endX + 1; x < startX; x++) {
+                            worldGrid[bridgeY][x] = Tile.BRIDGE;
                         }
                     }
                 }
-                return y - h;
+                
+                return { startX: startX, endX: startX + width - 1, height: height };
             }
 
-            function createLiftModule(x, y, w, h) {
-                const liftX = x + Math.floor(w / 2);
-                for(let j = 0; j < h; j++) {
-                    let ry = y - j; if (ry < 0) continue;
-                    for(let i = 0; i < w; i++) {
-                        const rx = x + i;
-                        if (rx === liftX) worldGrid[ry][rx] = Tile.LIFT_SHAFT;
-                        else if (j === 0) worldGrid[ry][rx] = Tile.FLOOR;
-                        else worldGrid[ry][rx] = Tile.CONCRETE;
-                    }
-                    if (j === 0) worldGrid[ry][liftX] = Tile.LIFT_DOOR;
-                }
-                if (y - h + 1 > 0) worldGrid[y-h+1][liftX] = Tile.LIFT_DOOR;
-                return y - h;
-            }
-            
-            function addBridges() {
+            // Adds more bridges for complexity after the main chain is built
+            function addExtraBridges() {
                 for (let y = WORLD_HEIGHT_TILES - 2; y > 0; y--) {
-                    let lastConcreteX = -1;
+                    let lastFloorX = -1;
                     for (let x = 0; x < WORLD_WIDTH_TILES; x++) {
                         const tile = worldGrid[y][x];
-                        if (tile === Tile.CONCRETE || tile === Tile.FLOOR) {
-                            if (lastConcreteX !== -1 && x - lastConcreteX > 1 && x - lastConcreteX < 15) {
-                                if ((worldGrid[y][lastConcreteX] === Tile.FLOOR) && (tile === Tile.FLOOR)) {
-                                     for (let i = lastConcreteX + 1; i < x; i++) worldGrid[y][i] = Tile.BRIDGE;
+                        if (tile === Tile.FLOOR) {
+                            if (lastFloorX !== -1 && x - lastFloorX > 1 && x - lastFloorX < 15) {
+                                // 10% chance to add an extra bridge
+                                if (Math.random() < 0.1) {
+                                     for (let i = lastFloorX + 1; i < x; i++) worldGrid[y][i] = Tile.BRIDGE;
                                 }
                             }
-                            lastConcreteX = x;
+                            lastFloorX = x;
                         }
                     }
                 }
@@ -287,7 +259,9 @@
 
             function getNeighbors(x, y, rules) {
                 const neighbors = [];
+                if (y < 0 || y >= WORLD_HEIGHT_TILES) return [];
                 const currentTile = worldGrid[y][x];
+
                 for (const dx of [-1, 1]) {
                     if (isValid(x + dx, y, rules)) neighbors.push({ x: x + dx, y: y });
                 }
@@ -398,31 +372,23 @@
             }
             
             function spawnNewGoal() {
-                const flexiBot = bots[0]; const liftBot = bots[1];
+                const flexiBot = bots.find(b => b.rules.canUseStairs);
+                const liftBot = bots.find(b => !b.rules.canUseStairs);
                 if (!flexiBot || !liftBot) { goal = null; return; }
 
-                // Find all tiles reachable by each bot
-                const flexiReachable = findAllReachable(flexiBot, flexiBot.rules);
-                const liftReachable = findAllReachable(liftBot, liftBot.rules);
-                
-                // Find the intersection of the two sets
+                const flexiReachable = findAllReachable({x: flexiBot.x, y: flexiBot.y}, flexiBot.rules);
+                const liftReachable = findAllReachable({x: liftBot.x, y: liftBot.y}, liftBot.rules);
                 const commonReachable = [...flexiReachable].filter(tile => liftReachable.has(tile));
 
-                if (commonReachable.length > 0) {
-                    const goalString = commonReachable[Math.floor(Math.random() * commonReachable.length)];
+                if (commonReachable.length > 1) { // Ensure there is at least one other option
+                    // Filter out the bot's current position from the goal list
+                    const validGoals = commonReachable.filter(g => g !== `${flexiBot.x},${flexiBot.y}` && g !== `${liftBot.x},${liftBot.y}`);
+                    const goalString = validGoals[Math.floor(Math.random() * validGoals.length)];
                     const [x, y] = goalString.split(',').map(Number);
                     goal = {x, y};
                 } else {
                     console.error("No common reachable tiles found for a new goal!");
-                    // Fallback: spawn a goal that at least one bot can reach so the game doesn't stall
-                    const fallbackTiles = [...liftReachable];
-                    if (fallbackTiles.length > 0) {
-                        const goalString = fallbackTiles[Math.floor(Math.random() * fallbackTiles.length)];
-                         const [x, y] = goalString.split(',').map(Number);
-                        goal = {x, y};
-                    } else {
-                        goal = null; // No possible goal
-                    }
+                    goal = null;
                 }
             }
 
@@ -439,7 +405,6 @@
                 bots = [];
                 const startPos1 = walkableTiles[Math.floor(Math.random() * walkableTiles.length)];
                 let startPos2 = walkableTiles[Math.floor(Math.random() * walkableTiles.length)];
-                // Ensure bots don't start at the same spot
                 while(startPos1.x === startPos2.x && startPos1.y === startPos2.y) {
                     startPos2 = walkableTiles[Math.floor(Math.random() * walkableTiles.length)];
                 }
