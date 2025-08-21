@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot Environment with A* Pathfinding</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f0f2f5;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+        h2, p {
+            margin: 5px 0 15px 0;
+            text-align: center;
+        }
+        .controls-container {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            background-color: #fff;
+            padding: 10px 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        #brush-controls { display: flex; gap: 10px; }
+        .btn {
+            padding: 10px 20px;
+            border: 2px solid transparent;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.2s ease-in-out;
+        }
+        .brush-btn.active {
+            border-color: #007bff;
+            box-shadow: 0 0 5px rgba(0,123,255,0.5);
+        }
+        #path-btn { background-color: #dcdcdc; color: #333; }
+        #penalty-btn { background-color: #a9a9a9; color: #fff; }
+        #obstacle-btn { background-color: #696969; color: #fff; }
+        #clear-btn { background-color: #6c757d; color: white; }
+        #mode-btn { background-color: #17a2b8; color: white; }
+        
+        #bot-canvas {
+            border: 2px solid #333;
+            background-color: #fff;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>Bot Environment with A* Pathfinding</h2>
+    <p id="instructions"><b>Mode: Design</b> - Draw your map. Click the mode button to set a path.</p>
+
+    <div class="controls-container">
+        <div id="brush-controls">
+            <button id="path-btn" class="btn brush-btn active" data-type="0">Easy Path</button>
+            <button id="penalty-btn" class="btn brush-btn" data-type="1">Penalty Area</button>
+            <button id="obstacle-btn" class="btn brush-btn" data-type="2">Obstacle</button>
+        </div>
+        <button id="mode-btn" class="btn">Switch to Pathfind Mode</button>
+        <button id="clear-btn" class="btn">Clear All</button>
+    </div>
+
+    <canvas id="bot-canvas"></canvas>
+
+    <script>
+        // --- DOM Elements ---
+        const canvas = document.getElementById('bot-canvas');
+        const ctx = canvas.getContext('2d');
+        const brushControls = document.getElementById('brush-controls');
+        const clearBtn = document.getElementById('clear-btn');
+        const modeBtn = document.getElementById('mode-btn');
+        const instructions = document.getElementById('instructions');
+        
+        // --- Configuration ---
+        const GRID_SIZE = 25;
+        const CELL_SIZE = 20;
+        const CANVAS_SIZE = GRID_SIZE * CELL_SIZE;
+
+        const TERRAIN_TYPES = { PATH: 0, PENALTY: 1, OBSTACLE: 2 };
+        const MODES = { DESIGN: 'DESIGN', PATHFIND: 'PATHFIND' };
+        
+        const COLORS = {
+            [TERRAIN_TYPES.PATH]: '#dcdcdc',
+            [TERRAIN_TYPES.PENALTY]: '#a9a9a9',
+            [TERRAIN_TYPES.OBSTACLE]: '#696969',
+            grid: '#bbb',
+            start: '#28a745',
+            end: '#dc3545',
+            path: '#ffc107'
+        };
+
+        const MOVEMENT_COST = {
+            [TERRAIN_TYPES.PATH]: 1,
+            [TERRAIN_TYPES.PENALTY]: 5 // Penalty areas are 5x more costly
+        };
+
+        // --- State ---
+        let gridModel, currentBrushType = TERRAIN_TYPES.PATH, isPainting = false;
+        let currentMode = MODES.DESIGN;
+        let startPoint = null, endPoint = null, foundPath = [];
+
+        // --- A* Pathfinding Algorithm ---
+        function aStar(start, end, grid) {
+            
+            function heuristic(a, b) { // Manhattan distance
+                return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+            }
+
+            function getNeighbors(node) {
+                const neighbors = [];
+                const { x, y } = node;
+                if (x > 0) neighbors.push({ x: x - 1, y });
+                if (x < GRID_SIZE - 1) neighbors.push({ x: x + 1, y });
+                if (y > 0) neighbors.push({ x, y: y - 1 });
+                if (y < GRID_SIZE - 1) neighbors.push({ x, y: y + 1 });
+                
+                return neighbors.filter(n => grid[n.y][n.x] !== TERRAIN_TYPES.OBSTACLE);
+            }
+
+            const startNode = { ...start, g: 0, h: heuristic(start, end), f: heuristic(start, end) };
+            const openSet = [startNode];
+            const closedSet = new Set();
+            const cameFrom = new Map();
+
+            while (openSet.length > 0) {
+                openSet.sort((a, b) => a.f - b.f);
+                const current = openSet.shift();
+
+                if (current.x === end.x && current.y === end.y) {
+                    const path = [];
+                    let temp = current;
+                    while (temp) {
+                        path.push({ x: temp.x, y: temp.y });
+                        temp = cameFrom.get(`${temp.x},${temp.y}`);
+                    }
+                    return path.reverse();
+                }
+
+                closedSet.add(`${current.x},${current.y}`);
+
+                for (const neighbor of getNeighbors(current)) {
+                    if (closedSet.has(`${neighbor.x},${neighbor.y}`)) continue;
+
+                    const terrainType = grid[neighbor.y][neighbor.x];
+                    const gScore = current.g + MOVEMENT_COST[terrainType];
+                    
+                    let neighborNode = openSet.find(n => n.x === neighbor.x && n.y === neighbor.y);
+
+                    if (!neighborNode || gScore < neighborNode.g) {
+                        if (!neighborNode) {
+                            neighborNode = { ...neighbor };
+                            openSet.push(neighborNode);
+                        }
+                        neighborNode.g = gScore;
+                        neighborNode.h = heuristic(neighbor, end);
+                        neighborNode.f = neighborNode.g + neighborNode.h;
+                        cameFrom.set(`${neighbor.x},${neighbor.y}`, current);
+                    }
+                }
+            }
+            return []; // No path found
+        }
+        
+        // --- Drawing ---
+        function drawGrid() {
+            ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+
+            for (let y = 0; y < GRID_SIZE; y++) {
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    ctx.fillStyle = COLORS[gridModel[y][x]];
+                    ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+                }
+            }
+
+            // Draw path, start, and end points
+            foundPath.forEach(p => {
+                ctx.fillStyle = COLORS.path;
+                ctx.fillRect(p.x * CELL_SIZE, p.y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+            });
+            if (startPoint) {
+                ctx.fillStyle = COLORS.start;
+                ctx.fillRect(startPoint.x * CELL_SIZE, startPoint.y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+            }
+            if (endPoint) {
+                ctx.fillStyle = COLORS.end;
+                ctx.fillRect(endPoint.x * CELL_SIZE, endPoint.y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+            }
+
+            // Draw grid lines on top
+            ctx.strokeStyle = COLORS.grid;
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= GRID_SIZE; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i * CELL_SIZE, 0);
+                ctx.lineTo(i * CELL_SIZE, CANVAS_SIZE);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(0, i * CELL_SIZE);
+                ctx.lineTo(CANVAS_SIZE, i * CELL_SIZE);
+                ctx.stroke();
+            }
+        }
+        
+        // --- Event Handling ---
+        function handleCanvasClick(event) {
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            const col = Math.floor(x / CELL_SIZE);
+            const row = Math.floor(y / CELL_SIZE);
+
+            if (row < 0 || row >= GRID_SIZE || col < 0 || col >= GRID_SIZE) return;
+            
+            if (currentMode === MODES.DESIGN) {
+                if (gridModel[row][col] !== currentBrushType) {
+                    gridModel[row][col] = currentBrushType;
+                    drawGrid();
+                }
+            } else if (currentMode === MODES.PATHFIND) {
+                 if (gridModel[row][col] === TERRAIN_TYPES.OBSTACLE) return;
+
+                if (!startPoint) {
+                    startPoint = { x: col, y: row };
+                    instructions.innerHTML = `<b>Mode: Pathfind</b> - Start point set. Now select an end point.`;
+                } else if (!endPoint) {
+                    endPoint = { x: col, y: row };
+                    foundPath = aStar(startPoint, endPoint, gridModel);
+                    if (foundPath.length === 0) {
+                        instructions.innerHTML = `<b>Mode: Pathfind</b> - No path found! Click 'Clear' to reset.`;
+                    } else {
+                        instructions.innerHTML = `<b>Mode: Pathfind</b> - Path found! Click 'Clear' to reset.`;
+                    }
+                }
+                drawGrid();
+            }
+        }
+        
+        function resetPathfindingState() {
+            startPoint = null;
+            endPoint = null;
+            foundPath = [];
+        }
+
+        function setupEventListeners() {
+            brushControls.addEventListener('click', (e) => {
+                if (e.target.matches('.brush-btn')) {
+                    document.querySelectorAll('.brush-btn').forEach(btn => btn.classList.remove('active'));
+                    e.target.classList.add('active');
+                    currentBrushType = parseInt(e.target.dataset.type, 10);
+                }
+            });
+
+            modeBtn.addEventListener('click', () => {
+                if (currentMode === MODES.DESIGN) {
+                    currentMode = MODES.PATHFIND;
+                    modeBtn.textContent = 'Switch to Design Mode';
+                    modeBtn.style.backgroundColor = '#007bff';
+                    canvas.style.cursor = 'crosshair';
+                    instructions.innerHTML = `<b>Mode: Pathfind</b> - Select a start point.`;
+                } else {
+                    currentMode = MODES.DESIGN;
+                    modeBtn.textContent = 'Switch to Pathfind Mode';
+                    modeBtn.style.backgroundColor = '#17a2b8';
+                    canvas.style.cursor = 'default';
+                    instructions.innerHTML = `<b>Mode: Design</b> - Draw your map.`;
+                }
+                resetPathfindingState();
+                drawGrid();
+            });
+
+            clearBtn.addEventListener('click', () => {
+                gridModel = new Array(GRID_SIZE).fill(0).map(() => new Array(GRID_SIZE).fill(TERRAIN_TYPES.PATH));
+                resetPathfindingState();
+                if(currentMode === MODES.PATHFIND) {
+                     instructions.innerHTML = `<b>Mode: Pathfind</b> - Select a start point.`;
+                }
+                drawGrid();
+            });
+
+            canvas.addEventListener('mousedown', (e) => {
+                if (currentMode !== MODES.DESIGN) return;
+                isPainting = true;
+                handleCanvasClick(e);
+            });
+            canvas.addEventListener('mousemove', (e) => {
+                if (isPainting && currentMode === MODES.DESIGN) {
+                    handleCanvasClick(e);
+                }
+            });
+            document.addEventListener('mouseup', () => { isPainting = false; });
+            canvas.addEventListener('click', (e) => {
+                if (currentMode === MODES.PATHFIND) {
+                    handleCanvasClick(e);
+                }
+            });
+        }
+        
+        // --- Initialization ---
+        function initialize() {
+            canvas.width = CANVAS_SIZE;
+            canvas.height = CANVAS_SIZE;
+            canvas.style.cursor = 'default';
+            gridModel = new Array(GRID_SIZE).fill(0).map(() => new Array(GRID_SIZE).fill(TERRAIN_TYPES.PATH));
+            setupEventListeners();
+            drawGrid();
+        }
+
+        initialize();
+    </script>
+</body>
+</html>
