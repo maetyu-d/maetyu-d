@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reaction-Diffusion Simulation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .slider-thumb::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #4f46e5;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        .slider-thumb::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: #4f46e5;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-4xl bg-gray-800 rounded-2xl shadow-2xl p-4 sm:p-6 md:p-8">
+        <header class="text-center mb-6">
+            <h1 class="text-3xl sm:text-4xl font-bold text-white">Reaction-Diffusion System</h1>
+            <p class="text-gray-400 mt-2">An interactive simulation of Turing Patterns using the Gray-Scott model.</p>
+        </header>
+
+        <!-- Main content area with canvas and controls -->
+        <main class="flex flex-col md:flex-row gap-6">
+            <!-- Canvas for the simulation -->
+            <div class="w-full md:w-2/3 aspect-square rounded-lg overflow-hidden shadow-lg bg-black">
+                <canvas id="simulationCanvas"></canvas>
+            </div>
+
+            <!-- Controls Panel -->
+            <div class="w-full md:w-1/3 bg-gray-700/50 p-6 rounded-lg flex flex-col gap-6">
+                <div>
+                    <div class="flex justify-between items-center mb-2">
+                        <label for="feedRate" class="font-medium text-white">Feed Rate (F)</label>
+                        <span id="feedValue" class="text-indigo-300 font-mono text-sm">0.055</span>
+                    </div>
+                    <input id="feedRate" type="range" min="0.01" max="0.1" step="0.0001" value="0.055" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer slider-thumb">
+                </div>
+
+                <div>
+                    <div class="flex justify-between items-center mb-2">
+                        <label for="killRate" class="font-medium text-white">Kill Rate (k)</label>
+                        <span id="killValue" class="text-indigo-300 font-mono text-sm">0.062</span>
+                    </div>
+                    <input id="killRate" type="range" min="0.04" max="0.07" step="0.0001" value="0.062" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer slider-thumb">
+                </div>
+                
+                <!-- Presets -->
+                <div>
+                    <h3 class="font-medium text-white mb-3 text-center">Presets</h3>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button class="preset-btn bg-indigo-600 hover:bg-indigo-500 transition-colors duration-200 text-white font-semibold py-2 px-4 rounded-md text-sm" data-f="0.0545" data-k="0.062">Coral</button>
+                        <button class="preset-btn bg-indigo-600 hover:bg-indigo-500 transition-colors duration-200 text-white font-semibold py-2 px-4 rounded-md text-sm" data-f="0.0367" data-k="0.0649">Mitosis</button>
+                        <button class="preset-btn bg-indigo-600 hover:bg-indigo-500 transition-colors duration-200 text-white font-semibold py-2 px-4 rounded-md text-sm" data-f="0.062" data-k="0.0609">U-Skate</button>
+                        <button class="preset-btn bg-indigo-600 hover:bg-indigo-500 transition-colors duration-200 text-white font-semibold py-2 px-4 rounded-md text-sm" data-f="0.029" data-k="0.057">Maze</button>
+                    </div>
+                </div>
+
+                <!-- Reset Button -->
+                <button id="resetBtn" class="w-full bg-red-600 hover:bg-red-500 transition-colors duration-200 text-white font-bold py-3 px-4 rounded-md mt-2">
+                    Reset Simulation
+                </button>
+            </div>
+        </main>
+        
+        <footer class="text-center mt-6 text-gray-500 text-sm">
+            <p>Click and drag on the canvas to add more chemical 'V' and disturb the system.</p>
+        </footer>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // DOM Elements
+            const canvas = document.getElementById('simulationCanvas');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            const feedSlider = document.getElementById('feedRate');
+            const killSlider = document.getElementById('killRate');
+            const feedValueSpan = document.getElementById('feedValue');
+            const killValueSpan = document.getElementById('killValue');
+            const resetBtn = document.getElementById('resetBtn');
+            const presetBtns = document.querySelectorAll('.preset-btn');
+
+            // Simulation parameters
+            let width, height;
+            let gridU, gridV, nextU, nextV;
+            
+            let config = {
+                Du: 1.0,  // Diffusion rate for U
+                Dv: 0.5,  // Diffusion rate for V
+                F: 0.055, // Feed rate
+                k: 0.062, // Kill rate
+                dt: 1.0,      // Time step
+                iterationsPerFrame: 20 // Speed up simulation
+            };
+
+            let isMouseDown = false;
+            let animationFrameId;
+
+            // --- Initialization ---
+            function setup() {
+                // Set canvas size based on its container. This is called on init and resize.
+                const container = canvas.parentElement;
+                const size = Math.min(container.clientWidth, container.clientHeight);
+                
+                if (size === 0) {
+                    console.error("Canvas container has no size. Cannot initialize simulation.");
+                    return;
+                }
+
+                width = Math.floor(size / 2); // Use a smaller grid for performance
+                height = Math.floor(size / 2);
+                canvas.width = size;
+                canvas.height = size;
+
+                // Initialize grids
+                gridU = new Array(width).fill(0).map(() => new Array(height).fill(1.0));
+                gridV = new Array(width).fill(0).map(() => new Array(height).fill(0));
+                nextU = new Array(width).fill(0).map(() => new Array(height).fill(1.0));
+                nextV = new Array(width).fill(0).map(() => new Array(height).fill(0));
+
+                // Seed the simulation with random noise to break symmetry
+                const seedSize = 20;
+                const centerX = Math.floor(width / 2);
+                const centerY = Math.floor(height / 2);
+                for (let i = centerX - seedSize; i < centerX + seedSize; i++) {
+                    for (let j = centerY - seedSize; j < centerY + seedSize; j++) {
+                        if (i > 0 && i < width && j > 0 && j < height) {
+                            // Randomly add chemical V to break the initial symmetry, crucial for patterns like "Worms"
+                            if (Math.random() > 0.5) {
+                               gridV[i][j] = 1.0;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // --- Main Simulation Logic ---
+            function update() {
+                if (!width) return; // Don't run if not initialized
+                for (let i = 0; i < config.iterationsPerFrame; i++) {
+                    // Iterate over each cell in the grid
+                    for (let x = 0; x < width; x++) {
+                        for (let y = 0; y < height; y++) {
+                            // Get current concentrations
+                            const u = gridU[x][y];
+                            const v = gridV[x][y];
+
+                            // Calculate Laplacian using a 3x3 kernel (with wrapping boundaries)
+                            const laplaceU = calculateLaplacian(gridU, x, y);
+                            const laplaceV = calculateLaplacian(gridV, x, y);
+
+                            // The reaction term
+                            const reaction = u * v * v;
+
+                            // Gray-Scott equations
+                            const deltaU = (config.Du * laplaceU) - reaction + (config.F * (1 - u));
+                            const deltaV = (config.Dv * laplaceV) + reaction - ((config.F + config.k) * v);
+
+                            // Calculate next state
+                            let newU = u + deltaU * config.dt;
+                            let newV = v + deltaV * config.dt;
+
+                            // Clamp values to be between 0 and 1
+                            nextU[x][y] = Math.max(0, Math.min(1, newU));
+                            nextV[x][y] = Math.max(0, Math.min(1, newV));
+                        }
+                    }
+                    // Swap grids for the next iteration
+                    swapGrids();
+                }
+            }
+
+            function calculateLaplacian(grid, x, y) {
+                let sum = 0;
+                // Using a 3x3 convolution kernel for the Laplacian
+                // Weights: center = -1, adjacent = 0.2, diagonals = 0.05
+                for (let i = -1; i <= 1; i++) {
+                    for (let j = -1; j <= 1; j++) {
+                        // Handle wrapping boundaries (toroidal grid)
+                        const col = (x + i + width) % width;
+                        const row = (y + j + height) % height;
+                        
+                        let weight = 0;
+                        if (i === 0 && j === 0) {
+                            weight = -1.0;
+                        } else if (Math.abs(i) + Math.abs(j) === 1) { // Adjacent
+                            weight = 0.2;
+                        } else { // Diagonal
+                            weight = 0.05;
+                        }
+                        sum += grid[col][row] * weight;
+                    }
+                }
+                return sum;
+            }
+
+            function swapGrids() {
+                let tempU = gridU;
+                gridU = nextU;
+                nextU = tempU;
+
+                let tempV = gridV;
+                gridV = nextV;
+                nextV = tempV;
+            }
+
+            // --- Drawing Logic ---
+            function draw() {
+                if (!width) return; // Don't run if not initialized
+                // Create an ImageData object to manipulate pixels directly for performance
+                const imageData = ctx.createImageData(width, height);
+                const data = imageData.data;
+
+                for (let x = 0; x < width; x++) {
+                    for (let y = 0; y < height; y++) {
+                        const u = gridU[x][y];
+                        const v = gridV[x][y];
+                        
+                        // Coloring scheme: maps U and V to RGB channels
+                        const r = Math.floor(255 * (1 - u));
+                        const g = Math.floor(255 * (u * (1 - v)));
+                        const b = Math.floor(255 * v);
+
+                        const index = (y * width + x) * 4;
+                        data[index] = r;     // Red
+                        data[index + 1] = g; // Green
+                        data[index + 2] = b; // Blue
+                        data[index + 3] = 255; // Alpha
+                    }
+                }
+
+                // Clear the canvas and draw the scaled-up image
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                // Create a temporary canvas to draw the small image data
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = width;
+                tempCanvas.height = height;
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCtx.putImageData(imageData, 0, 0);
+
+                // Disable image smoothing for a crisp, pixelated look
+                ctx.imageSmoothingEnabled = false;
+                // Draw the temporary canvas scaled up to the main canvas size
+                ctx.drawImage(tempCanvas, 0, 0, canvas.width, canvas.height);
+            }
+
+            // --- Animation Loop ---
+            function animate() {
+                update();
+                draw();
+                animationFrameId = requestAnimationFrame(animate);
+            }
+
+            // --- Event Handlers ---
+            function handleReset() {
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
+                }
+                setup();
+                // Only start animation if setup was successful
+                if (width) {
+                    animate();
+                }
+            }
+
+            feedSlider.addEventListener('input', (e) => {
+                config.F = parseFloat(e.target.value);
+                feedValueSpan.textContent = config.F.toFixed(4);
+            });
+
+            killSlider.addEventListener('input', (e) => {
+                config.k = parseFloat(e.target.value);
+                killValueSpan.textContent = config.k.toFixed(4);
+            });
+
+            resetBtn.addEventListener('click', handleReset);
+
+            presetBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const f = parseFloat(btn.dataset.f);
+                    const k = parseFloat(btn.dataset.k);
+                    
+                    config.F = f;
+                    config.k = k;
+                    
+                    feedSlider.value = f;
+                    killSlider.value = k;
+                    
+                    feedValueSpan.textContent = f.toFixed(4);
+                    killValueSpan.textContent = k.toFixed(4);
+                    
+                    handleReset();
+                });
+            });
+
+            function addChemical(e) {
+                if (!isMouseDown) return;
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = width / rect.width;
+                const scaleY = height / rect.height;
+                const x = Math.floor((e.clientX - rect.left) * scaleX);
+                const y = Math.floor((e.clientY - rect.top) * scaleY);
+
+                const brushSize = 10;
+                for (let i = -brushSize; i <= brushSize; i++) {
+                    for (let j = -brushSize; j <= brushSize; j++) {
+                        const gridX = x + i;
+                        const gridY = y + j;
+                        if (gridX >= 0 && gridX < width && gridY >= 0 && gridY < height) {
+                            if (i * i + j * j < brushSize * brushSize) { // circular brush
+                                gridV[gridX][gridY] = 1.0;
+                            }
+                        }
+                    }
+                }
+            }
+
+            canvas.addEventListener('mousedown', (e) => { isMouseDown = true; addChemical(e); });
+            canvas.addEventListener('mouseup', () => { isMouseDown = false; });
+            canvas.addEventListener('mousemove', addChemical);
+            
+            // Handle touch events for mobile
+            canvas.addEventListener('touchstart', (e) => { isMouseDown = true; addChemical(e.touches[0]); e.preventDefault(); });
+            canvas.addEventListener('touchend', () => { isMouseDown = false; });
+            canvas.addEventListener('touchmove', (e) => { addChemical(e.touches[0]); e.preventDefault(); });
+
+            // Add a resize handler with debouncing
+            let resizeTimeout;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(handleReset, 250);
+            });
+
+            // --- Start ---
+            // Use requestAnimationFrame to ensure the initial layout is calculated
+            // before we try to get the canvas container's size. This prevents
+            // the error where the container width is 0 on load.
+            requestAnimationFrame(handleReset);
+        });
+    </script>
+</body>
+</html>
