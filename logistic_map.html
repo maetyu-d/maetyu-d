@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Logistic Map</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .label-text {
+            font-size: 0.8rem;
+        }
+        canvas {
+            background-color: #1a202c; /* A slightly lighter dark for the canvas */
+            border-radius: 0.5rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-300 flex items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-6xl mx-auto bg-gray-800 rounded-2xl shadow-2xl p-6 md:p-8">
+        
+        <!-- Header -->
+        <div class="text-center mb-6">
+            <h1 class="text-3xl md:text-4xl font-bold text-white">The Logistic Map</h1>
+            <p class="mt-2 text-lg text-cyan-400">An Interactive Journey into Chaos</p>
+            <p class="mt-4 max-w-3xl mx-auto text-gray-400">
+                This visualization explores the equation <span class="font-mono text-cyan-300 bg-gray-700 px-2 py-1 rounded">x<sub>n+1</sub> = r * x<sub>n</sub> * (1 - x<sub>n</sub>)</span>, a simple model for population growth that reveals surprising complexity. Use the slider to see how the population's long-term behavior changes as the growth rate 'r' increases.
+            </p>
+        </div>
+
+        <!-- Main Content Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+            <!-- Left Column: Bifurcation Diagram -->
+            <div class="lg:col-span-2 bg-gray-900/50 p-4 rounded-xl">
+                <h2 class="text-xl font-bold text-white mb-3 text-center">Bifurcation Diagram</h2>
+                <div class="relative">
+                    <canvas id="bifurcationCanvas"></canvas>
+                    <!-- Axis Labels -->
+                    <span class="absolute -bottom-5 left-0 text-sm text-gray-500">2.4</span>
+                    <span class="absolute -bottom-5 right-0 text-sm text-gray-500">4.0</span>
+                    <span class="absolute -bottom-9 left-1/2 -translate-x-1/2 text-sm font-semibold text-gray-400">Growth Rate (r)</span>
+                    <span class="absolute top-0 -left-5 transform -translate-y-1/2 text-sm text-gray-500">1.0</span>
+                    <span class="absolute bottom-0 -left-5 transform translate-y-1/2 text-sm text-gray-500">0.0</span>
+                    <span class="absolute top-1/2 -left-9 transform -translate-y-1/2 -rotate-90 text-sm font-semibold text-gray-400">Population (x)</span>
+                </div>
+            </div>
+
+            <!-- Right Column: Controls and Time Series -->
+            <div class="space-y-6">
+                <!-- Controls -->
+                <div class="bg-gray-900/50 p-4 rounded-xl">
+                    <h2 class="text-xl font-bold text-white mb-4 text-center">Controls</h2>
+                    <label for="r-slider" class="block text-sm font-medium text-gray-300">Growth Rate (r)</label>
+                    <input id="r-slider" type="range" min="2.4" max="4.0" value="3.2" step="0.0001" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                    <div class="text-center mt-2 text-2xl font-mono text-cyan-300 bg-gray-700 rounded-md py-1" id="r-value-display">3.2000</div>
+                </div>
+
+                <!-- Time Series Plot -->
+                <div class="bg-gray-900/50 p-4 rounded-xl">
+                    <h2 class="text-xl font-bold text-white mb-3 text-center">Population Over Time</h2>
+                     <div class="relative">
+                        <canvas id="timeSeriesCanvas"></canvas>
+                         <!-- Axis Labels -->
+                        <span class="absolute -bottom-5 left-0 text-sm text-gray-500">0</span>
+                        <span class="absolute -bottom-5 right-0 text-sm text-gray-500">100</span>
+                        <span class="absolute -bottom-9 left-1/2 -translate-x-1/2 text-sm font-semibold text-gray-400">Time Steps (n)</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- DOM Element References ---
+            const bifurcationCanvas = document.getElementById('bifurcationCanvas');
+            const timeSeriesCanvas = document.getElementById('timeSeriesCanvas');
+            const rSlider = document.getElementById('r-slider');
+            const rValueDisplay = document.getElementById('r-value-display');
+
+            const bCtx = bifurcationCanvas.getContext('2d');
+            const tCtx = timeSeriesCanvas.getContext('2d');
+
+            // --- Constants and State ---
+            const R_MIN = 2.4;
+            const R_MAX = 4.0;
+            const ITERATIONS_WARMUP = 600;
+            const ITERATIONS_PLOT = 400;
+            const TIME_SERIES_STEPS = 100;
+            let bifurcationImageData = null; // To cache the main diagram for performance
+
+            // --- Canvas Sizing ---
+            function setupCanvases() {
+                const bifurcationRect = bifurcationCanvas.parentElement.getBoundingClientRect();
+                bifurcationCanvas.width = bifurcationRect.width;
+                bifurcationCanvas.height = bifurcationRect.width * 0.6; // Maintain aspect ratio
+
+                const timeSeriesRect = timeSeriesCanvas.parentElement.getBoundingClientRect();
+                timeSeriesCanvas.width = timeSeriesRect.width;
+                timeSeriesCanvas.height = timeSeriesRect.width * 0.6;
+            }
+
+            // --- Mapping Functions (from math coordinates to canvas pixels) ---
+            const mapRToX = (r) => (r - R_MIN) / (R_MAX - R_MIN) * bifurcationCanvas.width;
+            const mapPopulationToY = (pop) => bifurcationCanvas.height * (1 - pop);
+
+            // --- Core Drawing Functions ---
+
+            /**
+             * Generates the entire bifurcation diagram.
+             * This is computationally intensive and should only be run once.
+             * The result is stored in `bifurcationImageData`.
+             */
+            function generateBifurcationDiagram() {
+                console.log("Generating bifurcation diagram...");
+                bCtx.clearRect(0, 0, bifurcationCanvas.width, bifurcationCanvas.height);
+                bCtx.fillStyle = 'rgba(55, 235, 235, 0.1)'; // Cyan with low opacity for density effect
+
+                for (let i = 0; i < bifurcationCanvas.width; i++) {
+                    const r = R_MIN + (i / bifurcationCanvas.width) * (R_MAX - R_MIN);
+                    let x = 0.5; // Initial population
+
+                    // Warm-up iterations to let the system settle into its attractor
+                    for (let j = 0; j < ITERATIONS_WARMUP; j++) {
+                        x = r * x * (1 - x);
+                    }
+
+                    // Plotting iterations to reveal the attractor(s)
+                    for (let j = 0; j < ITERATIONS_PLOT; j++) {
+                        x = r * x * (1 - x);
+                        const y = mapPopulationToY(x);
+                        bCtx.fillRect(i, y, 1, 1); // Draw a single pixel
+                    }
+                }
+                // Cache the generated image data
+                bifurcationImageData = bCtx.getImageData(0, 0, bifurcationCanvas.width, bifurcationCanvas.height);
+                console.log("Bifurcation diagram generated and cached.");
+            }
+            
+            /**
+             * Draws the cached bifurcation diagram and the vertical highlight line.
+             * @param {number} r - The current growth rate to highlight.
+             */
+            function drawBifurcationWithHighlight(r) {
+                if (!bifurcationImageData) return;
+
+                // Clear canvas and draw the cached diagram
+                bCtx.clearRect(0, 0, bifurcationCanvas.width, bifurcationCanvas.height);
+                bCtx.putImageData(bifurcationImageData, 0, 0);
+
+                // Draw the highlight line
+                const xPos = mapRToX(r);
+                bCtx.beginPath();
+                bCtx.moveTo(xPos, 0);
+                bCtx.lineTo(xPos, bifurcationCanvas.height);
+                bCtx.strokeStyle = 'rgba(255, 255, 0, 0.7)'; // Yellow, semi-transparent
+                bCtx.lineWidth = 2;
+                bCtx.stroke();
+            }
+
+            /**
+             * Draws the population's evolution over time for a given r.
+             * @param {number} r - The current growth rate.
+             */
+            function drawTimeSeries(r) {
+                tCtx.clearRect(0, 0, timeSeriesCanvas.width, timeSeriesCanvas.height);
+                
+                let x = 0.5; // Initial population
+                
+                tCtx.beginPath();
+                tCtx.strokeStyle = '#67e8f9'; // Light cyan
+                tCtx.lineWidth = 1.5;
+
+                const initialXPixel = 0;
+                const initialYPixel = timeSeriesCanvas.height * (1 - x);
+                tCtx.moveTo(initialXPixel, initialYPixel);
+
+                for (let i = 1; i <= TIME_SERIES_STEPS; i++) {
+                    x = r * x * (1 - x);
+                    const xPixel = (i / TIME_SERIES_STEPS) * timeSeriesCanvas.width;
+                    const yPixel = timeSeriesCanvas.height * (1 - x);
+                    tCtx.lineTo(xPixel, yPixel);
+                }
+                tCtx.stroke();
+            }
+
+            // --- Update and Event Handling ---
+            
+            /**
+             * Main update function called when the slider changes.
+             */
+            function updateVisuals() {
+                const r = parseFloat(rSlider.value);
+                rValueDisplay.textContent = r.toFixed(4);
+                
+                requestAnimationFrame(() => {
+                    drawBifurcationWithHighlight(r);
+                    drawTimeSeries(r);
+                });
+            }
+
+            // --- Initialization ---
+            function initialize() {
+                setupCanvases();
+                generateBifurcationDiagram();
+                updateVisuals();
+                rSlider.addEventListener('input', updateVisuals);
+            }
+            
+            // Handle window resizing
+            let resizeTimeout;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(() => {
+                    console.log("Resizing...");
+                    initialize();
+                }, 250); // Debounce resize event
+            });
+
+            initialize();
+        });
+    </script>
+</body>
+</html>
