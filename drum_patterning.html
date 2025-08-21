@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Circular Rhythm App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827; /* Tailwind gray-900 */
+            color: #E5E7EB; /* Tailwind gray-200 */
+            overscroll-behavior: none;
+        }
+        .control-panel {
+            background-color: rgba(31, 41, 55, 0.5); /* Tailwind gray-800 with opacity */
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(75, 85, 99, 0.5); /* Tailwind gray-600 with opacity */
+        }
+        .sound-btn.active {
+            background-color: #F97316; /* Tailwind orange-500 */
+            color: #111827;
+            box-shadow: 0 0 15px rgba(249, 115, 22, 0.5);
+        }
+        .slider-container label {
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.1em;
+            color: #9CA3AF; /* Tailwind gray-400 */
+        }
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 6px;
+            background: #374151; /* Tailwind gray-700 */
+            border-radius: 3px;
+            outline: none;
+            opacity: 0.7;
+            transition: opacity .2s;
+        }
+        input[type="range"]:hover {
+            opacity: 1;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            background: #F97316; /* Tailwind orange-500 */
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid #111827;
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            background: #F97316; /* Tailwind orange-500 */
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid #111827;
+        }
+        .transport-btn {
+            background-color: #374151;
+            border: 1px solid #4B5563;
+            transition: all 0.2s ease-in-out;
+        }
+        .transport-btn:hover {
+            background-color: #4B5563;
+            transform: scale(1.05);
+        }
+        .transport-btn.playing {
+            background-color: #10B981; /* Tailwind emerald-500 */
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.5);
+        }
+        #bpm-display {
+            background-color: #1F2937;
+            border: 1px solid #4B5563;
+        }
+    </style>
+</head>
+<body class="overflow-hidden">
+
+    <div id="loading-overlay" class="fixed inset-0 bg-gray-900 bg-opacity-80 flex items-center justify-center z-50 transition-opacity duration-500">
+        <div class="text-center">
+            <svg class="animate-spin h-10 w-10 text-orange-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="mt-4 text-lg text-gray-300">Initializing Audio Engine... Click to start.</p>
+        </div>
+    </div>
+
+    <div class="w-full h-screen flex flex-col md:flex-row items-center justify-around p-2 md:p-4 gap-4">
+
+        <!-- Left Panel: Sound Selection -->
+        <div id="sound-panel" class="control-panel w-full md:w-1/6 h-auto md:h-5/6 rounded-lg p-4 flex flex-row md:flex-col gap-2 md:gap-3 overflow-y-auto">
+            <h2 class="hidden md:block text-lg font-bold text-gray-300 border-b border-gray-600 pb-2 mb-2">DRUM KIT</h2>
+            <!-- Sound buttons will be injected here -->
+        </div>
+
+        <!-- Center Panel: Sequencer -->
+        <div class="w-full md:w-auto h-2/3 md:h-full flex-grow flex flex-col items-center justify-center gap-4 relative">
+            <canvas id="sequencerCanvas"></canvas>
+            <div class="absolute flex flex-col items-center justify-center gap-4">
+                 <button id="playBtn" class="transport-btn w-20 h-20 md:w-24 md:h-24 rounded-full flex items-center justify-center text-white">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 md:w-12 md:h-12" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
+                    </svg>
+                </button>
+                <div class="flex items-center gap-2">
+                    <span class="text-sm text-gray-400">BPM</span>
+                    <div id="bpm-display" class="px-3 py-1 rounded-md text-lg font-mono">120</div>
+                </div>
+                 <input id="bpmSlider" type="range" min="40" max="200" value="120" class="w-32 md:w-40">
+            </div>
+        </div>
+
+        <!-- Right Panel: Parameters -->
+        <div id="param-panel" class="control-panel w-full md:w-1/6 h-auto md:h-5/6 rounded-lg p-4 flex flex-row md:flex-col gap-4 overflow-y-auto">
+             <h2 class="hidden md:block text-lg font-bold text-gray-300 border-b border-gray-600 pb-2 mb-2">SOUND FX</h2>
+            <div class="slider-container flex-1">
+                <label for="attackSlider">Attack</label>
+                <input id="attackSlider" type="range" min="1" max="100" value="5">
+            </div>
+            <div class="slider-container flex-1">
+                <label for="decaySlider">Decay</label>
+                <input id="decaySlider" type="range" min="1" max="100" value="50">
+            </div>
+            <div class="slider-container flex-1">
+                <label for="sustainSlider">Sustain</label>
+                <input id="sustainSlider" type="range" min="1" max="100" value="50">
+            </div>
+            <div class="slider-container flex-1">
+                <label for="releaseSlider">Release</label>
+                <input id="releaseSlider" type="range" min="1" max="100" value="20">
+            </div>
+             <div class="slider-container flex-1">
+                <label for="pitchSlider">Pitch</label>
+                <input id="pitchSlider" type="range" min="-24" max="24" value="0">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- DOM ELEMENTS ---
+            const canvas = document.getElementById('sequencerCanvas');
+            const ctx = canvas.getContext('2d');
+            const playBtn = document.getElementById('playBtn');
+            const bpmSlider = document.getElementById('bpmSlider');
+            const bpmDisplay = document.getElementById('bpm-display');
+            const soundPanel = document.getElementById('sound-panel');
+            const paramPanel = document.getElementById('param-panel');
+            const loadingOverlay = document.getElementById('loading-overlay');
+
+            // --- CONSTANTS & STATE ---
+            const NUM_STEPS = 16;
+            const NUM_TRACKS = 6;
+            let synths = [];
+            let sequenceData = Array.from({ length: NUM_TRACKS }, () => new Array(NUM_STEPS).fill(false));
+            let currentStep = 0;
+            let selectedTrack = 0;
+            let isPlaying = false;
+            let isInitialized = false;
+
+            const SOUNDS = [
+                { name: 'Kick', color: '#F97316', synth: () => new Tone.MembraneSynth({ pitchDecay: 0.05, octaves: 10, oscillator: { type: 'sine' }, envelope: { attack: 0.001, decay: 0.4, sustain: 0.01, release: 1.4, attackCurve: 'exponential' } }).toDestination() },
+                { name: 'Snare', color: '#EC4899', synth: () => new Tone.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.005, decay: 0.2, sustain: 0 } }).toDestination() },
+                { name: 'Hi-Hat', color: '#84CC16', synth: () => new Tone.MetalSynth({ frequency: 200, envelope: { attack: 0.001, decay: 0.1, release: 0.01 }, harmonicity: 5.1, modulationIndex: 32, resonance: 4000, octaves: 1.5 }).toDestination() },
+                { name: 'Tom', color: '#3B82F6', synth: () => new Tone.MembraneSynth({ pitchDecay: 0.08, octaves: 6, oscillator: { type: 'sine' }, envelope: { attack: 0.01, decay: 0.3, sustain: 0.01, release: 1, attackCurve: 'exponential' } }).toDestination() },
+                { name: 'Clap', color: '#EAB308', synth: () => new Tone.NoiseSynth({ noise: { type: 'pink' }, envelope: { attack: 0.001, decay: 0.15, sustain: 0, release: 0.2 } }).toDestination() },
+                { name: 'Synth', color: '#A855F7', synth: () => new Tone.FMSynth({ harmonicity: 3, modulationIndex: 10, detune: 0, oscillator: { type: "sine" }, envelope: { attack: 0.01, decay: 0.2, sustain: 0.5, release: 0.5 }, modulation: { type: "square" }, modulationEnvelope: { attack: 0.5, decay: 0, sustain: 1, release: 0.5 } }).toDestination() },
+            ];
+
+            // --- INITIALIZATION ---
+            function initialize() {
+                if (isInitialized) return;
+                isInitialized = true;
+
+                // Create synths and UI elements
+                SOUNDS.forEach((soundDef, i) => {
+                    const synth = soundDef.synth();
+                    synths.push(synth);
+                    
+                    const btn = document.createElement('button');
+                    btn.textContent = soundDef.name;
+                    btn.className = 'sound-btn w-full text-left p-3 rounded-md transition-all duration-200';
+                    btn.style.borderLeft = `5px solid ${soundDef.color}`;
+                    if (i === selectedTrack) {
+                        btn.classList.add('active');
+                    }
+                    btn.addEventListener('click', () => {
+                        selectedTrack = i;
+                        updateActiveSoundButton();
+                        updateSlidersForTrack(i);
+                    });
+                    soundPanel.appendChild(btn);
+                });
+                
+                updateSlidersForTrack(selectedTrack);
+                Tone.Transport.bpm.value = parseInt(bpmSlider.value);
+                
+                new Tone.Sequence((time, step) => {
+                    currentStep = step;
+                    sequenceData.forEach((track, index) => {
+                        if (track[step]) {
+                            const synth = synths[index];
+                            if (synth instanceof Tone.MembraneSynth || synth instanceof Tone.FMSynth) {
+                                synth.triggerAttackRelease("C2", "8n", time);
+                            } else {
+                                synth.triggerAttackRelease("8n", time);
+                            }
+                        }
+                    });
+                    Tone.Draw.schedule(() => {
+                        draw();
+                    }, time);
+                }, Array.from(Array(NUM_STEPS).keys()), "16n").start(0);
+
+                requestAnimationFrame(draw);
+                
+                loadingOverlay.style.opacity = '0';
+                setTimeout(() => loadingOverlay.style.display = 'none', 500);
+            }
+            
+            loadingOverlay.addEventListener('click', () => {
+                Tone.start().then(initialize);
+            });
+
+
+            // --- UI & DRAWING ---
+            function resizeCanvas() {
+                const container = canvas.parentElement;
+                const size = Math.min(container.clientWidth, container.clientHeight) * 0.95; // Made canvas slightly larger
+                canvas.width = size;
+                canvas.height = size;
+                draw();
+            }
+
+            function draw() {
+                const width = canvas.width;
+                const height = canvas.height;
+                const center = { x: width / 2, y: height / 2 };
+                const maxRadius = Math.min(width, height) / 2;
+                // FIX: Define a central "dead zone" and have the rings fill the space outside it.
+                const innerCoreRadius = maxRadius * 0.25;
+                const ringAreaWidth = maxRadius - innerCoreRadius;
+                const trackWidth = ringAreaWidth / NUM_TRACKS;
+                
+                ctx.clearRect(0, 0, width, height);
+
+                // Draw tracks and steps
+                for (let track = 0; track < NUM_TRACKS; track++) {
+                    // FIX: Calculate radii to create contiguous rings. Track 0 is outermost.
+                    const outerRadius = maxRadius - track * trackWidth;
+                    const innerRadius = outerRadius - trackWidth;
+
+                    for (let step = 0; step < NUM_STEPS; step++) {
+                        const startAngle = (step / NUM_STEPS) * 2 * Math.PI - Math.PI / 2;
+                        const endAngle = ((step + 1) / NUM_STEPS) * 2 * Math.PI - Math.PI / 2;
+                        
+                        ctx.beginPath();
+                        // Draw a segment of an annulus (a ring)
+                        ctx.arc(center.x, center.y, outerRadius, startAngle, endAngle);
+                        ctx.arc(center.x, center.y, innerRadius, endAngle, startAngle, true);
+                        ctx.closePath();
+
+                        if (sequenceData[track][step]) {
+                            ctx.fillStyle = SOUNDS[track].color;
+                        } else {
+                            ctx.fillStyle = 'rgba(75, 85, 99, 0.3)'; // gray-600
+                        }
+                        ctx.fill();
+
+                        ctx.strokeStyle = '#111827'; // bg color
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                    }
+                }
+
+                // Draw playhead
+                if (isPlaying) {
+                    const angle = (currentStep / NUM_STEPS) * 2 * Math.PI - Math.PI / 2;
+                    const nextAngle = ((currentStep + 1) / NUM_STEPS) * 2 * Math.PI - Math.PI / 2;
+                    
+                    ctx.beginPath();
+                    // FIX: Make playhead cover the entire ring area
+                    ctx.arc(center.x, center.y, maxRadius, angle, nextAngle);
+                    ctx.arc(center.x, center.y, innerCoreRadius, nextAngle, angle, true);
+                    ctx.closePath();
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+                    ctx.fill();
+                }
+            }
+
+            function updateActiveSoundButton() {
+                document.querySelectorAll('.sound-btn').forEach((btn, index) => {
+                    btn.classList.toggle('active', index === selectedTrack);
+                });
+            }
+
+            // --- EVENT LISTENERS ---
+            playBtn.addEventListener('click', () => {
+                if (!isInitialized) return;
+                isPlaying = !isPlaying;
+                if (isPlaying) {
+                    Tone.Transport.start();
+                    playBtn.classList.add('playing');
+                    playBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 md:w-12 md:h-12" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" /></svg>`;
+                } else {
+                    Tone.Transport.stop();
+                    currentStep = 0;
+                    playBtn.classList.remove('playing');
+                    playBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 md:w-12 md:h-12" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg>`;
+                }
+                draw();
+            });
+
+            bpmSlider.addEventListener('input', (e) => {
+                const newBpm = parseInt(e.target.value);
+                bpmDisplay.textContent = newBpm;
+                if (isInitialized) {
+                    Tone.Transport.bpm.value = newBpm;
+                }
+            });
+
+            canvas.addEventListener('click', (e) => {
+                if (!isInitialized) return;
+                
+                // FIX: Robustly calculate click coordinates, accounting for canvas scaling.
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                const x = (e.clientX - rect.left) * scaleX;
+                const y = (e.clientY - rect.top) * scaleY;
+                
+                const center = { x: canvas.width / 2, y: canvas.height / 2 };
+                const dx = x - center.x;
+                const dy = y - center.y;
+                
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                let angle = Math.atan2(dy, dx);
+                if (angle < -Math.PI / 2) { angle += 2 * Math.PI; }
+
+                // FIX: Use the same geometry as the draw function for calculations.
+                const maxRadius = Math.min(canvas.width, canvas.height) / 2;
+                const innerCoreRadius = maxRadius * 0.25;
+                const ringAreaWidth = maxRadius - innerCoreRadius;
+                const trackWidth = ringAreaWidth / NUM_TRACKS;
+                
+                if (distance > innerCoreRadius && distance < maxRadius) {
+                    const distanceFromOuterEdge = maxRadius - distance;
+                    const track = Math.floor(distanceFromOuterEdge / trackWidth);
+                    const step = Math.floor(((angle + Math.PI / 2) / (2 * Math.PI)) * NUM_STEPS);
+
+                    if (track >= 0 && track < NUM_TRACKS && step >= 0 && step < NUM_STEPS) {
+                        sequenceData[track][step] = !sequenceData[track][step];
+                        draw();
+                    }
+                }
+            });
+
+            // --- PARAMETER CONTROLS ---
+            function updateSlidersForTrack(trackIndex) {
+                const synth = synths[trackIndex];
+                if (!synth) return;
+
+                const envelope = synth.envelope;
+                if (envelope) {
+                    document.getElementById('attackSlider').value = envelope.attack * 100;
+                    document.getElementById('decaySlider').value = envelope.decay * 100;
+                    document.getElementById('sustainSlider').value = envelope.sustain * 100;
+                    document.getElementById('releaseSlider').value = envelope.release * 100;
+                }
+
+                const pitchControl = synth.detune || synth.frequency;
+                if (pitchControl) {
+                     document.getElementById('pitchSlider').value = pitchControl.value / 100;
+                }
+            }
+
+            paramPanel.addEventListener('input', (e) => {
+                const synth = synths[selectedTrack];
+                if (!synth) return;
+
+                const value = parseFloat(e.target.value);
+                const envelope = synth.envelope;
+
+                switch (e.target.id) {
+                    case 'attackSlider': if (envelope) envelope.attack = value / 100; break;
+                    case 'decaySlider': if (envelope) envelope.decay = value / 100; break;
+                    case 'sustainSlider': if (envelope) envelope.sustain = value / 100; break;
+                    case 'releaseSlider': if (envelope) envelope.release = value / 100; break;
+                    case 'pitchSlider':
+                        if (synth.detune) {
+                            synth.detune.value = value * 100;
+                        } else if (synth.frequency) {
+                            const baseFrequency = SOUNDS[selectedTrack].synth().frequency.value || 200;
+                            synth.frequency.value = baseFrequency * Math.pow(2, value / 12);
+                        }
+                        break;
+                }
+            });
+
+            window.addEventListener('resize', resizeCanvas);
+            resizeCanvas();
+        });
+    </script>
+</body>
+</html>
