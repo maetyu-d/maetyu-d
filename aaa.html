@@ -143,39 +143,39 @@
                 for (let y = WORLD_HEIGHT_TILES - 1; y > WORLD_HEIGHT_TILES - 1 - height; y--) {
                     if (y <= 0) continue;
                     
-                    // Lay foundation and floor structure
                     for(let i=0; i<width; i++) {
                         const currentX = startX + i;
-                        // Solid part below the floor
-                        worldGrid[y][currentX] = Tile.CONCRETE;
-                        // Floor surface
+                        // **THE FIX IS HERE**: Only place concrete if the space below is empty.
+                        // This prevents overwriting the floor of the level below.
+                        if (worldGrid[y][currentX] === Tile.EMPTY) {
+                            worldGrid[y][currentX] = Tile.CONCRETE;
+                        }
+                        // Always place the floor surface on the level above the foundation.
                         worldGrid[y-1][currentX] = Tile.FLOOR;
                     }
                     
-                    // ALWAYS add a lift and stairs to every floor
                     worldGrid[y-1][liftX] = Tile.LIFT_DOOR;
-                    worldGrid[y][liftX] = Tile.LIFT_SHAFT; // Shaft space below the door
+                    worldGrid[y][liftX] = Tile.LIFT_SHAFT; 
 
                     worldGrid[y-1][stairCurrentX] = Tile.STAIRS;
 
-                    // Create zig-zag stairwell pattern
                     if (y % 2 === 0) {
                         stairCurrentX += stairDirection;
                         if (stairCurrentX >= stairStartX + stairAreaWidth || stairCurrentX < stairStartX) {
                             stairDirection *= -1;
-                            stairCurrentX += stairDirection; // Correct the overshoot
+                            stairCurrentX += stairDirection;
                         }
                     }
                 }
 
-                // **Guaranteed Connectivity**: Connect this tower to the previous one with one bridge
                 if (previousTower) {
                     const minHeight = Math.min(height, previousTower.height);
                     const validBridgeYs = [];
-                    // Find all possible heights to build a bridge
                     for(let y = WORLD_HEIGHT_TILES - 2; y > WORLD_HEIGHT_TILES - minHeight; y--) {
-                        if(worldGrid[y][startX] === Tile.FLOOR && worldGrid[y][previousTower.endX] === Tile.FLOOR) {
-                            validBridgeYs.push(y);
+                        if(worldGrid[y][startX-1] === Tile.EMPTY && worldGrid[y][previousTower.endX+1] === Tile.EMPTY) {
+                             if(worldGrid[y][startX] === Tile.FLOOR && worldGrid[y][previousTower.endX] === Tile.FLOOR) {
+                                validBridgeYs.push(y);
+                            }
                         }
                     }
                     if (validBridgeYs.length > 0) {
@@ -189,7 +189,6 @@
                 return { startX: startX, endX: startX + width - 1, height: height };
             }
 
-            // Adds more bridges for complexity after the main chain is built
             function addExtraBridges() {
                 for (let y = WORLD_HEIGHT_TILES - 2; y > 0; y--) {
                     let lastFloorX = -1;
@@ -197,7 +196,6 @@
                         const tile = worldGrid[y][x];
                         if (tile === Tile.FLOOR) {
                             if (lastFloorX !== -1 && x - lastFloorX > 1 && x - lastFloorX < 15) {
-                                // 10% chance to add an extra bridge
                                 if (Math.random() < 0.1) {
                                      for (let i = lastFloorX + 1; i < x; i++) worldGrid[y][i] = Tile.BRIDGE;
                                 }
@@ -380,12 +378,15 @@
                 const liftReachable = findAllReachable({x: liftBot.x, y: liftBot.y}, liftBot.rules);
                 const commonReachable = [...flexiReachable].filter(tile => liftReachable.has(tile));
 
-                if (commonReachable.length > 1) { // Ensure there is at least one other option
-                    // Filter out the bot's current position from the goal list
+                if (commonReachable.length > 1) {
                     const validGoals = commonReachable.filter(g => g !== `${flexiBot.x},${flexiBot.y}` && g !== `${liftBot.x},${liftBot.y}`);
-                    const goalString = validGoals[Math.floor(Math.random() * validGoals.length)];
-                    const [x, y] = goalString.split(',').map(Number);
-                    goal = {x, y};
+                    if (validGoals.length > 0) {
+                        const goalString = validGoals[Math.floor(Math.random() * validGoals.length)];
+                        const [x, y] = goalString.split(',').map(Number);
+                        goal = {x, y};
+                    } else {
+                        goal = null; // No other place to go
+                    }
                 } else {
                     console.error("No common reachable tiles found for a new goal!");
                     goal = null;
