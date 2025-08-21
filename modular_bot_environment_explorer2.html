@@ -201,10 +201,27 @@
                     const existingModule = placedModules[Math.floor(Math.random() * placedModules.length)];
                     const newPrefab = prefabs[Math.floor(Math.random() * prefabs.length)];
                     let newX, newY, side = Math.floor(Math.random() * 4);
-                    if (side === 0) { newX = existingModule.x + Math.floor(Math.random() * existingModule.width); newY = existingModule.y - (newPrefab.type === 'room' ? newPrefab.height : newPrefab.length); } 
-                    else if (side === 1) { newX = existingModule.x + existingModule.width; newY = existingModule.y + Math.floor(Math.random() * existingModule.height); } 
-                    else if (side === 2) { newX = existingModule.x + Math.floor(Math.random() * existingModule.width); newY = existingModule.y + existingModule.height; } 
-                    else { newX = existingModule.x - (newPrefab.type === 'room' ? newPrefab.width : 1); newY = existingModule.y + Math.floor(Math.random() * existingModule.height); }
+
+                    // Determine the dimensions of the new prefab
+                    const newWidth = newPrefab.type === 'room' ? newPrefab.width : (newPrefab.dir === 'h' ? newPrefab.length : 1);
+                    const newHeight = newPrefab.type === 'room' ? newPrefab.height : (newPrefab.dir === 'v' ? newPrefab.length : 1);
+
+                    if (side === 0) { // Attach to Top
+                        newX = existingModule.x + Math.floor(Math.random() * (existingModule.width - newWidth + 1));
+                        newY = existingModule.y - newHeight;
+                    } 
+                    else if (side === 1) { // Attach to Right
+                        newX = existingModule.x + existingModule.width;
+                        newY = existingModule.y + Math.floor(Math.random() * (existingModule.height - newHeight + 1));
+                    } 
+                    else if (side === 2) { // Attach to Bottom
+                        newX = existingModule.x + Math.floor(Math.random() * (existingModule.width - newWidth + 1));
+                        newY = existingModule.y + existingModule.height;
+                    } 
+                    else { // Attach to Left
+                        newX = existingModule.x - newWidth;
+                        newY = existingModule.y + Math.floor(Math.random() * (existingModule.height - newHeight + 1));
+                    }
 
                     if (newPrefab.type === 'room') {
                         if (this.canPlace(newX, newY, newPrefab.width, newPrefab.height)) {
@@ -291,3 +308,4 @@
     </script>
 </body>
 </html>
+
