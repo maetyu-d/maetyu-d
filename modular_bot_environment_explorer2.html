@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modular Environment Explorer Grid</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #f0f2f5;
+            color: #333;
+            margin: 0;
+            padding: 10px;
+            min-height: 100vh;
+        }
+        #grid-container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 10px;
+        }
+        canvas {
+            border: 2px solid #333;
+            background-color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <div id="grid-container"></div>
+
+    <script>
+        const gridContainer = document.getElementById('grid-container');
+
+        // --- Configuration (shared across all instances) ---
+        const GRID_SIZE = 60; 
+        const CELL_SIZE = 6; 
+        const CANVAS_SIZE = GRID_SIZE * CELL_SIZE;
+
+        const TERRAIN = {
+            EMPTY: 0, PATH: 1, PENALTY: 2, OBSTACLE: 3,
+            VISITED_1: 4, GOAL: 5, VISITED_2: 6
+        };
+
+        const COLORS = {
+            [TERRAIN.EMPTY]: '#ffffff', [TERRAIN.PATH]: '#dcdcdc',
+            [TERRAIN.PENALTY]: '#a9a9a9', [TERRAIN.OBSTACLE]: '#696969',
+            [TERRAIN.VISITED_1]: '#ffb74d', // Darker Orange Trail
+            [TERRAIN.VISITED_2]: '#81c784', // Darker Green Trail
+            [TERRAIN.GOAL]: '#007bff', BOT_1: '#ff9800', BOT_2: '#28a745',
+            BOT_1_RESTING: '#fff3e0', BOT_2_RESTING: '#c8e6c9', grid: '#f5f5f5'
+        };
+        
+        const MOVEMENT_COST = {
+            [TERRAIN.PATH]: 1, [TERRAIN.VISITED_1]: 2, [TERRAIN.VISITED_2]: 2
+        };
+
+        class Simulation {
+            constructor(canvas) {
+                this.canvas = canvas;
+                this.ctx = canvas.getContext('2d');
+                this.grid = null;
+                this.bot1 = null;
+                this.bot2 = null;
+                this.currentGoal = null;
+                this.bot1Interval = null;
+                this.bot2Interval = null;
+                this.animationFrameId = null;
+            }
+
+            // --- Bot Class (nested for encapsulation) ---
+            Bot = class {
+                constructor(x, y, color, id, simulation) {
+                    this.x = x; this.y = y; this.color = color; this.id = id;
+                    this.simulation = simulation; // Reference to parent simulation
+                    this.path = []; this.tilesMoved = 0; this.isResting = false;
+                    this.restThreshold = (id === 'bot1') ? 200 : 100;
+                }
+
+                move() {
+                    if (this.isResting) return;
+                    
+                    const grid = this.simulation.grid;
+                    if (grid[this.y][this.x] !== TERRAIN.OBSTACLE && grid[this.y][this.x] !== TERRAIN.GOAL) {
+                        grid[this.y][this.x] = (this.id === 'bot1') ? TERRAIN.VISITED_1 : TERRAIN.VISITED_2;
+                    }
+                    
+                    if (this.path.length === 0) return;
+                    
+                    const nextStep = this.path.shift();
+                    this.x = nextStep.x; this.y = nextStep.y;
+                    this.tilesMoved++;
+
+                    if (this.tilesMoved >= this.restThreshold) {
+                        this.isResting = true;
+                        this.tilesMoved = 0;
+                        setTimeout(() => {
+                            this.isResting = false;
+                            this.recalculatePath(this.simulation.currentGoal, grid);
+                        }, 5000);
+                    }
+                }
+                
+                recalculatePath(goal, grid) {
+                    const start = { x: this.x, y: this.y };
+                    this.path = this.simulation.aStar(start, goal, grid, this);
+                }
+
+                draw() {
+                    const ctx = this.simulation.ctx;
+                    ctx.fillStyle = this.isResting ? 
+                        ((this.id === 'bot1') ? COLORS.BOT_1_RESTING : COLORS.BOT_2_RESTING) : 
+                        this.color;
+                    ctx.fillRect(this.x * CELL_SIZE + 1, this.y * CELL_SIZE + 1, CELL_SIZE - 2, CELL_SIZE - 2);
+                }
+            }
+            
+            // --- A* Pathfinding Algorithm ---
+            aStar(start, end, grid, bot) {
+                function heuristic(a, b) { return Math.abs(a.x - b.x) + Math.abs(a.y - b.y); }
+
+                function getNeighbors(node) {
+                    const neighbors = [];
+                    const { x, y } = node;
+                    if (x > 0) neighbors.push({ x: x - 1, y });
+                    if (x < GRID_SIZE - 1) neighbors.push({ x: x + 1, y });
+                    if (y > 0) neighbors.push({ x, y: y - 1 });
+                    if (y < GRID_SIZE - 1) neighbors.push({ x, y: y + 1 });
+                    return neighbors.filter(n => grid[n.y][n.x] !== TERRAIN.OBSTACLE);
+                }
+
+                const startNode = { ...start, g: 0, h: heuristic(start, end), f: heuristic(start, end), parent: null };
+                const openSet = [startNode];
+                const closedSet = new Set();
+
+                while (openSet.length > 0) {
+                    openSet.sort((a, b) => a.f - b.f);
+                    const current = openSet.shift();
+                    if (current.x === end.x && current.y === end.y) {
+                        const path = []; let temp = current;
+                        while (temp.parent) { path.push({ x: temp.x, y: temp.y }); temp = temp.parent; }
+                        return path.reverse();
+                    }
+                    closedSet.add(`${current.x},${current.y}`);
+                    for (const neighbor of getNeighbors(current)) {
+                        if (closedSet.has(`${neighbor.x},${neighbor.y}`)) continue;
+                        const terrainType = grid[neighbor.y][neighbor.x];
+                        let cost = MOVEMENT_COST[terrainType] || 1;
+                        if (terrainType === TERRAIN.PENALTY) {
+                            if (bot.id === 'bot1') cost = 1;
+                            else if (bot.id === 'bot2') cost = 4;
+                        }
+                        const gScore = current.g + cost;
+                        let neighborNode = openSet.find(n => n.x === neighbor.x && n.y === neighbor.y);
+                        if (!neighborNode || gScore < neighborNode.g) {
+                            if (!neighborNode) { neighborNode = { ...neighbor }; openSet.push(neighborNode); }
+                            neighborNode.g = gScore; neighborNode.h = heuristic(neighbor, end);
+                            neighborNode.f = neighborNode.g + neighborNode.h; neighborNode.parent = current;
+                        }
+                    }
+                }
+                return [];
+            }
+
+            // --- Environment & Goal Management ---
+            spawnGoal() {
+                if (this.currentGoal) this.grid[this.currentGoal.y][this.currentGoal.x] = TERRAIN.PATH;
+                let goalPos;
+                while(true) {
+                    const x = Math.floor(Math.random() * GRID_SIZE);
+                    const y = Math.floor(Math.random() * GRID_SIZE);
+                    if (this.grid[y][x] === TERRAIN.PATH || this.grid[y][x] === TERRAIN.PENALTY) {
+                        goalPos = { x, y }; break;
+                    }
+                }
+                this.currentGoal = goalPos;
+                this.grid[this.currentGoal.y][this.currentGoal.x] = TERRAIN.GOAL;
+            }
+
+            spawnGoalAndRecalculatePaths() {
+                this.spawnGoal(); 
+                this.bot1.recalculatePath(this.currentGoal, this.grid);
+                this.bot2.recalculatePath(this.currentGoal, this.grid);
+            }
+
+            // --- Environment Generation ---
+            generateEnvironment() {
+                this.grid = new Array(GRID_SIZE).fill(0).map(() => new Array(GRID_SIZE).fill(TERRAIN.OBSTACLE));
+                const prefabs = [
+                    { type: 'room', width: 6, height: 6 }, { type: 'room', width: 8, height: 5 },
+                    { type: 'corridor', length: 12, dir: 'h' }, { type: 'corridor', length: 10, dir: 'v' }
+                ];
+                const placedModules = [];
+                const startX = Math.floor(GRID_SIZE / 2), startY = Math.floor(GRID_SIZE / 2);
+                this.carveRoom(startX, startY, 6, 6);
+                placedModules.push({ x: startX, y: startY, width: 6, height: 6 });
+
+                for (let i = 0; i < 150; i++) {
+                    const existingModule = placedModules[Math.floor(Math.random() * placedModules.length)];
+                    const newPrefab = prefabs[Math.floor(Math.random() * prefabs.length)];
+                    let newX, newY, side = Math.floor(Math.random() * 4);
+                    if (side === 0) { newX = existingModule.x + Math.floor(Math.random() * existingModule.width); newY = existingModule.y - (newPrefab.type === 'room' ? newPrefab.height : newPrefab.length); } 
+                    else if (side === 1) { newX = existingModule.x + existingModule.width; newY = existingModule.y + Math.floor(Math.random() * existingModule.height); } 
+                    else if (side === 2) { newX = existingModule.x + Math.floor(Math.random() * existingModule.width); newY = existingModule.y + existingModule.height; } 
+                    else { newX = existingModule.x - (newPrefab.type === 'room' ? newPrefab.width : 1); newY = existingModule.y + Math.floor(Math.random() * existingModule.height); }
+
+                    if (newPrefab.type === 'room') {
+                        if (this.canPlace(newX, newY, newPrefab.width, newPrefab.height)) {
+                            this.carveRoom(newX, newY, newPrefab.width, newPrefab.height);
+                            placedModules.push({ x: newX, y: newY, width: newPrefab.width, height: newPrefab.height });
+                        }
+                    } else {
+                        const width = newPrefab.dir === 'h' ? newPrefab.length : 1;
+                        const height = newPrefab.dir === 'v' ? newPrefab.length : 1;
+                        if (this.canPlace(newX, newY, width, height)) {
+                            this.carveCorridor(newX, newY, newPrefab.length, newPrefab.dir);
+                            placedModules.push({ x: newX, y: newY, width, height });
+                        }
+                    }
+                }
+                
+                let bot1Start = this.findValidStart();
+                let bot2Start = this.findValidStart();
+                this.bot1 = new this.Bot(bot1Start.x, bot1Start.y, COLORS.BOT_1, 'bot1', this);
+                this.bot2 = new this.Bot(bot2Start.x, bot2Start.y, COLORS.BOT_2, 'bot2', this);
+                
+                this.spawnGoal();
+                this.bot1.recalculatePath(this.currentGoal, this.grid);
+                this.bot2.recalculatePath(this.currentGoal, this.grid);
+            }
+
+            canPlace(x, y, w, h) { return x > 1 && y > 1 && x + w < GRID_SIZE - 2 && y + h < GRID_SIZE - 2; }
+            carveRoom(x, y, w, h) { for (let i = y; i < y + h; i++) { for (let j = x; j < x + w; j++) { if (i >= 0 && i < GRID_SIZE && j >= 0 && j < GRID_SIZE) this.grid[i][j] = Math.random() < 0.5 ? TERRAIN.PENALTY : TERRAIN.PATH; } } }
+            carveCorridor(x, y, len, dir) { for (let i = 0; i < len; i++) { let curX = dir === 'h' ? x + i : x; let curY = dir === 'v' ? y + i : y; if (curY >= 0 && curY < GRID_SIZE && curX >= 0 && curX < GRID_SIZE) this.grid[curY][curX] = TERRAIN.PATH; } }
+            findValidStart() { for (let i = 0; i < 2000; i++) { const x = Math.floor(Math.random() * GRID_SIZE); const y = Math.floor(Math.random() * GRID_SIZE); if (this.grid[y][x] === TERRAIN.PATH) return { x, y }; } return { x: 1, y: 1 }; }
+
+            // --- Drawing ---
+            draw() {
+                this.ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+                for (let y = 0; y < GRID_SIZE; y++) {
+                    for (let x = 0; x < GRID_SIZE; x++) {
+                        this.ctx.fillStyle = COLORS[this.grid[y][x]];
+                        this.ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+                    }
+                }
+                this.bot1.draw();
+                this.bot2.draw();
+                this.animationFrameId = requestAnimationFrame(() => this.draw());
+            }
+
+            // --- Main Update Loops ---
+            updateBot1() {
+                if (this.bot1.x === this.currentGoal.x && this.bot1.y === this.currentGoal.y) { this.spawnGoalAndRecalculatePaths(); return; }
+                if (this.bot1.path.length === 0) this.bot1.recalculatePath(this.currentGoal, this.grid);
+                this.bot1.move();
+            }
+            updateBot2() {
+                if (this.bot2.x === this.currentGoal.x && this.bot2.y === this.currentGoal.y) { this.spawnGoalAndRecalculatePaths(); return; }
+                if (this.bot2.path.length === 0) this.bot2.recalculatePath(this.currentGoal, this.grid);
+                this.bot2.move();
+            }
+
+            initialize() {
+                this.canvas.width = CANVAS_SIZE;
+                this.canvas.height = CANVAS_SIZE;
+                if (this.bot1Interval) clearInterval(this.bot1Interval);
+                if (this.bot2Interval) clearInterval(this.bot2Interval);
+                
+                this.generateEnvironment();
+
+                const orangeBotSpeed = 200;
+                const greenBotSpeed = orangeBotSpeed / 0.8; // 250ms
+
+                this.bot1Interval = setInterval(() => this.updateBot1(), orangeBotSpeed); 
+                this.bot2Interval = setInterval(() => this.updateBot2(), greenBotSpeed); 
+
+                if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
+                this.draw();
+            }
+        }
+        
+        // --- Create and Initialize all 9 simulations ---
+        for (let i = 0; i < 9; i++) {
+            const canvas = document.createElement('canvas');
+            gridContainer.appendChild(canvas);
+            const sim = new Simulation(canvas);
+            sim.initialize();
+        }
+    </script>
+</body>
+</html>
