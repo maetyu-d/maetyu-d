@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Fractal Tree</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts for a nicer look -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        /* Custom styles for the app */
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        /* Style for the sliders to ensure they look good */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 8px;
+            background: #d1d5db; /* gray-300 */
+            border-radius: 9999px;
+            outline: none;
+            opacity: 0.7;
+            transition: opacity .2s;
+        }
+        input[type="range"]:hover {
+            opacity: 1;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #3b82f6; /* blue-500 */
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid white;
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #3b82f6;
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid white;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+
+    <div class="w-full max-w-4xl mx-auto p-4 sm:p-6 md:p-8">
+        <div class="bg-white rounded-2xl shadow-lg overflow-hidden">
+            <!-- Header -->
+            <div class="p-6 border-b border-gray-200">
+                <h1 class="text-2xl sm:text-3xl font-bold text-gray-800">Interactive Fractal Tree</h1>
+                <p class="mt-2 text-gray-600">Use the sliders to change the angle and color of the branches.</p>
+            </div>
+
+            <!-- Main Content: Canvas and Controls -->
+            <div class="flex flex-col lg:flex-row">
+                <!-- Canvas for the fractal -->
+                <div class="w-full lg:w-2/3 bg-gray-800 flex items-center justify-center p-4">
+                    <canvas id="fractalCanvas"></canvas>
+                </div>
+
+                <!-- Controls -->
+                <div class="w-full lg:w-1/3 p-6 space-y-6 bg-gray-50">
+                    <div>
+                        <label for="angleSlider" class="block text-sm font-medium text-gray-700">Branch Angle</label>
+                        <div class="flex items-center space-x-4 mt-2">
+                           <input id="angleSlider" type="range" min="0" max="90" value="30" class="flex-grow">
+                           <span id="angleValue" class="text-sm font-semibold text-blue-600 bg-blue-100 rounded-md px-2 py-1">30°</span>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="colorSlider" class="block text-sm font-medium text-gray-700">Color Hue</label>
+                         <div class="flex items-center space-x-4 mt-2">
+                            <input id="colorSlider" type="range" min="0" max="360" value="120" class="flex-grow">
+                            <span id="colorValue" class="text-sm font-semibold w-8 h-8 rounded-full border-2 border-white shadow-sm" style="background-color: hsl(120, 80%, 50%);"></span>
+                        </div>
+                    </div>
+                     <div>
+                        <label for="depthSlider" class="block text-sm font-medium text-gray-700">Recursion Depth</label>
+                         <div class="flex items-center space-x-4 mt-2">
+                            <input id="depthSlider" type="range" min="1" max="12" value="10" class="flex-grow">
+                            <span id="depthValue" class="text-sm font-semibold text-blue-600 bg-blue-100 rounded-md px-2 py-1">10</span>
+                        </div>
+                    </div>
+                    <button id="randomizeButton" class="w-full bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors duration-200">
+                        Randomize
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DOM Element Selection ---
+        const canvas = document.getElementById('fractalCanvas');
+        const ctx = canvas.getContext('2d');
+        const angleSlider = document.getElementById('angleSlider');
+        const angleValue = document.getElementById('angleValue');
+        const colorSlider = document.getElementById('colorSlider');
+        const colorValue = document.getElementById('colorValue');
+        const depthSlider = document.getElementById('depthSlider');
+        const depthValue = document.getElementById('depthValue');
+        const randomizeButton = document.getElementById('randomizeButton');
+
+        // --- Canvas Setup ---
+        // Set canvas dimensions. Using a fixed size for simplicity.
+        const size = Math.min(window.innerWidth, window.innerHeight) * 0.6;
+        canvas.width = 600;
+        canvas.height = 500;
+
+        // --- Core Drawing Function ---
+        function drawTree(startX, startY, len, angle, branchWidth, hue, depth) {
+            // Base case: Stop the recursion if the branch is too short or depth is 0
+            if (depth === 0) {
+                return;
+            }
+
+            ctx.beginPath();
+            ctx.save(); // Save the current canvas state (position, rotation, etc.)
+
+            // Style the branch
+            ctx.strokeStyle = `hsl(${hue}, 80%, 50%)`;
+            ctx.lineWidth = branchWidth;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = `hsl(${hue}, 80%, 50%)`;
+
+            // Move to the starting point and rotate the canvas
+            ctx.translate(startX, startY);
+            ctx.rotate(angle * Math.PI / 180); // Convert degrees to radians
+
+            // Draw the line (the branch)
+            ctx.moveTo(0, 0);
+            ctx.lineTo(0, -len);
+            ctx.stroke();
+
+            // --- Recursive Calls ---
+            // After drawing a branch, recursively call drawTree for two new smaller branches
+            // at the end of the current one.
+
+            // Left Branch
+            drawTree(0, -len, len * 0.78, -parseFloat(angleSlider.value), branchWidth * 0.7, hue + 10, depth - 1);
+            // Right Branch
+            drawTree(0, -len, len * 0.78, parseFloat(angleSlider.value), branchWidth * 0.7, hue + 10, depth - 1);
+
+            ctx.restore(); // Restore the canvas state to what it was before this branch was drawn
+        }
+
+        // --- Main Render Function ---
+        function generateFractal() {
+            // Clear the entire canvas before drawing a new frame
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Get current values from sliders
+            const angle = parseFloat(angleSlider.value);
+            const hue = parseFloat(colorSlider.value);
+            const maxDepth = parseInt(depthSlider.value);
+
+            // Update UI display values
+            angleValue.textContent = `${angle.toFixed(0)}°`;
+            colorValue.style.backgroundColor = `hsl(${hue}, 80%, 50%)`;
+            depthValue.textContent = maxDepth;
+
+            // Initial call to the recursive function to start drawing the tree
+            // Starts from the bottom center of the canvas
+            drawTree(canvas.width / 2, canvas.height, 90, 0, 10, hue, maxDepth);
+        }
+
+        // --- Event Listeners ---
+        angleSlider.addEventListener('input', generateFractal);
+        colorSlider.addEventListener('input', generateFractal);
+        depthSlider.addEventListener('input', generateFractal);
+        
+        randomizeButton.addEventListener('click', () => {
+            angleSlider.value = Math.random() * 90;
+            colorSlider.value = Math.random() * 360;
+            depthSlider.value = 9 + Math.floor(Math.random() * 4); // Depth between 9 and 12
+            generateFractal();
+        });
+
+        // --- Initial Draw ---
+        // Draw the fractal for the first time when the page loads
+        window.onload = generateFractal;
+        window.onresize = () => {
+             // A simple resize handler could be added here if needed, 
+             // but for now we'll keep the canvas fixed.
+        };
+
+    </script>
+</body>
+</html>
