@@ -87,7 +87,7 @@
             background-color: #10B981; /* Tailwind emerald-500 */
             box-shadow: 0 0 15px rgba(16, 185, 129, 0.5);
         }
-        #bpm-display, #steps-display {
+        #bpm-display, #steps-display, #reverse-display {
             background-color: #1F2937;
             border: 1px solid #4B5563;
         }
@@ -106,14 +106,18 @@
     </div>
 
     <!-- Top Bar for Global Controls -->
-    <div class="w-full p-2 flex justify-center items-center gap-4 control-panel rounded-b-lg flex-wrap">
-        <span class="text-sm text-gray-400 font-semibold">BPM</span>
-        <div id="bpm-display" class="px-3 py-1 rounded-md text-lg font-mono">120</div>
-        <input id="bpmSlider" type="range" min="40" max="200" value="120" class="w-1/3 max-w-xs">
+    <div class="w-full p-2 flex justify-center items-center gap-x-2 control-panel rounded-b-lg flex-nowrap">
+        <span class="text-sm text-gray-400 font-semibold whitespace-nowrap">BPM</span>
+        <div id="bpm-display" class="px-2 py-1 rounded-md text-base font-mono">120</div>
+        <input id="bpmSlider" type="range" min="40" max="200" value="120" class="w-full max-w-[100px] md:max-w-[150px]">
         
-        <span class="text-sm text-gray-400 font-semibold ml-4">STEPS</span>
-        <div id="steps-display" class="px-3 py-1 rounded-md text-lg font-mono">16</div>
-        <input id="stepsSlider" type="range" min="4" max="32" value="16" step="1" class="w-1/3 max-w-xs">
+        <span class="text-sm text-gray-400 font-semibold ml-4 whitespace-nowrap">STEPS</span>
+        <div id="steps-display" class="px-2 py-1 rounded-md text-base font-mono">16</div>
+        <input id="stepsSlider" type="range" min="4" max="32" value="16" step="1" class="w-full max-w-[100px] md:max-w-[150px]">
+
+        <span class="text-sm text-gray-400 font-semibold ml-4 whitespace-nowrap">REVERSE %</span>
+        <div id="reverse-display" class="px-2 py-1 rounded-md text-base font-mono">0</div>
+        <input id="reverseSlider" type="range" min="0" max="100" value="0" step="1" class="w-full max-w-[100px] md:max-w-[150px]">
     </div>
 
     <!-- Main Content Area -->
@@ -129,7 +133,7 @@
                 <button id="saveBtn" class="flex-1 p-2 rounded-md bg-blue-600 hover:bg-blue-500 transition-colors text-sm font-semibold">SAVE</button>
                 <button id="clearBtn" class="flex-1 p-2 rounded-md bg-red-600 hover:bg-red-500 transition-colors text-sm font-semibold">CLEAR</button>
             </div>
-            <h2 class="text-lg font-bold text-gray-300 border-b border-gray-600 pb-2 my-2">DRUM KIT</h2>
+            <h2 class="text-lg font-bold text-gray-300 border-b border-gray-600 pb-2 my-2">DRUM SOUNDS</h2>
             <div id="drum-kit-buttons" class="flex-grow flex flex-col gap-2">
                  <!-- Sound buttons will be injected here -->
             </div>
@@ -149,7 +153,7 @@
 
         <!-- Right Panel: Parameters -->
         <div id="param-panel" class="control-panel w-full md:w-1/6 h-auto md:h-full rounded-lg p-4 flex flex-col gap-4 overflow-y-auto">
-             <h2 class="text-lg font-bold text-gray-300 border-b border-gray-600 pb-2 mb-2">SOUND FX</h2>
+             <h2 class="text-lg font-bold text-gray-300 border-b border-gray-600 pb-2 mb-2">SOUND PARAMETERS</h2>
             <div class="slider-container flex-1">
                 <label for="attackSlider">Attack</label>
                 <input id="attackSlider" type="range" min="1" max="100" value="5">
@@ -183,6 +187,8 @@
             const bpmDisplay = document.getElementById('bpm-display');
             const stepsSlider = document.getElementById('stepsSlider');
             const stepsDisplay = document.getElementById('steps-display');
+            const reverseSlider = document.getElementById('reverseSlider');
+            const reverseDisplay = document.getElementById('reverse-display');
             const drumKitButtonsContainer = document.getElementById('drum-kit-buttons');
             const paramPanel = document.getElementById('param-panel');
             const loadingOverlay = document.getElementById('loading-overlay');
@@ -191,18 +197,22 @@
             const clearBtn = document.getElementById('clearBtn');
 
             // --- CONSTANTS & STATE ---
-            const NUM_TRACKS = 6;
+            const NUM_SOUND_TRACKS = 6;
+            const NUM_TOTAL_TRACKS = 7; // 6 sound tracks + 1 reverse track
             const NUM_PATTERNS = 4;
             let numSteps = 16;
             let synths = [];
-            let sequenceData = Array.from({ length: NUM_TRACKS }, () => new Array(numSteps).fill(false));
+            let sequenceData = Array.from({ length: NUM_SOUND_TRACKS }, () => new Array(numSteps).fill(false));
+            let reverseSequenceData = new Array(numSteps).fill(false);
             let savedPatterns = {};
             let selectedPatternSlot = 0;
-            let currentStep = 0;
+            let playheadPosition = 0;
+            let playbackDirection = 1; // 1 for forward, -1 for reverse
+            let reverseChance = 0;
             let selectedTrack = 0;
             let isPlaying = false;
             let isInitialized = false;
-            let transportSequence = null;
+            let transportEventId = null;
 
             const SOUNDS = [
                 { name: 'Kick', color: '#F97316', synth: () => new Tone.MembraneSynth({ pitchDecay: 0.05, octaves: 10, oscillator: { type: 'sine' }, envelope: { attack: 0.001, decay: 0.4, sustain: 0.01, release: 1.4, attackCurve: 'exponential' } }).toDestination() },
@@ -212,56 +222,76 @@
                 { name: 'Clap', color: '#EAB308', synth: () => new Tone.NoiseSynth({ noise: { type: 'pink' }, envelope: { attack: 0.001, decay: 0.15, sustain: 0, release: 0.2 } }).toDestination() },
                 { name: 'Synth', color: '#A855F7', synth: () => new Tone.FMSynth({ harmonicity: 3, modulationIndex: 10, detune: 0, oscillator: { type: "sine" }, envelope: { attack: 0.01, decay: 0.2, sustain: 0.5, release: 0.5 }, modulation: { type: "square" }, modulationEnvelope: { attack: 0.5, decay: 0, sustain: 1, release: 0.5 } }).toDestination() },
             ];
+            const REVERSE_TRACK_COLOR = '#8b5cf6'; // violet-500
 
             // --- SEQUENCER & PATTERN LOGIC ---
             function updateSequencerLength(newLength) {
                 const newStepCount = parseInt(newLength);
                 stepsDisplay.textContent = newStepCount;
 
-                // Resize the current sequence data grid
-                sequenceData = sequenceData.map(trackData => {
-                    const currentLength = trackData.length;
-                    if (newStepCount > currentLength) {
-                        return trackData.concat(new Array(newStepCount - currentLength).fill(false));
+                const resizeArray = (arr, newSize) => {
+                    const currentLength = arr.length;
+                    if (newSize > currentLength) {
+                        return arr.concat(new Array(newSize - currentLength).fill(false));
                     } else {
-                        return trackData.slice(0, newStepCount);
+                        return arr.slice(0, newSize);
                     }
-                });
+                };
                 
+                sequenceData = sequenceData.map(trackData => resizeArray(trackData, newStepCount));
+                reverseSequenceData = resizeArray(reverseSequenceData, newStepCount);
                 numSteps = newStepCount;
-
-                // If the audio engine is running, recreate the sequence with the new length
-                if (isInitialized && transportSequence) {
-                    const wasPlaying = isPlaying;
-                    if (wasPlaying) Tone.Transport.stop();
-
-                    transportSequence.dispose();
-                    transportSequence = createSequence();
-                    
-                    if (wasPlaying) Tone.Transport.start();
+                
+                if (isInitialized) {
+                    restartTransport();
                 }
                 draw();
             }
 
-            function createSequence() {
-                const steps = Array.from(Array(numSteps).keys());
-                const subdivision = `${numSteps}n`;
-
-                return new Tone.Sequence((time, step) => {
-                    currentStep = step;
-                    sequenceData.forEach((track, index) => {
-                        if (track[step]) {
-                            const synth = synths[index];
-                            const duration = subdivision;
-                            if (synth instanceof Tone.MembraneSynth || synth instanceof Tone.FMSynth) {
-                                synth.triggerAttackRelease("C2", duration, time);
-                            } else {
-                                synth.triggerAttackRelease(duration, time);
-                            }
+            function mainSequencerLoop(time) {
+                // Trigger sounds for the current playhead position
+                sequenceData.forEach((track, index) => {
+                    if (track[playheadPosition]) {
+                        const synth = synths[index];
+                        if (synth instanceof Tone.MembraneSynth || synth instanceof Tone.FMSynth) {
+                            synth.triggerAttackRelease("C2", "16n", time);
+                        } else {
+                            synth.triggerAttackRelease("16n", time);
                         }
-                    });
-                    Tone.Draw.schedule(draw, time);
-                }, steps, subdivision).start(0);
+                    }
+                });
+
+                // Check for reverse trigger
+                if (reverseSequenceData[playheadPosition]) {
+                    if (Math.random() < reverseChance) {
+                        playbackDirection *= -1;
+                    }
+                }
+
+                // Schedule the draw call to sync with audio
+                Tone.Draw.schedule(draw, time);
+
+                // Advance the playhead for the next step
+                playheadPosition += playbackDirection;
+
+                // Wrap the playhead position around
+                if (playheadPosition >= numSteps) {
+                    playheadPosition = 0;
+                } else if (playheadPosition < 0) {
+                    playheadPosition = numSteps - 1;
+                }
+            }
+            
+            function restartTransport() {
+                const wasPlaying = isPlaying;
+                if (wasPlaying) Tone.Transport.stop();
+                
+                if (transportEventId !== null) {
+                    Tone.Transport.clear(transportEventId);
+                }
+                transportEventId = Tone.Transport.scheduleRepeat(mainSequencerLoop, "16n");
+
+                if (wasPlaying) Tone.Transport.start();
             }
 
             function loadPatternsFromStorage() {
@@ -283,17 +313,20 @@
             function selectPattern(slot) {
                 selectedPatternSlot = slot;
                 const pattern = savedPatterns[slot];
+                
+                const adaptPattern = (savedArr, targetLength) => {
+                    if (!savedArr) return new Array(targetLength).fill(false);
+                    const patternLength = savedArr.length;
+                    if (targetLength > patternLength) {
+                        return savedArr.concat(new Array(targetLength - patternLength).fill(false));
+                    } else {
+                        return savedArr.slice(0, targetLength);
+                    }
+                };
+
                 if (pattern) {
-                    let loadedData = JSON.parse(JSON.stringify(pattern));
-                    // Adapt loaded pattern to the current step count
-                    sequenceData = loadedData.map(trackData => {
-                        const patternLength = trackData.length;
-                        if (numSteps > patternLength) {
-                            return trackData.concat(new Array(numSteps - patternLength).fill(false));
-                        } else {
-                            return trackData.slice(0, numSteps);
-                        }
-                    });
+                    sequenceData = pattern.sequence.map(track => adaptPattern(track, numSteps));
+                    reverseSequenceData = adaptPattern(pattern.reverse, numSteps);
                 } else {
                     clearSequence();
                 }
@@ -302,13 +335,17 @@
             }
             
             function saveCurrentPattern() {
-                savedPatterns[selectedPatternSlot] = JSON.parse(JSON.stringify(sequenceData));
+                savedPatterns[selectedPatternSlot] = {
+                    sequence: JSON.parse(JSON.stringify(sequenceData)),
+                    reverse: JSON.parse(JSON.stringify(reverseSequenceData))
+                };
                 savePatternsToStorage();
                 updatePatternUI();
             }
 
             function clearSequence() {
-                sequenceData = Array.from({ length: NUM_TRACKS }, () => new Array(numSteps).fill(false));
+                sequenceData = Array.from({ length: NUM_SOUND_TRACKS }, () => new Array(numSteps).fill(false));
+                reverseSequenceData = new Array(numSteps).fill(false);
                 draw();
             }
 
@@ -346,7 +383,7 @@
                 updateSlidersForTrack(selectedTrack);
                 Tone.Transport.bpm.value = parseInt(bpmSlider.value);
                 
-                transportSequence = createSequence();
+                restartTransport();
                 requestAnimationFrame(draw);
                 
                 loadingOverlay.style.opacity = '0';
@@ -371,11 +408,11 @@
                 const maxRadius = Math.min(width, height) / 2;
                 const innerCoreRadius = maxRadius * 0.25;
                 const ringAreaWidth = maxRadius - innerCoreRadius;
-                const trackWidth = ringAreaWidth / NUM_TRACKS;
+                const trackWidth = ringAreaWidth / NUM_TOTAL_TRACKS;
                 
                 ctx.clearRect(0, 0, width, height);
 
-                for (let track = 0; track < NUM_TRACKS; track++) {
+                for (let track = 0; track < NUM_TOTAL_TRACKS; track++) {
                     const outerRadius = maxRadius - track * trackWidth;
                     const innerRadius = outerRadius - trackWidth;
                     for (let step = 0; step < numSteps; step++) {
@@ -386,7 +423,20 @@
                         ctx.arc(center.x, center.y, outerRadius, startAngle, endAngle);
                         ctx.arc(center.x, center.y, innerRadius, endAngle, startAngle, true);
                         ctx.closePath();
-                        ctx.fillStyle = sequenceData[track][step] ? SOUNDS[track].color : 'rgba(75, 85, 99, 0.3)';
+                        
+                        let isActive = false;
+                        let color = 'rgba(75, 85, 99, 0.3)';
+                        
+                        if (track === 0) { 
+                            isActive = reverseSequenceData[step];
+                            if (isActive) color = REVERSE_TRACK_COLOR;
+                        } else {
+                            const soundTrackIndex = track - 1;
+                            isActive = sequenceData[soundTrackIndex][step];
+                            if (isActive) color = SOUNDS[soundTrackIndex].color;
+                        }
+
+                        ctx.fillStyle = color;
                         ctx.fill();
                         ctx.strokeStyle = '#111827';
                         ctx.lineWidth = 2;
@@ -394,9 +444,25 @@
                     }
                 }
 
+                // Draw borders around the outer reverse ring
+                const reverseTrackInnerRadius = maxRadius - trackWidth;
+                ctx.strokeStyle = REVERSE_TRACK_COLOR;
+                ctx.lineWidth = 2;
+
+                // Outer border
+                ctx.beginPath();
+                ctx.arc(center.x, center.y, maxRadius - 1, 0, 2 * Math.PI); // -1 to keep it inside canvas bounds
+                ctx.stroke();
+
+                // Inner border
+                ctx.beginPath();
+                ctx.arc(center.x, center.y, reverseTrackInnerRadius + 1, 0, 2 * Math.PI); // +1 to keep it inside the ring
+                ctx.stroke();
+
+
                 if (isPlaying) {
-                    const angle = (currentStep / numSteps) * 2 * Math.PI - Math.PI / 2;
-                    const nextAngle = ((currentStep + 1) / numSteps) * 2 * Math.PI - Math.PI / 2;
+                    const angle = (playheadPosition / numSteps) * 2 * Math.PI - Math.PI / 2;
+                    const nextAngle = ((playheadPosition + 1) / numSteps) * 2 * Math.PI - Math.PI / 2;
                     ctx.beginPath();
                     ctx.arc(center.x, center.y, maxRadius, angle, nextAngle);
                     ctx.arc(center.x, center.y, innerCoreRadius, nextAngle, angle, true);
@@ -417,12 +483,14 @@
                 if (!isInitialized) return;
                 isPlaying = !isPlaying;
                 if (isPlaying) {
+                    playheadPosition = 0;
+                    playbackDirection = 1;
                     Tone.Transport.start();
                     playBtn.classList.add('playing');
                     playBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 md:w-12 md:h-12" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" /></svg>`;
                 } else {
                     Tone.Transport.stop();
-                    currentStep = 0;
+                    playheadPosition = 0;
                     playBtn.classList.remove('playing');
                     playBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 md:w-12 md:h-12" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg>`;
                 }
@@ -436,6 +504,11 @@
             });
             
             stepsSlider.addEventListener('input', (e) => updateSequencerLength(e.target.value));
+            reverseSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                reverseDisplay.textContent = value;
+                reverseChance = value / 100;
+            });
             saveBtn.addEventListener('click', saveCurrentPattern);
             clearBtn.addEventListener('click', clearSequence);
 
@@ -457,12 +530,18 @@
                 
                 if (distance > innerCoreRadius && distance < maxRadius) {
                     const ringAreaWidth = maxRadius - innerCoreRadius;
-                    const trackWidth = ringAreaWidth / NUM_TRACKS;
+                    const trackWidth = ringAreaWidth / NUM_TOTAL_TRACKS;
                     const distanceFromOuterEdge = maxRadius - distance;
                     const track = Math.floor(distanceFromOuterEdge / trackWidth);
                     const step = Math.floor(((angle + Math.PI / 2) / (2 * Math.PI)) * numSteps);
-                    if (track >= 0 && track < NUM_TRACKS && step >= 0 && step < numSteps) {
-                        sequenceData[track][step] = !sequenceData[track][step];
+
+                    if (track >= 0 && track < NUM_TOTAL_TRACKS && step >= 0 && step < numSteps) {
+                        if (track === 0) {
+                            reverseSequenceData[step] = !reverseSequenceData[step];
+                        } else {
+                            const soundTrackIndex = track - 1;
+                            sequenceData[soundTrackIndex][step] = !sequenceData[soundTrackIndex][step];
+                        }
                         draw();
                     }
                 }
