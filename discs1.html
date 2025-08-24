@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Sound Toy</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #FDFBF5; /* Off-white, paper-like background */
+            overflow: hidden;
+        }
+        canvas {
+            background-color: transparent;
+            cursor: pointer;
+            touch-action: none; /* Prevents scrolling on mobile */
+        }
+        .overlay-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            transition: opacity 0.5s ease-out;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen flex flex-col items-center justify-center m-0 p-4 box-border">
+
+    <div id="container" class="relative w-full h-full max-w-3xl max-h-3xl aspect-square flex items-center justify-center">
+        <canvas id="soundCanvas"></canvas>
+        <div id="startMessage" class="overlay-text text-center text-gray-500">
+            <h2 class="text-2xl font-bold">Tap to Start</h2>
+        </div>
+    </div>
+
+    <script>
+        // --- Basic Setup ---
+        const canvas = document.getElementById('soundCanvas');
+        const container = document.getElementById('container');
+        const startMessage = document.getElementById('startMessage');
+        const ctx = canvas.getContext('2d');
+
+        let balls = [];
+        let isAudioReady = false;
+
+        // --- Color Palette ---
+        // A traditional Japanese-inspired color palette
+        const colors = ['#EA9A9A', '#A8D8B9', '#88ABDA', '#F4CE9B', '#C3A4D8'];
+
+        // --- Audio Synthesis with Tone.js ---
+        // Using a PolySynth allows multiple notes to play at once without cutting each other off.
+        const synth = new Tone.PolySynth(Tone.Synth, {
+            oscillator: {
+                type: 'sine' // A soft, pleasant sound
+            },
+            envelope: {
+                attack: 0.01,
+                decay: 0.2,
+                sustain: 0.1,
+                release: 0.5,
+            },
+            volume: -12 // Lower the volume to avoid clipping
+        }).toDestination();
+        
+        // A musical scale to make the sounds more harmonious
+        const scale = ['C3', 'D3', 'E3', 'G3', 'A3', 'C4', 'D4', 'E4', 'G4', 'A4', 'C5'];
+
+        // --- Ball Class ---
+        // Represents our little sound-making creatures
+        class Ball {
+            constructor(x, y, radius, color) {
+                this.x = x;
+                this.y = y;
+                this.radius = radius;
+                this.color = color;
+                // Give it a random initial velocity
+                this.vx = (Math.random() - 0.5) * 4;
+                this.vy = (Math.random() - 0.5) * 4;
+                this.mass = this.radius; // Mass for more realistic collisions
+            }
+
+            // Draws the ball with a sketchy, layered look
+            draw() {
+                // Main body
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.fill();
+                
+                // Colored splotch inside
+                ctx.beginPath();
+                ctx.arc(this.x + this.radius * 0.2, this.y - this.radius * 0.2, this.radius * 0.6, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+
+                // Sketchy outline
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            }
+
+            // Updates the ball's position
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+            }
+        }
+
+        // --- Physics and Sound Functions ---
+        
+        // Plays a sound based on position
+        function playSound(yPosition, velocityMagnitude) {
+            if (!isAudioReady) return;
+            // Map the vertical position to a note in our scale
+            const noteIndex = Math.floor(Tone.Transport.now() * 10 + yPosition / canvas.height * scale.length) % scale.length;
+            const note = scale[noteIndex];
+            // The loudness of the note depends on the collision speed
+            const velocity = Math.min(1, velocityMagnitude / 10);
+            synth.triggerAttackRelease(note, '8n', Tone.now(), velocity);
+        }
+
+        // Handles collision between two balls
+        function handleBallCollision(ball1, ball2) {
+            const dx = ball2.x - ball1.x;
+            const dy = ball2.y - ball1.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < ball1.radius + ball2.radius) {
+                // --- Collision Response Physics ---
+                // Normal vector
+                const nx = dx / distance;
+                const ny = dy / distance;
+
+                // Tangent vector
+                const tx = -ny;
+                const ty = nx;
+
+                // Dot product tangent
+                const dpTan1 = ball1.vx * tx + ball1.vy * ty;
+                const dpTan2 = ball2.vx * tx + ball2.vy * ty;
+
+                // Dot product normal
+                const dpNorm1 = ball1.vx * nx + ball1.vy * ny;
+                const dpNorm2 = ball2.vx * nx + ball2.vy * ny;
+
+                // Conservation of momentum in 1D
+                const m1 = (dpNorm1 * (ball1.mass - ball2.mass) + 2 * ball2.mass * dpNorm2) / (ball1.mass + ball2.mass);
+                const m2 = (dpNorm2 * (ball2.mass - ball1.mass) + 2 * ball1.mass * dpNorm1) / (ball1.mass + ball2.mass);
+
+                // Update velocities
+                ball1.vx = tx * dpTan1 + nx * m1;
+                ball1.vy = ty * dpTan1 + ny * m1;
+                ball2.vx = tx * dpTan2 + nx * m2;
+                ball2.vy = ty * dpTan2 + ny * m2;
+                
+                // Prevent balls from sticking
+                const overlap = 0.5 * (ball1.radius + ball2.radius - distance + 1);
+                ball1.x -= overlap * nx;
+                ball1.y -= overlap * ny;
+                ball2.x += overlap * nx;
+                ball2.y += overlap * ny;
+
+                const impactVelocity = Math.abs(dpNorm1 - dpNorm2);
+                playSound(ball1.y, impactVelocity);
+            }
+        }
+
+        // --- Main Animation Loop ---
+        function animate() {
+            // Clear the canvas for the next frame
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = canvas.width / 2;
+
+            // Draw the outer boundary circle
+            ctx.beginPath();
+            // FIX: Ensure the radius is never negative to prevent errors on small canvas sizes.
+            ctx.arc(centerX, centerY, Math.max(0, radius - 2), 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+
+            // Loop through all balls to update and draw them
+            balls.forEach((ball, index) => {
+                ball.update();
+                ball.draw();
+
+                // Wall collision detection
+                const distFromCenter = Math.sqrt(Math.pow(ball.x - centerX, 2) + Math.pow(ball.y - centerY, 2));
+                if (distFromCenter + ball.radius > radius) {
+                    // --- Reflect velocity for bounce ---
+                    const normalX = (ball.x - centerX) / distFromCenter;
+                    const normalY = (ball.y - centerY) / distFromCenter;
+                    const dot = ball.vx * normalX + ball.vy * normalY;
+                    ball.vx -= 2 * dot * normalX;
+                    ball.vy -= 2 * dot * normalY;
+
+                    // Move ball back inside to prevent getting stuck
+                    const overlap = distFromCenter + ball.radius - radius;
+                    ball.x -= overlap * normalX;
+                    ball.y -= overlap * normalY;
+
+                    playSound(ball.y, Math.sqrt(ball.vx**2 + ball.vy**2));
+                }
+
+                // Ball-to-ball collision detection
+                for (let i = index + 1; i < balls.length; i++) {
+                    handleBallCollision(ball, balls[i]);
+                }
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // --- Event Handlers ---
+        function addBall(x, y) {
+             if (balls.length > 50) return; // Performance cap
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            
+            const canvasX = (x - rect.left) * scaleX;
+            const canvasY = (y - rect.top) * scaleY;
+            
+            const distFromCenter = Math.sqrt(Math.pow(canvasX - canvas.width / 2, 2) + Math.pow(canvasY - canvas.height / 2, 2));
+            const maxRadius = canvas.width / 2;
+
+            // Only add a ball if the click is inside the circle
+            if (distFromCenter < maxRadius) {
+                // EDIT: Doubled the radius size for larger discs
+                const radius = Math.random() * 30 + 20;
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                balls.push(new Ball(canvasX, canvasY, radius, color));
+            }
+        }
+
+        // Handles both mouse clicks and touch events
+        function handleInteraction(event) {
+            if (!isAudioReady) {
+                Tone.start();
+                isAudioReady = true;
+                startMessage.style.opacity = '0';
+                // Add a few initial balls to get things started
+                for (let i = 0; i < 5; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const radius = canvas.width / 4;
+                    const x = canvas.width / 2 + Math.cos(angle) * radius;
+                    const y = canvas.height / 2 + Math.sin(angle) * radius;
+                    addBall(x, y);
+                }
+            }
+            
+            if (event.type === 'mousedown') {
+                addBall(event.clientX, event.clientY);
+            } else if (event.type === 'touchstart') {
+                // prevent default touch behavior (like scrolling)
+                event.preventDefault(); 
+                for (let i = 0; i < event.changedTouches.length; i++) {
+                    addBall(event.changedTouches[i].clientX, event.changedTouches[i].clientY);
+                }
+            }
+        }
+        
+        canvas.addEventListener('mousedown', handleInteraction);
+        canvas.addEventListener('touchstart', handleInteraction);
+
+        // --- Resizing Logic ---
+        function resizeCanvas() {
+            const size = Math.min(container.clientWidth, container.clientHeight);
+            canvas.width = size;
+            canvas.height = size;
+            
+            // If we resize and lose balls, let's re-initialize
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = canvas.width / 2;
+            if (balls.some(b => Math.sqrt(Math.pow(b.x - centerX, 2) + Math.pow(b.y - centerY, 2)) > radius)) {
+                 balls = []; // Clear existing balls
+                 if(isAudioReady) {
+                    for (let i = 0; i < 5; i++) {
+                        const angle = Math.random() * Math.PI * 2;
+                        const r = canvas.width / 4;
+                        const x = canvas.width / 2 + Math.cos(angle) * r;
+                        const y = canvas.height / 2 + Math.sin(angle) * r;
+                        addBall(x, y);
+                    }
+                 }
+            }
+        }
+
+        // --- Initialization ---
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        animate();
+    </script>
+</body>
+</html>
