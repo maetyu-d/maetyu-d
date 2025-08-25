@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generative Sound Toy</title>
+    <style>
+        /* Basic CSS to make the canvas full screen */
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Inter', sans-serif;
+        }
+        canvas {
+            display: block;
+            cursor: pointer;
+        }
+        /* Style for the start button */
+        #startButton {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 1rem 2rem;
+            font-size: 1.5rem;
+            color: #fff;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid #D4AF37;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background-color 0.3s, box-shadow 0.3s;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+        }
+        #startButton:hover {
+            background: rgba(212, 175, 55, 0.3);
+            box-shadow: 0 0 15px rgba(212, 175, 55, 0.7);
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400&display=swap" rel="stylesheet">
+    <!-- Tone.js library for audio synthesis -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+</head>
+<body>
+    <!-- The canvas element where the animation will be drawn -->
+    <canvas id="artCanvas"></canvas>
+    <!-- A button to start the experience, ensuring user interaction before animation starts -->
+    <button id="startButton">Begin</button>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const canvas = document.getElementById('artCanvas');
+            const ctx = canvas.getContext('2d');
+            const startButton = document.getElementById('startButton');
+
+            let width, height;
+            let moon, plants = [], particles = [], dragonfly, ripples = [];
+            let animationFrameId;
+            let texturePattern;
+
+            // --- Audio Synthesis Setup (Tone.js) ---
+            let audioReady = false;
+            let plantSynth, sparkleSynth, dragonflySynth, clickSynth;
+            let dragonflyFilter;
+            const pentatonicScale = ['C4', 'D4', 'E4', 'G4', 'A4', 'C5', 'D5', 'E5', 'G5', 'A5'];
+
+            function setupAudio() {
+                if (audioReady) return;
+
+                // Create a master reverb effect
+                const reverb = new Tone.Reverb({
+                    decay: 8,
+                    wet: 0.4
+                }).toDestination();
+
+                // Synth for the plants
+                plantSynth = new Tone.PolySynth(Tone.Synth, {
+                    oscillator: { type: 'sine' },
+                    envelope: { attack: 0.01, decay: 0.5, sustain: 0.1, release: 1 },
+                    volume: -12
+                }).connect(reverb);
+
+                // Synth for the particle sparkles (noise)
+                sparkleSynth = new Tone.NoiseSynth({
+                    noise: { type: 'pink' },
+                    envelope: { attack: 0.005, decay: 0.05, sustain: 0 },
+                    volume: -30
+                }).connect(reverb);
+
+                // Synth for the dragonfly's drone
+                dragonflyFilter = new Tone.AutoFilter("4n").connect(reverb).start();
+                dragonflySynth = new Tone.AMSynth({
+                    harmonicity: 1.5,
+                    oscillator: { type: 'sine' },
+                    envelope: { attack: 0.1, decay: 0.2, sustain: 0.3, release: 0.5 },
+                    volume: -20
+                }).connect(dragonflyFilter);
+
+                // Synth for user clicks
+                clickSynth = new Tone.PluckSynth({
+                    attackNoise: 0.5,
+                    dampening: 4000,
+                    resonance: 0.9,
+                    volume: -6
+                }).connect(reverb);
+
+                // Loop for the sparkle sounds
+                new Tone.Loop(time => {
+                    sparkleSynth.triggerAttackRelease('32n', time);
+                }, '8n').start(0);
+
+                audioReady = true;
+            }
+
+
+            // --- Main Setup and Initialization ---
+
+            function setup() {
+                // Set canvas dimensions to fill the window
+                width = canvas.width = window.innerWidth;
+                height = canvas.height = window.innerHeight;
+
+                // Create the celestial and terrestrial elements
+                createMoon();
+                createPlants();
+                createParticles();
+                createDragonfly();
+                texturePattern = createTexturePattern();
+            }
+
+            // --- Element Creation Functions ---
+
+            function createMoon() {
+                const moonRadius = Math.min(width, height) * 0.1;
+                moon = { x: width * 0.65, y: height * 0.2, radius: moonRadius };
+            }
+            
+            function createTexturePattern() {
+                const textureCanvas = document.createElement('canvas');
+                const textureCtx = textureCanvas.getContext('2d');
+                const textureSize = 100;
+                textureCanvas.width = textureSize;
+                textureCanvas.height = textureSize;
+                const imageData = textureCtx.createImageData(textureSize, textureSize);
+                const data = imageData.data;
+                for (let i = 0; i < data.length; i += 4) {
+                    const value = Math.random() * 50;
+                    data[i] = data[i + 1] = data[i + 2] = value;
+                    data[i + 3] = 20;
+                }
+                textureCtx.putImageData(imageData, 0, 0);
+                return ctx.createPattern(textureCanvas, 'repeat');
+            }
+
+            function createPlants() {
+                plants = [];
+                const plantCount = Math.floor(width / 5);
+                for (let i = 0; i < plantCount; i++) {
+                    plants.push(new Plant());
+                }
+            }
+
+            function createParticles() {
+                particles = [];
+                const particleCount = 150;
+                for (let i = 0; i < particleCount; i++) {
+                    particles.push(new Particle());
+                }
+            }
+
+            function createDragonfly() {
+                dragonfly = new Dragonfly();
+            }
+
+            // --- Classes for Animated Objects ---
+
+            class Plant {
+                constructor() {
+                    this.x = Math.random() * width;
+                    this.maxHeight = height * (0.4 + Math.random() * 0.5);
+                    this.currentHeight = 0;
+                    this.growthRate = 1 + Math.random() * 2;
+                    this.isGrown = false;
+                    this.notePlayed = false; // To trigger sound only once
+                    this.flowerRadius = 3 + Math.random() * 4;
+                    this.stemWidth = 1 + Math.random() * 1.5;
+                    this.color = `rgba(212, 175, 55, ${0.7 + Math.random() * 0.3})`;
+                    this.outlineColor = '#1a1a2e';
+                }
+
+                grow() {
+                    if (this.currentHeight < this.maxHeight) {
+                        this.currentHeight += this.growthRate;
+                    } else {
+                        this.isGrown = true;
+                        if (!this.notePlayed && audioReady) {
+                            // Map plant height to a note in the scale
+                            const noteIndex = Math.floor((this.maxHeight / height) * pentatonicScale.length);
+                            const note = pentatonicScale[noteIndex % pentatonicScale.length];
+                            plantSynth.triggerAttackRelease(note, '1n');
+                            this.notePlayed = true;
+                        }
+                    }
+                }
+
+                draw() {
+                    if (!this.isGrown) this.grow();
+                    ctx.strokeStyle = this.outlineColor;
+                    ctx.fillStyle = this.color;
+                    ctx.lineWidth = this.stemWidth + 2;
+                    ctx.beginPath();
+                    ctx.moveTo(this.x, height);
+                    ctx.lineTo(this.x, height - this.currentHeight);
+                    ctx.stroke();
+                    ctx.lineWidth = this.stemWidth;
+                    ctx.strokeStyle = this.color;
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.arc(this.x, height - this.currentHeight, this.flowerRadius, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.lineWidth = 2;
+                    ctx.strokeStyle = this.outlineColor;
+                    ctx.stroke();
+                }
+            }
+
+            class Particle {
+                constructor() {
+                    this.x = Math.random() * width;
+                    this.y = height * 0.5 + Math.random() * (height * 0.5);
+                    this.radius = Math.random() * 1.5;
+                    this.vx = (Math.random() - 0.5) * 0.3;
+                    this.vy = (Math.random() - 0.5) * 0.3;
+                    this.opacity = 0.4 + Math.random() * 0.5;
+                }
+                update() {
+                    this.x += this.vx; this.y += this.vy;
+                    if (this.x < 0 || this.x > width || this.y < height * 0.4 || this.y > height) {
+                        this.x = Math.random() * width;
+                        this.y = height * 0.5 + Math.random() * (height * 0.5);
+                    }
+                }
+                draw() {
+                    ctx.beginPath();
+                    ctx.fillStyle = `rgba(212, 175, 55, ${this.opacity})`;
+                    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            class Dragonfly {
+                constructor() {
+                    this.x = -50; this.y = height * 0.85; this.speed = 0.8;
+                    this.angle = 0; this.size = 15;
+                }
+                update() {
+                    this.x += this.speed;
+                    this.angle += 0.1;
+                    if (this.x > width + 50) {
+                        this.x = -50;
+                        this.y = height * (0.8 + Math.random() * 0.1);
+                    }
+                    if (audioReady) {
+                        // Control sound with dragonfly's position
+                        const filterFreq = 200 + (this.x / width) * 800;
+                        dragonflyFilter.frequency.rampTo(filterFreq, 0.1);
+                        const note = 440 + Math.sin(this.angle * 0.5) * 20; // Bobbing affects pitch
+                        dragonflySynth.frequency.rampTo(note, 0.1);
+                    }
+                }
+                draw() {
+                    const bob = Math.sin(this.angle * 0.5) * 5;
+                    const wingFlap = Math.sin(this.angle) * this.size * 0.8;
+                    ctx.save();
+                    ctx.translate(this.x, this.y + bob);
+                    ctx.strokeStyle = '#1a1a2e';
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath(); ctx.moveTo(-this.size, 0); ctx.lineTo(this.size, 0); ctx.stroke();
+                    ctx.beginPath(); ctx.ellipse(0, -this.size * 0.4, this.size * 0.3, Math.abs(wingFlap), Math.PI * 0.2, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+                    ctx.beginPath(); ctx.ellipse(0, this.size * 0.4, this.size * 0.3, Math.abs(wingFlap), -Math.PI * 0.2, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+                    ctx.restore();
+                }
+            }
+            
+            class Ripple {
+                constructor(x, y) {
+                    this.x = x; this.y = y; this.radius = 0;
+                    this.maxRadius = 50; this.speed = 2; this.life = 1;
+                }
+                update() {
+                    this.radius += this.speed;
+                    this.life -= 0.03;
+                }
+                draw() {
+                    ctx.strokeStyle = `rgba(255, 245, 200, ${this.life})`;
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+            }
+
+            // --- Animation Loop ---
+
+            function animate() {
+                drawBackground();
+                particles.forEach(p => { p.update(); p.draw(); });
+                plants.forEach(p => p.draw());
+                drawMoon();
+                dragonfly.update(); dragonfly.draw();
+                
+                // Draw and update ripples
+                ripples = ripples.filter(r => r.life > 0);
+                ripples.forEach(r => { r.update(); r.draw(); });
+
+                ctx.fillStyle = texturePattern;
+                ctx.fillRect(0, 0, width, height);
+                animationFrameId = requestAnimationFrame(animate);
+            }
+
+            // --- Drawing Functions ---
+
+            function drawBackground() {
+                ctx.fillStyle = '#1a237e';
+                ctx.fillRect(0, 0, width, height);
+            }
+
+            function drawMoon() {
+                ctx.save();
+                ctx.translate(moon.x, moon.y);
+                ctx.fillStyle = '#FFF5C4';
+                ctx.strokeStyle = '#1a1a2e';
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.arc(0, 0, moon.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            // --- Event Listeners ---
+
+            async function startAnimation() {
+                startButton.style.display = 'none';
+                // User interaction is required to start audio
+                await Tone.start();
+                console.log('Audio context started');
+                setupAudio();
+                dragonflySynth.triggerAttack('C3'); // Start the drone
+
+                if (!animationFrameId) {
+                    setup();
+                    animate();
+                }
+            }
+
+            startButton.addEventListener('click', startAnimation);
+            
+            canvas.addEventListener('mousedown', (e) => {
+                if (!audioReady) return;
+                const note = pentatonicScale[Math.floor(Math.random() * pentatonicScale.length)];
+                clickSynth.triggerAttack(note);
+                ripples.push(new Ripple(e.clientX, e.clientY));
+            });
+
+            window.addEventListener('resize', () => {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+                setup();
+                animate();
+            });
+        });
+    </script>
+</body>
+</html>
