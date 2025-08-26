@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Komorebi | 木漏れ日</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400&family=Noto+Serif+JP:wght@300&display=swap" rel="stylesheet">
+    <style>
+        /* Custom styles for the sound toy */
+        body {
+            font-family: 'Inter', sans-serif;
+            touch-action: none; /* Prevents scrolling on touch devices */
+            cursor: none; /* Hide cursor for a cleaner look */
+        }
+        /* Custom cursor to follow the mouse */
+        .cursor-follower {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+            transition: transform 0.1s ease-out;
+            z-index: 9999;
+        }
+        /* Animation for floating petals */
+        @keyframes float {
+            0% { transform: translateY(0px) translateX(0px) rotate(0deg); }
+            50% { transform: translateY(-20px) translateX(15px) rotate(180deg); }
+            100% { transform: translateY(0px) translateX(0px) rotate(360deg); }
+        }
+        .petal {
+            animation: float 15s ease-in-out infinite;
+            transition: transform 0.2s ease-in-out, filter 0.2s ease-in-out;
+        }
+        /* Individual animation delays for a more natural effect */
+        .petal:nth-child(2) { animation-delay: -3s; animation-duration: 18s; }
+        .petal:nth-child(3) { animation-delay: -7s; animation-duration: 12s; }
+        .petal:nth-child(4) { animation-delay: -10s; animation-duration: 20s; }
+        .petal:nth-child(5) { animation-delay: -14s; animation-duration: 16s; }
+        .ripple {
+            position: absolute;
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            transform: scale(0);
+            animation: ripple-effect 1.5s ease-out;
+            pointer-events: none;
+        }
+        /* Animation for water ripples */
+        @keyframes ripple-effect {
+            to {
+                transform: scale(4);
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-b from-gray-900 via-indigo-900 to-rose-800/70 text-white overflow-hidden h-screen flex flex-col items-center justify-center relative">
+
+    <!-- Custom cursor element -->
+    <div id="cursor-follower" class="cursor-follower"></div>
+
+    <!-- Main SVG container for the scene -->
+    <svg id="scene" class="absolute inset-0 w-full h-full">
+        <!-- Moon -->
+        <circle id="moon" class="moon" cx="80%" cy="25%" r="50" fill="url(#moonGradient)"/>
+        
+        <!-- Mountain silhouette -->
+        <path d="M-10,1000 L400,600 L650,800 L900,500 L1200,750 L1500,600 L2000,1000 Z" fill="rgba(10, 20, 40, 0.6)"></path>
+        <path d="M-10,1000 L300,650 L550,750 L800,550 L1100,800 L1600,650 L2000,1000 Z" fill="rgba(10, 20, 40, 0.8)"></path>
+
+        <!-- Cherry blossom branch -->
+        <path d="M 100,400 Q 250,250 500,350 T 800,300" stroke="rgba(20, 10, 10, 0.7)" stroke-width="5" fill="none" />
+        
+        <!-- Cherry blossom petals (visual only) -->
+        <g class="petal"><path d="M400 350 Q 390 340 400 330 Q 410 340 400 350 Z" fill="#FFB7C5" /></g>
+        <g class="petal"><path d="M480 340 Q 470 330 480 320 Q 490 330 480 340 Z" fill="#FFB7C5" /></g>
+        <g class="petal"><path d="M550 355 Q 540 345 550 335 Q 560 345 550 355 Z" fill="#FFB7C5" /></g>
+        <g class="petal"><path d="M650 330 Q 640 320 650 310 Q 660 320 650 330 Z" fill="#FFB7C5" /></g>
+        <g class="petal"><path d="M750 300 Q 740 290 750 280 Q 760 290 750 300 Z" fill="#FFB7C5" /></g>
+
+        <!-- Water area -->
+        <rect id="water" x="0" y="75%" width="100%" height="25%" fill="rgba(25, 35, 80, 0.4)" />
+        
+        <!-- SVG gradients -->
+        <defs>
+            <radialGradient id="moonGradient">
+                <stop offset="0%" stop-color="#FFFDE7" />
+                <stop offset="100%" stop-color="#FFF59D" />
+            </radialGradient>
+        </defs>
+    </svg>
+
+    <!-- Start Screen -->
+    <div id="start-screen" class="absolute inset-0 bg-gray-900/80 flex flex-col items-center justify-center z-20 backdrop-blur-sm cursor-pointer">
+        <h2 class="text-4xl font-light mb-2 title-font">Komorebi</h2>
+        <p class="text-gray-300 mb-6">Click to begin the soundscape.</p>
+        <button id="start-button" class="px-6 py-3 bg-white/10 border border-white/20 rounded-lg hover:bg-white/20 transition-colors">Enter</button>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- DOM Elements ---
+            const startScreen = document.getElementById('start-screen');
+            const scene = document.getElementById('scene');
+            const cursorFollower = document.getElementById('cursor-follower');
+
+            let isAudioReady = false;
+
+            // --- Audio Synthesis Setup (Tone.js) ---
+            
+            // Master effects chain
+            const filter = new Tone.AutoFilter("8n").start();
+            filter.wet.value = 0.5;
+
+            const reverb = new Tone.Reverb({ decay: 10, wet: 0.6 }).toDestination();
+            filter.connect(reverb);
+
+            // Soft chime synth for petals and user clicks
+            const chimeSynth = new Tone.FMSynth({
+                harmonicity: 1.5,
+                modulationIndex: 1.2,
+                envelope: { attack: 0.01, decay: 1.5, sustain: 0.1, release: 2 },
+                modulationEnvelope: { attack: 0.01, decay: 0.5, sustain: 0.2, release: 1 }
+            }).connect(filter);
+            chimeSynth.volume.value = -12;
+
+            // Deep bell synth for ambient bass tones
+            const bellSynth = new Tone.FMSynth({
+                harmonicity: 0.5,
+                modulationIndex: 5,
+                envelope: { attack: 0.01, decay: 4, release: 2 },
+                modulationEnvelope: { attack: 0.1, decay: 2, release: 1 }
+            }).connect(filter);
+            bellSynth.volume.value = -18;
+
+            // Pentatonic scale for harmonious notes
+            const scale = ["C4", "D4", "E4", "G4", "A4", "C5", "D5", "E5"];
+            const bassScale = ["C2", "G2", "E2"];
+
+            // --- Self-Playing Logic ---
+            
+            // Loop for the main chimes
+            const chimeLoop = new Tone.Loop(time => {
+                const note = scale[Math.floor(Math.random() * scale.length)];
+                chimeSynth.triggerAttackRelease(note, "2n", time);
+            }, "2n.").start(0);
+            chimeLoop.humanize = true;
+
+            // Loop for the deep bell sounds
+            const bellLoop = new Tone.Loop(time => {
+                const note = bassScale[Math.floor(Math.random() * bassScale.length)];
+                bellSynth.triggerAttackRelease(note, "8n", time);
+            }, "1m").start("4m");
+            bellLoop.humanize = true;
+
+
+            // --- Event Listeners ---
+
+            const initializeAudio = async () => {
+                if (isAudioReady) return;
+                await Tone.start();
+                isAudioReady = true;
+                Tone.Transport.start();
+                console.log("Audio context started and transport running.");
+                startScreen.style.opacity = 0;
+                setTimeout(() => startScreen.style.display = 'none', 500);
+            };
+            
+            startScreen.addEventListener('click', initializeAudio);
+
+            // Player interaction for modifying sound
+            document.body.addEventListener('mousemove', (event) => {
+                if (!isAudioReady) return;
+
+                // Move custom cursor
+                cursorFollower.style.left = `${event.clientX}px`;
+                cursorFollower.style.top = `${event.clientY}px`;
+
+                // Map mouse X to filter frequency (200Hz to 2000Hz)
+                const freq = (event.clientX / window.innerWidth) * 1800 + 200;
+                filter.baseFrequency = freq;
+
+                // Map mouse Y to reverb wetness (0.2 to 0.9)
+                const wet = (event.clientY / window.innerHeight) * 0.7 + 0.2;
+                reverb.wet.value = wet;
+            });
+
+            // Player interaction for clicks
+            document.body.addEventListener('click', (event) => {
+                if (!isAudioReady) return;
+                
+                // Play a single chime on click
+                const note = scale[Math.floor(Math.random() * scale.length)];
+                chimeSynth.triggerAttackRelease(note, "1n", Tone.now());
+
+                createRipple(event.clientX, event.clientY);
+            });
+
+            // --- Helper Functions ---
+
+            function createRipple(x, y) {
+                const ripple = document.createElement('div');
+                ripple.classList.add('ripple');
+                document.body.appendChild(ripple);
+                ripple.style.left = `${x}px`;
+                ripple.style.top = `${y}px`;
+                const size = Math.min(window.innerWidth, window.innerHeight) * 0.05;
+                ripple.style.width = `${size}px`;
+                ripple.style.height = `${size}px`;
+                ripple.addEventListener('animationend', () => ripple.remove());
+            }
+
+            function resizeSVG() {
+                scene.setAttribute('viewBox', `0 0 ${window.innerWidth} ${window.innerHeight}`);
+            }
+            window.addEventListener('resize', resizeSVG);
+            resizeSVG();
+        });
+    </script>
+</body>
+</html>
