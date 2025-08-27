@@ -1,0 +1,661 @@
+# Write the full working HTML/JS game to a downloadable file
+html = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Chelmsley World — A Ballardian Roguelike</title>
+<style>
+  :root{
+    --bg:#0a0a0f; --fg:#e6f6ff; --accent:#7df9ff; --neon1:#ff00e6; --neon2:#00ffa6; --neon3:#ffd60a; --danger:#ff3355;
+  }
+  html,body{height:100%;margin:0;background:radial-gradient(1200px 800px at 50% 30%,#111426 0%, #0a0a0f 60%, #06060b 100%);color:var(--fg);font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
+  #wrap{display:grid;grid-template-columns: 1fr 340px;gap:12px; height:100%;padding:10px;box-sizing:border-box}
+  #left{position:relative; border:1px solid #202235; border-radius:14px; overflow:hidden; box-shadow: 0 0 0 1px #111, 0 10px 30px rgba(0,0,0,.5);} 
+  #right{display:flex;flex-direction:column;gap:10px}
+  #ui{background:#0d1020; border:1px solid #202235; border-radius:14px; padding:12px; box-shadow: inset 0 0 30px rgba(0,0,0,.4);} 
+  #log{flex:1; background:#0d1020; border:1px solid #202235; border-radius:14px; padding:12px; overflow:auto; white-space:pre-wrap;}
+  #title{font-weight:800; letter-spacing: .5px; font-size:14px; color:var(--accent);}  
+  .kv{display:grid; grid-template-columns: 1fr auto; gap:6px; font-size:13px;}
+  progress{width:100%;height:10px;-webkit-appearance:none;appearance:none;border-radius:10px;overflow:hidden;border:1px solid #2a2c47;background:#0a0d1a}
+  progress::-webkit-progress-bar{background:#0a0d1a}
+  progress::-webkit-progress-value{background:linear-gradient(90deg, var(--neon2), var(--neon1));}
+  #hud{display:grid; gap:8px}
+  #canvas{display:block; image-rendering: pixelated; background:#04040a}
+  #overlay{position:absolute; inset:0; pointer-events:none; mix-blend-mode:screen}
+  #help{font-size:12px;opacity:.9;}
+  .pill{display:inline-block; padding:2px 8px; border:1px solid #2a2c47; border-radius:999px; margin:2px}
+  .btnrow{display:flex; gap:8px; flex-wrap:wrap}
+  button{background:#11142a;color:#d7eaff;border:1px solid #2a2c47;border-radius:10px;padding:6px 10px;font:inherit;cursor:pointer}
+  button:hover{filter:brightness(1.2)}
+  .scanlines{position:absolute; inset:0; background: repeating-linear-gradient( to bottom, rgba(255,255,255,.07) 0px, rgba(255,255,255,0) 1px, rgba(0,0,0,0) 2px ); opacity:.07; pointer-events:none}
+  @media (max-width: 1020px){
+    #wrap{grid-template-columns: 1fr; grid-template-rows: minmax(50vh, 60vh) auto}
+    #right{height:40vh}
+  }
+</style>
+</head>
+<body>
+  <div id="wrap">
+    <div id="left">
+      <canvas id="canvas" width="1148" height="700" aria-label="Chelmsley World game canvas" tabindex="0"></canvas>
+      <canvas id="overlay" width="1148" height="700" aria-hidden="true"></canvas>
+      <div class="scanlines" id="scanlines"></div>
+    </div>
+    <div id="right">
+      <div id="ui">
+        <div id="title">CHELMSLEY WORLD — A Future England Beneath the Flyovers</div>
+        <div class="kv"><div>Seed</div><div id="seed"></div></div>
+        <div id="hud">
+          <div class="kv"><div>Health</div><div><progress id="hpbar" max="100" value="100"></progress></div></div>
+          <div class="kv"><div>Psyche</div><div><progress id="psybar" max="100" value="100"></progress></div></div>
+          <div class="kv"><div>Armor</div><div id="armor">—</div></div>
+          <div class="kv"><div>Weapon</div><div id="weapon">Hands (1)</div></div>
+          <div class="kv"><div>Turn</div><div id="turn">0</div></div>
+          <div class="kv"><div>Zone</div><div id="zone">—</div></div>
+        </div>
+        <div id="help" style="margin-top:10px">
+          <span class="pill">Move: Arrow Keys / WASD / HJKL</span>
+          <span class="pill">Wait: .</span>
+          <span class="pill">Pickup: g</span>
+          <span class="pill">Use (eat/heal): e</span>
+          <span class="pill">Throw: V (Tab to cycle item)</span>
+          <span class="pill">Inspect tile: x</span>
+          <span class="pill">Inventory: i</span>
+          <span class="pill">Melee: F → 4-way → Enter</span>
+          <span class="pill">Talk: T</span>
+          <span class="pill">Quest Log: Q</span>
+          <span class="pill">Restart: R</span>
+        </div>
+        <div class="btnrow" style="margin-top:8px">
+          <button id="newRun">New Run</button>
+          <button id="toggleCRT">CRT: ON</button>
+        </div>
+      </div>
+      <div id="log" role="log" aria-live="polite"></div>
+    </div>
+  </div>
+<script>
+/*
+  Chelmsley World — strict roguelike (turn-based, grid-based, permadeath, procedural & infinite)
+  Theme: Ballardian Chelmsley World, 2085 Midlands Conurbation Belt.
+  Features: FOV shadowcasting, CRT, 4-way melee selector + timing minigame, items, Orifice quest,
+            throwables with targeting arc, and multi-turn buffs (speed, FOV, radiation shield).
+*/
+(() => {
+  // --- Utilities ------------------------------------------------------------
+  const TAU = Math.PI * 2;
+  const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+  const xmur3 = (str) => { let h = 1779033703 ^ str.length; for (let i=0; i<str.length; i++) { h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19);} return () => { h = Math.imul(h ^ (h >>> 16), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); return (h ^= h >>> 16) >>> 0; }; };
+  const mulberry32 = (a) => ()=>{ let t=a+=0x6D2B79F5; t=Math.imul(t^t>>>15,t|1); t^=t+Math.imul(t^t>>>7,t|61); return ((t^t>>>14)>>>0)/4294967296; };
+  const seeded = (seedStr) => mulberry32(xmur3(seedStr)());
+  const hash2 = (x,y,seedStr)=>{ const h = xmur3(`${seedStr}|${x}|${y}`)(); return mulberry32(h)(); };
+  const chance = (r)=>Math.random()<r;
+  const manhattan = (x1,y1,x2,y2)=> Math.abs(x1-x2)+Math.abs(y1-y2);
+
+  // --- Game constants -------------------------------------------------------
+  const TILE = 28;
+  const VIEW_W = 41;  // 41*28 = 1148
+  const VIEW_H = 25;  // 25*28 = 700
+  const FOV_RADIUS_BASE = 10;
+  const CHUNK = 64;
+  const HP_MAX = 20;
+  const PSY_MAX = 20;
+  const LOG_MAX = 3000;
+
+  // Tile types
+  const TILES = { FLOOR:0, WALL:1, ROAD:2, HAZ:3, IDOL:4, WATER:5 };
+  const TILE_PASS = { [TILES.FLOOR]:true, [TILES.WALL]:false, [TILES.ROAD]:true, [TILES.HAZ]:true, [TILES.IDOL]:false, [TILES.WATER]:false };
+
+  // Entities
+  const ENT = { PLAYER:'player', DRONE:'drone', ZEALOT:'zealot', TEEN:'teen', TRUCK:'truck', CULT:'cult', HOUND:'hound', AI:'ai', ITEM:'item' };
+
+  // Items
+  const ITEM = {
+    ALGAE:'Algae Paste',
+    MACHETE:'Battery Machete',
+    SHIELD:'Wheelie-bin Shield',
+    CLUBCARD:'Tesco Clubcard (holographic)',
+    HEADBAND:'Punched-Tape Headband',
+    SIMTAROT:'SIM Tarot Stack',
+    SIGIL:'Orifice Sigil',
+    MEDGEL:'MedGel Patch',
+    STIMSODA:'VR Stim Soda',
+    OVERCLOCK:'Overclock Battery',
+    BLEACH:'Bleach Bottle',
+    MAP:'Cathode Map Shard',
+    FLAK:'Flak Jacket',
+    BRICK:'Mondeo Brick',
+    FLARE:'Lithium Flare',
+    EMP:'Drone EMP Pebble',
+    LENS:'Augment Lens',
+    IODINE:'Iodine Tabs',
+    SPEED:'Courier Speed Patch'
+  };
+  const THROWABLE = new Set([ITEM.BRICK, ITEM.FLARE, ITEM.EMP]);
+
+  const WEAPONS = { HANDS:{name:'Hands', dmg:1}, MACHETE:{name:'Battery Machete', dmg:2} };
+
+  // --- DOM ------------------------------------------------------------------
+  const c = document.getElementById('canvas'); const ctx = c.getContext('2d');
+  const o = document.getElementById('overlay'); const octx = o.getContext('2d');
+  ctx.imageSmoothingEnabled = false; octx.imageSmoothingEnabled = false;
+  const hpbar = document.getElementById('hpbar'); const psybar = document.getElementById('psybar');
+  const logEl = document.getElementById('log'); const seedEl = document.getElementById('seed'); const zoneEl = document.getElementById('zone');
+  const armorEl = document.getElementById('armor'); const weaponEl = document.getElementById('weapon'); const turnEl = document.getElementById('turn');
+  const btnNew = document.getElementById('newRun'); const btnCRT = document.getElementById('toggleCRT'); const scanlines = document.getElementById('scanlines');
+
+  // CRT UI helper
+  function updateCRTUI(){
+    if (scanlines) scanlines.style.display = Game.crt ? 'block' : 'none';
+    if (btnCRT) btnCRT.textContent = Game.crt ? 'CRT: ON' : 'CRT: OFF';
+    c.style.filter = Game.crt ? 'contrast(115%) saturate(110%)' : 'none';
+  }
+
+  // Resize canvas to exact tile grid
+  const fitCanvas = () => {
+    const w = TILE * VIEW_W, h = TILE * VIEW_H;
+    c.width = w;  c.height = h;  o.width = w;  o.height = h;
+    c.style.width = w + 'px'; c.style.height = h + 'px';
+    o.style.width = w + 'px'; o.style.height = h + 'px';
+  };
+  if (typeof ResizeObserver !== 'undefined') { new ResizeObserver(fitCanvas).observe(document.getElementById('left')); } else { window.addEventListener('resize', fitCanvas); }
+  window.addEventListener('load', fitCanvas); fitCanvas();
+  try { c.setAttribute('tabindex','0'); c.addEventListener('pointerdown', ()=> c.focus()); window.addEventListener('click', ()=> c.focus(), { once:true }); c.focus(); } catch(_){ }
+
+  // --- Game state -----------------------------------------------------------
+  const Game = { rng:null, seed:'CHELMSLEY-'+Math.random().toString(36).slice(2,7).toUpperCase(), turn:0, player:null, chunks:new Map(), messages:[], running:true, crt:true,
+    quests:null, orifice:null, targeting:false, targetDirIndex:0, minigame:null,
+    throwing:false, throwCursor:null, throwItem:null, effects:[], hasteFlip:false };
+
+  // --- Procedural name/lore helpers ----------------------------------------
+  const districtPrefixes = ['Liminal','Orifice','Vertical','Dead','Rotary','Cathode','Drone','Mondeo','Pylon','Aldi','Amazon','HS2','Babbs','Murray','Asbestos','Neon','Glitch','Synthetic','Concrete','Bleach'];
+  const districtNouns = ['Plaza','Fields','Chapels','Belt','Orchard','Arena','Interchange','Cathedral','Exchange','Beaches','Crematoria','Basements','Flyovers','Arcologies','Modules','Labyrinth','Spandrels','Sprawl','Pit','Necropolis'];
+  const snippets = [
+    'Roundabouts repurposed as temples where trucks orbit plastic saints.',
+    'Neon eczema blooms in the fog; the pylons hum like tuning forks.',
+    'A payphone rings at noon; the line whispers Thatcher in reverse.',
+    'Punched-tape headbands drip workday dreams into idle skulls.',
+    'A hologram of Liz Taylor forecasts rain in broken Urdu.',
+    'Children sort burnt SIMs into tarot; today the Algorithm is angry.',
+    'A woman scrubs tarmac with a clubcard, erasing centuries poorly.',
+    'Delivery drones mist the air in industrial bleach benediction.',
+    'Beneath ASDA, a Mondeo waits; the faithful polish its ghost chrome.',
+    'Motorway rosaries bead the horizon; every exit is a confession.'
+  ];
+  const zoneTitleFor=(cx,cy)=>{ const r1=Math.abs(cx*73856093 ^ cy*19349663); return `${districtPrefixes[r1%districtPrefixes.length]} ${districtNouns[(r1>>>5)%districtNouns.length]}`; };
+  const snippetFor=(cx,cy)=>{ const r=Math.abs((cx+13)*83492791 ^ (cy-7)*2971215073); return snippets[r%snippets.length]; };
+  const log = (msg) => { Game.messages.push(msg); if (Game.messages.join('\n').length > LOG_MAX) Game.messages.shift(); logEl.textContent = Game.messages.join('\n'); logEl.scrollTop = logEl.scrollHeight; }; 
+
+  // --- World generation -----------------------------------------------------
+  const key=(cx,cy)=>`${cx},${cy}`;
+  const baseNoise=(x,y)=>{ const h=hash2(x,y,Game.seed); const s=Math.sin((x*12.9898 + y*78.233)*0.01)*43758.5453; return (h*0.7 + (s-Math.floor(s)))*0.7 + 0.15; };
+  const highwayMask=(x,y)=>{ const g=14+Math.floor(hash2(Math.floor(x/64),Math.floor(y/64),Game.seed)*6); const wob=Math.floor((Math.sin(x*0.11)+Math.cos(y*0.13))*2); const onX=((x+wob)%g+g)%g; const onY=((y-wob)%g+g)%g; return (onX===0)||(onY===0); };
+  const rotaryAt=(x,y)=>{ const g=64; const cx=Math.round(x/g)*g; const cy=Math.round(y/g)*g; const dx=x-cx, dy=y-cy; const r=8+Math.floor(hash2(cx,cy,Game.seed)*6); const d=Math.sqrt(dx*dx+dy*dy); return d>r-1 && d<r+1; };
+  const idolAt=(x,y)=>{ const g=64; const cx=Math.round(x/g)*g; const cy=Math.round(y/g)*g; const r=6+Math.floor(hash2(cx,cy,Game.seed)*6); const dx=x-cx, dy=y-cy; const d=Math.sqrt(dx*dx+dy*dy); return d<r*0.6; };
+  const deadZone=(x,y)=> baseNoise(x*0.7,y*0.7)>0.84;
+  const waterBasin=(x,y)=>{ const n=baseNoise(x*0.33+1000,y*0.33-1000); return n>0.78 && n<0.84 && !highwayMask(x,y); };
+  const genTile=(x,y)=>{ if(rotaryAt(x,y)) return TILES.ROAD; if(highwayMask(x,y)) return TILES.ROAD; if(idolAt(x,y)) return TILES.IDOL; if(deadZone(x,y)) return TILES.HAZ; if(waterBasin(x,y)) return TILES.WATER; return baseNoise(x,y)<0.28?TILES.WALL:TILES.FLOOR; };
+
+  function getChunk(cx,cy){
+    const k=key(cx,cy);
+    if(Game.chunks.has(k)) return Game.chunks.get(k);
+    const tiles=new Uint8Array(CHUNK*CHUNK); const seen=new Uint8Array(CHUNK*CHUNK); const ents=[];
+    const ch={tiles, seen, ents, zoneName:zoneTitleFor(cx,cy), zoneBlurb:snippetFor(cx,cy)};
+    Game.chunks.set(k,ch);
+    for(let y=0;y<CHUNK;y++){
+      for(let x=0;x<CHUNK;x++){
+        const wx=cx*CHUNK+x, wy=cy*CHUNK+y; const t=genTile(wx,wy); tiles[y*CHUNK+x]=t;
+        const r=hash2(wx,wy,Game.seed);
+        if(t===TILES.ROAD && r>0.985){ ents.push(makeEntity(ENT.TRUCK,wx,wy)); }
+        else if(t===TILES.FLOOR && r>0.988){ ents.push(makeEntity(ENT.DRONE,wx,wy)); }
+        else if(t===TILES.FLOOR && r>0.982){ ents.push(makeEntity(ENT.ZEALOT,wx,wy)); }
+        else if(t===TILES.HAZ && r>0.990){ ents.push(makeEntity(ENT.CULT,wx,wy)); }
+        else if(t===TILES.FLOOR && r>0.975 && r<=0.978){ ents.push(makeEntity(ENT.TEEN,wx,wy)); }
+        else if(t===TILES.FLOOR && r>0.994){ ents.push(makeEntity(ENT.HOUND,wx,wy)); }
+        else if(t===TILES.FLOOR && r<0.006){ ents.push(dropItem(wx,wy,t)); }
+      }
+    }
+    if(Game.orifice && Math.floor(Game.orifice.x/CHUNK)===cx && Math.floor(Game.orifice.y/CHUNK)===cy){ ents.push(makeEntity(ENT.AI, Game.orifice.x, Game.orifice.y)); }
+    return ch;
+  }
+
+  // --- Entities & Items -----------------------------------------------------
+  function makeEntity(type,x,y){
+    const base={id:Math.random().toString(36).slice(2), type, x, y, hp:1, maxhp:1, char:'?', color:'#fff'};
+    if(type===ENT.PLAYER) return {...base, hp:HP_MAX, maxhp:HP_MAX, psyche:PSY_MAX, maxpsy:PSY_MAX, char:'@', color:'#aef', buff:{speed:0,fov:0,rad:0}, buffDmgTurns:0};
+    if(type===ENT.DRONE) return {...base, hp:3, maxhp:3, char:'d', color:'#7df9ff'};
+    if(type===ENT.ZEALOT) return {...base, hp:5, maxhp:5, char:'z', color:'#ff00e6'};
+    if(type===ENT.TEEN) return {...base, hp:2, maxhp:2, char:'t', color:'#ffd60a'};
+    if(type===ENT.TRUCK) return {...base, hp:7, maxhp:7, char:'T', color:'#00ffa6'};
+    if(type===ENT.CULT) return {...base, hp:6, maxhp:6, char:'c', color:'#f0f'};
+    if(type===ENT.HOUND) return {...base, hp:4, maxhp:4, char:'h', color:'#9ff'};
+    if(type===ENT.AI) return {...base, hp:9999, maxhp:9999, char:'Ω', color:'#7ff'};
+    return base;
+  }
+
+  function dropItem(x,y,tileType){
+    const r=hash2(x*3+11,y*7-5,Game.seed);
+    const pool=[
+      ITEM.ALGAE, ITEM.ALGAE,
+      ITEM.MEDGEL,
+      ITEM.STIMSODA,
+      ITEM.SHIELD,
+      ITEM.MACHETE,
+      ITEM.OVERCLOCK,
+      ITEM.BLEACH,
+      ITEM.MAP,
+      ITEM.HEADBAND,
+      ITEM.SIMTAROT,
+      ITEM.CLUBCARD,
+      ITEM.FLAK,
+      ITEM.BRICK,
+      ITEM.FLARE,
+      ITEM.EMP,
+      ITEM.LENS,
+      ITEM.IODINE,
+      ITEM.SPEED
+    ];
+    const t = (tileType!=null)? tileType : tileAt(x,y);
+    if((t===TILES.IDOL && r>0.58) || r>0.995) pool.push(ITEM.SIGIL);
+    const item=pool[Math.floor(r*pool.length) % pool.length];
+    function glyphFor(name){
+      switch(name){
+        case ITEM.SIGIL: return {char:'¤', color:'#ff77ff'};
+        case ITEM.MEDGEL: return {char:'+', color:'#aaffaa'};
+        case ITEM.STIMSODA: return {char:'!', color:'#ffff66'};
+        case ITEM.OVERCLOCK: return {char:'≈', color:'#66e0ff'};
+        case ITEM.BLEACH: return {char:'☣', color:'#ff6699'};
+        case ITEM.MAP: return {char:'⌗', color:'#99ccff'};
+        case ITEM.FLAK: return {char:'⛨', color:'#cccccc'};
+        case ITEM.MACHETE: return {char:'/', color:'#ffdd77'};
+        case ITEM.SHIELD: return {char:']', color:'#b0ffd0'};
+        case ITEM.HEADBAND: return {char:'~', color:'#dd99ff'};
+        case ITEM.SIMTAROT: return {char:'♦', color:'#88ffff'};
+        case ITEM.CLUBCARD: return {char:'¤', color:'#7faaff'};
+        case ITEM.BRICK: return {char:'■', color:'#c97a3a'};
+        case ITEM.FLARE: return {char:'✹', color:'#ff6655'};
+        case ITEM.EMP: return {char:'⚡', color:'#77e6ff'};
+        case ITEM.LENS: return {char:'◌', color:'#a6f'};
+        case ITEM.IODINE: return {char:'◍', color:'#ff7'};
+        case ITEM.SPEED: return {char:'»', color:'#9f9'};
+        case ITEM.ALGAE: default: return {char:'✶', color:'#8ff'};
+      }
+    }
+    const g=glyphFor(item);
+    return {id:'it_'+Math.random().toString(36).slice(2), type:ENT.ITEM, x,y, item, char:g.char, color:g.color};
+  }
+
+  const chunkFor=(wx,wy)=> getChunk(Math.floor(wx/CHUNK), Math.floor(wy/CHUNK));
+  function tileAt(wx,wy){ const ch=getChunk(Math.floor(wx/CHUNK),Math.floor(wy/CHUNK)); const x=((wx%CHUNK)+CHUNK)%CHUNK, y=((wy%CHUNK)+CHUNK)%CHUNK; return ch.tiles[y*CHUNK+x]; }
+  const passable=(wx,wy)=> TILE_PASS[tileAt(wx,wy)];
+  const entitiesAt=(wx,wy)=> chunkFor(wx,wy).ents.filter(e=>e.x===wx && e.y===wy);
+  const firstBlockingAt=(wx,wy)=> { if (Game.player && Game.player.x === wx && Game.player.y === wy) return Game.player; return chunkFor(wx,wy).ents.find(e=>e.x===wx && e.y===wy && e.type!==ENT.ITEM); };
+
+  // --- Effects (FIRE) -------------------------------------------------------
+  function addEffect(x,y,type,ttl){ Game.effects.push({x,y,type,ttl}); }
+  function tickEffects(){ for(const ef of Game.effects){ ef.ttl--; } Game.effects = Game.effects.filter(e=>e.ttl>0); }
+  function damageFromEffects(x,y,e){ for(const ef of Game.effects){ if(ef.x===x && ef.y===y){ if(ef.type==='FIRE'){ e.hp-=2; if(e===Game.player) log('You stand in lithium fire. (-2 HP)'); } } } }
+
+  // --- FOV (recursive shadowcasting) ---------------------------------------
+  function computeFOV(px,py){
+    const vis=new Set(); vis.add(px+','+py); setVis(px,py);
+    const bonus = (Game.player && Game.player.buff.fov>0) ? 3 : 0;
+    const radius=FOV_RADIUS_BASE + bonus, radiusSq=radius*radius; const blocks=(x,y)=> !TILE_PASS[tileAt(x,y)];
+    function setVis(x,y){ vis.add(x+','+y); const ch=chunkFor(x,y); const lx=((x%CHUNK)+CHUNK)%CHUNK; const ly=((y%CHUNK)+CHUNK)%CHUNK; ch.seen[ly*CHUNK+lx]=1; }
+    function castLight(cx,cy,row,start,end,xx,xy,yx,yy){ if(start<end) return; let newStart=start; let blocked=false;
+      for(let i=row;i<=radius;i++){
+        let dx=-i-1, dy=-i; blocked=false;
+        while(dx<=0){ dx++; const X=cx+dx*xx+dy*xy; const Y=cy+dx*yx+dy*yy; const lSlope=(dx-0.5)/(dy+0.5); const rSlope=(dx+0.5)/(dy-0.5);
+          if(start<rSlope) continue; else if(end>lSlope) break;
+          if(dx*dx+dy*dy<=radiusSq) setVis(X,Y);
+          if(blocked){ if(blocks(X,Y)){ newStart=rSlope; } else { blocked=false; start=newStart; } }
+          else if(blocks(X,Y) && i<radius){ blocked=true; castLight(cx,cy,i+1,start,lSlope,xx,xy,yx,yy); newStart=rSlope; }
+        }
+        if(blocked) break;
+      }
+    }
+    const oct=[ [1,0,0,1],[1,0,0,-1],[-1,0,0,1],[-1,0,0,-1],[0,1,1,0],[0,1,-1,0],[0,-1,1,0],[0,-1,-1,0] ];
+    for(const [xx,xy,yx,yy] of oct) castLight(px,py,1,1,0,xx,xy,yx,yy);
+    return vis;
+  }
+
+  // --- Player & inventory ---------------------------------------------------
+  const Player={
+    spawn(){
+      let x=0,y=0; for(let tries=0; tries<999; tries++){ x=Math.floor((hash2(tries,tries*2,Game.seed)-0.5)*20); y=Math.floor((hash2(tries*3,tries*5,Game.seed)-0.5)*20); if(passable(x,y)) break; }
+      Game.player=makeEntity(ENT.PLAYER,x,y); Game.player.weapon=WEAPONS.HANDS; Game.player.armor=0; Game.player.bag=[];
+      log('You awaken beneath the flyovers. The air tastes of bleach.'); announceZone();
+    },
+  };
+
+  function announceZone(){ const cx=Math.floor(Game.player.x/CHUNK), cy=Math.floor(Game.player.y/CHUNK); const ch=getChunk(cx,cy); zoneEl.textContent=ch.zoneName; log(`— ${ch.zoneName} — ${ch.zoneBlurb}`); }
+
+  function pickup(){ const here=entitiesAt(Game.player.x,Game.player.y); const items=here.filter(e=>e.type===ENT.ITEM); if(!items.length){ log('Nothing to pick up.'); return false;} const it=items[0]; const ch=chunkFor(it.x,it.y); ch.ents=ch.ents.filter(e=>e!==it); Game.player.bag.push(it.item); log(`You pick up ${it.item}.`); return true; }
+
+  function useItem(){ const bag=Game.player.bag; if(!bag.length){ log('Your pockets are full of nothing.'); return false; }
+    const tryUse=(name,fn)=>{ const i=bag.indexOf(name); if(i!==-1){ fn(name); bag.splice(i,1); return true;} return false; };
+    if(tryUse(ITEM.ALGAE, ()=>{ Game.player.hp=clamp(Game.player.hp+6,0,Game.player.maxhp); log('You eat algae paste. It tastes of pond and policy. (+6 HP)'); })) return true;
+    if(tryUse(ITEM.MACHETE, ()=>{ Game.player.weapon=WEAPONS.MACHETE; log('You strap a battery to a machete. Damage hum increases. (Weapon dmg=2)'); weaponEl.textContent=`${Game.player.weapon.name} (${Game.player.weapon.dmg})`; })) return true;
+    if(tryUse(ITEM.SHIELD, ()=>{ Game.player.armor=1; log('A retrofitted wheelie-bin lid. It might stop a drone once. (Armor 1)'); armorEl.textContent='Wheelie-bin (1)'; })) return true;
+    if(tryUse(ITEM.HEADBAND, ()=>{ Game.player.maxpsy+=5; Game.player.psyche=Math.min(Game.player.maxpsy, (Game.player.psyche||0)+5); log('Punched-tape headband streams restful spreadsheets. (+5 Psyche & max)'); })) return true;
+    if(tryUse(ITEM.SIMTAROT, ()=>{ log('You fan out charred SIM cards. Vision blooms: enemies glow for a moment.'); flashPulse=1.0; })) return true;
+    if(tryUse(ITEM.CLUBCARD, ()=>{ log('The clubcard absolves a small debt with the universe. Nothing else happens.'); })) return true;
+    if(tryUse(ITEM.MEDGEL, ()=>{ Game.player.hp=clamp(Game.player.hp+10,0,Game.player.maxhp); hpbar.value=Game.player.hp; log('You patch the skin with MedGel. (+10 HP)'); })) return true;
+    if(tryUse(ITEM.STIMSODA, ()=>{ Game.player.psyche=clamp((Game.player.psyche||0)+8,0,Game.player.maxpsy); psybar.value=Game.player.psyche; log('You chug VR stim soda. The HUD sings. (+8 Psyche)'); })) return true;
+    if(tryUse(ITEM.OVERCLOCK, ()=>{ Game.player.buffDmgTurns=(Game.player.buffDmgTurns||0)+3; log('You overclock a battery. Next 3 strikes bite harder. (+50% dmg)'); })) return true;
+    if(tryUse(ITEM.BLEACH, ()=>{ let hits=0; const adj=[[1,0],[-1,0],[0,1],[0,-1]]; for(const [dx,dy] of adj){ const mobs=entitiesAt(Game.player.x+dx,Game.player.y+dy).filter(e=>e.type!==ENT.ITEM && e.type!==ENT.AI && e.type!==ENT.PLAYER); for(const m of mobs){ m.hp-=3; hits++; if(m.hp<=0){ const ch=chunkFor(m.x,m.y); if(chance(0.22)) ch.ents.push(dropItem(m.x,m.y)); ch.ents=ch.ents.filter(e=>e!==m); } } } log(hits?('Bleach hisses. '+hits+' target'+(hits>1?'s':'')+' sizzle. (-3 each)'):'Bleach mist settles on the concrete.'); })) return true;
+    if(tryUse(ITEM.MAP, ()=>{ revealRadius(Game.player.x,Game.player.y,8); log('Cathode map shard fuzzes your retina; the grid unveils nearby.'); })) return true;
+    if(tryUse(ITEM.FLAK, ()=>{ Game.player.armor=Math.max(Game.player.armor,2); armorEl.textContent='Flak (2)'; log('You strap on a repurposed flak jacket. (Armor 2)'); })) return true;
+    if(tryUse(ITEM.LENS, ()=>{ Game.player.buff.fov += 8; log('Augment lens sharpens the fog. (+FOV for 8 turns)'); })) return true;
+    if(tryUse(ITEM.IODINE, ()=>{ Game.player.buff.rad += 10; log('You swallow iodine. Radiation will ignore you briefly. (+Rad shield 10 turns)'); })) return true;
+    if(tryUse(ITEM.SPEED, ()=>{ Game.player.buff.speed += 10; log('Courier patch fizzles under the skin. (Haste for 10 turns — enemies skip every other turn)'); })) return true;
+    // Throwables are not consumed here; use V to throw with targeting
+    log('No immediate-use item selected. Try V to throw.');
+    return false;
+  }
+
+  function countInBag(name){ return Game.player.bag.filter(x=>x===name).length; }
+  function removeFromBag(name, n){ let removed=0; Game.player.bag=Game.player.bag.filter(x=>{ if(x===name && removed<n){ removed++; return false;} return true; }); return removed; }
+
+  function inspect(){ const t=tileAt(Game.player.x,Game.player.y); const desc=tileDesc(t); const es=entitiesAt(Game.player.x,Game.player.y).filter(e=>e.type!==ENT.PLAYER); const eDesc=es.map(e=>entName(e)).join(', '); log(`Here: ${desc}` + (eDesc?` | Also: ${eDesc}`:'')); }
+
+  function tileDesc(t){ switch(t){
+    case TILES.FLOOR: return 'Concrete concourse scored by shopping trolley runes.';
+    case TILES.WALL: return 'Habitat silo wall — asbestos breathes softly in the seams.';
+    case TILES.ROAD: return 'Flyover lane, painted with old tyre eucharists.';
+    case TILES.HAZ: return 'Dead Zone tarmac. The air tastes metallic. (Radiation)';
+    case TILES.IDOL: return 'Roundabout idol — a plastic astronaut half-melted into myth.';
+    case TILES.WATER: return 'Dry lakebed of polymer sand. It remembers being water.';
+    default: return 'Uncanny paving.'; } }
+
+  function entName(e){ switch(e.type){
+    case ENT.DRONE: return 'Bleach Drone';
+    case ENT.ZEALOT: return 'Roundabout Zealot';
+    case ENT.TEEN: return 'Teen Gladiator';
+    case ENT.TRUCK: return 'Driverless Delivery Truck';
+    case ENT.CULT: return 'Mondeo Acolyte';
+    case ENT.HOUND: return 'Glitch Hound';
+    case ENT.AI: return 'Obsolete Mall AI';
+    case ENT.ITEM: return e.item; default: return e.type; } }
+
+  // --- Combat & turns -------------------------------------------------------
+  let Combat = { flash:0, lastPhase:0, lastQuality:'', lastMult:1 };
+  function timingMultiplier(t){
+    const speed = 1.35;
+    const phase = (t*speed) % 1; // 0..1
+    const dist = Math.abs(phase - 0.5);
+    let mult, quality;
+    if (dist < 0.06){ mult = 2.0; quality='PERFECT'; }
+    else if (dist < 0.15){ mult = 1.5; quality='GOOD'; }
+    else if (dist < 0.25){ mult = 1.0; quality='OK'; }
+    else { mult = 0.6; quality='GLANCING'; }
+    return { phase, mult, quality };
+  }
+
+  function attack(attacker, defender, dmgOverride, timing){
+    const base = (dmgOverride!=null)?dmgOverride : (attacker===Game.player ? Game.player.weapon.dmg : 1 + Math.floor(hash2(defender.x,defender.y,attacker.id)*2));
+    let mult=1.0, quality='', phase=0;
+    if(attacker===Game.player){
+      if(timing && typeof timing.mult==='number'){ mult=timing.mult; quality=timing.quality||''; phase=timing.phase||0; }
+      else { const t = timingMultiplier(animT); mult=t.mult; quality=t.quality; phase=t.phase; }
+      // Overclock buff
+      if(Game.player.buffDmgTurns>0){ mult*=1.5; Game.player.buffDmgTurns--; }
+      Combat.flash=0.9; Combat.lastPhase=phase; Combat.lastQuality=quality; Combat.lastMult=mult;
+    }
+    const raw = Math.max(0, Math.floor(base * mult));
+    const dmg = Math.max(0, raw - (defender===Game.player?Game.player.armor:0));
+    defender.hp -= dmg;
+    if(defender===Game.player){ log(`${entName(attacker)} hits you for ${dmg}.`); }
+    else { const tag = (attacker===Game.player ? ` (${quality} x${mult.toFixed(1)})` : ''); log(`You hit ${entName(defender)} for ${dmg}.`+tag); }
+    if(defender.hp<=0){ if(defender===Game.player){ die(); } else { const ch=chunkFor(defender.x,defender.y); if(chance(0.22)) ch.ents.push(dropItem(defender.x,defender.y)); ch.ents=ch.ents.filter(e=>e!==defender); log(`${entName(defender)} collapses into the dust of policy.`); } }
+  }
+
+  function moveEntity(e,dx,dy){
+    if(!dx && !dy) return false;
+    const nx=e.x+dx, ny=e.y+dy;
+    const tNext = tileAt(nx,ny);
+    if(!TILE_PASS[tNext]){ if(e===Game.player){ log('Concrete blocks your way.'); } return false; }
+    const block=firstBlockingAt(nx,ny);
+    if(block){ if(e===Game.player){ if(block.type===ENT.AI){ log('The AI terminal hums. Press T to commune.'); return false; } attack(e,block); } else { if(block===Game.player) attack(e,Game.player); } return true; }
+    e.x=nx; e.y=ny;
+    return true;
+  }
+
+  function attackAdjacent(){ const DIRS2 = [[0,-1],[1,0],[0,1],[-1,0]]; for(const [dx,dy] of DIRS2){ const x=Game.player.x+dx, y=Game.player.y+dy; const ents=entitiesAt(x,y).filter(e=>e.type!==ENT.ITEM); const target = ents.find(e=> e.type!==ENT.AI && e.type!==ENT.PLAYER); if(target){ attack(Game.player, target); return true; } } log('No adjacent target.'); return false; }
+
+  function stepToward(e,tx,ty){ const choices=[[1,0],[-1,0],[0,1],[0,-1]]; choices.sort((a,b)=> manhattan(e.x+a[0],e.y+a[1],tx,ty)-manhattan(e.x+b[0],e.y+b[1],tx,ty)); for(const [dx,dy] of choices){ if(passable(e.x+dx,e.y+dy) && !firstBlockingAt(e.x+dx,e.y+dy)) { moveEntity(e,dx,dy); return true; } } return false; }
+  function randomStep(e){ const dirs=[[1,0],[-1,0],[0,1],[0,-1]]; for(let i=0;i<4;i++){ const [dx,dy]=dirs[(Math.random()*dirs.length)|0]; if(passable(e.x+dx,e.y+dy)){ moveEntity(e,dx,dy); return true; } } return false; }
+
+  function enemyTurn(){
+    const px=Game.player.x, py=Game.player.y; let acts=0;
+    const near=[]; for(let cy=Math.floor((py-FOV_RADIUS_BASE)/CHUNK)-1; cy<=Math.floor((py+FOV_RADIUS_BASE)/CHUNK)+1; cy++){
+      for(let cx=Math.floor((px-FOV_RADIUS_BASE)/CHUNK)-1; cx<=Math.floor((px+FOV_RADIUS_BASE)/CHUNK)+1; cx++){ near.push(getChunk(cx,cy)); }
+    }
+    for(const ch of near){ for(const e of ch.ents){ if(e.type===ENT.ITEM || e.type===ENT.AI) continue; let steps=1; const dx=px-e.x, dy=py-e.y; const dist=Math.max(Math.abs(dx),Math.abs(dy)); const see = dist<=8 && lineClear(e.x,e.y,px,py);
+        if(e.type===ENT.TEEN) steps=2; if(e.type===ENT.HOUND && see) steps=2; if(e.type===ENT.TRUCK) steps=2;
+        if(Game.player.buff.speed>0) steps = Math.max(0, Math.floor(steps*0.5));
+        for(let s=0;s<steps;s++){ if(++acts>1500){ log('Simulation overload; throttling enemies.'); return; }
+          if(e.type===ENT.DRONE){ if(dist<=6 && lineClear(e.x,e.y,px,py) && chance(0.6)){ Game.player.psyche=Math.max(0,(Game.player.psyche||PSY_MAX)-2); log('A Bleach Drone sprays caustic mist. (-2 Psyche)'); if(Game.player.psyche<=0){ Game.player.hp--; log('Your psyche fractures; the world pixelates into policy. (-1 HP)'); if(Game.player.hp<=0) die(); } } else { stepToward(e,px,py) || randomStep(e); } }
+          else if(e.type===ENT.ZEALOT){ const idol = findNearbyTile(e.x,e.y,TILES.IDOL,6); if(idol) { stepToward(e,idol.x,idol.y) || randomStep(e); } else { stepToward(e,px,py) || randomStep(e); } }
+          else if(e.type===ENT.CULT){ if(tileAt(e.x,e.y)===TILES.HAZ && e.hp<e.maxhp){ e.hp++; } const preferHaz = findNearbyTile(e.x,e.y,TILES.HAZ,4); if(dist<=1){ attack(e,Game.player); } else if(preferHaz){ stepToward(e,preferHaz.x,preferHaz.y) || stepToward(e,px,py) || randomStep(e); } else { stepToward(e,px,py) || randomStep(e); } }
+          else if(e.type===ENT.TRUCK){ const onRoad = tileAt(e.x,e.y)===TILES.ROAD; if(onRoad){ const dirs=[[1,0],[-1,0],[0,1],[0,-1]]; dirs.sort((a,b)=> (manhattan(e.x+a[0],e.y+a[1],px,py) - manhattan(e.x+b[0],e.y+b[1],px,py))); let moved=false; for(const [dx,dy] of dirs){ if(tileAt(e.x+dx,e.y+dy)===TILES.ROAD){ moved = moveEntity(e,dx,dy); if(moved) break; } } if(!moved) randomStep(e); } else { const road=findNearbyTile(e.x,e.y,TILES.ROAD,5); if(road) stepToward(e,road.x,road.y); else randomStep(e); } }
+          else if(e.type===ENT.TEEN){ stepToward(e,px,py) || randomStep(e); }
+          else if(e.type===ENT.HOUND){ if(see) { stepToward(e,px,py); } else { randomStep(e); } }
+          else { if(dist<=1){ attack(e,Game.player); } else { stepToward(e,px,py) || randomStep(e); } }
+        }
+    } }
+  }
+
+  function findNearbyTile(x,y,tile,r){ for(let dy=-r;dy<=r;dy++){ for(let dx=-r;dx<=r;dx++){ if(tileAt(x+dx,y+dy)===tile) return {x:x+dx,y:y+dy}; } } return null; }
+
+  function lineClear(x0,y0,x1,y1){ let dx=Math.abs(x1-x0), dy=Math.abs(y1-y0); let sx=x0<x1?1:-1; let sy=y0<y1?1:-1; let err=dx-dy; let x=x0,y=y0; while(true){ if(!TILE_PASS[tileAt(x,y)] && !(x===x0 && y===y0)) return false; if(x===x1 && y===y1) return true; const e2=2*err; if(e2>-dy){ err-=dy; x+=sx; } if(e2<dx){ err+=dx; y+=sy; } } }
+
+  function revealRadius(cx,cy,r){ for(let dy=-r; dy<=r; dy++){ for(let dx=-r; dx<=r; dx++){ const x=cx+dx, y=cy+dy; const ch=chunkFor(x,y); const lx=((x%CHUNK)+CHUNK)%CHUNK, ly=((y%CHUNK)+CHUNK)%CHUNK; ch.seen[ly*CHUNK+lx]=1; } } flashPulse=0.6; }
+
+  function endTurn(){
+    Game.turn++;
+    // hazards
+    if(tileAt(Game.player.x,Game.player.y)===TILES.HAZ){ if(Game.player.buff.rad>0){ /*shielded*/ } else { Game.player.hp -= 1; log('Radiation gnaws at your marrow. (-1 HP)'); if(Game.player.hp<=0) die(); } }
+    damageFromEffects(Game.player.x,Game.player.y, Game.player);
+    if(chance(0.25)) Game.player.psyche = Math.max(0,(Game.player.psyche||PSY_MAX)-1);
+    if(Game.player.psyche<=0){ log('Your psyche fractures; the world pixelates into policy. (-1 HP)'); Game.player.hp -= 1; if(Game.player.hp<=0) die(); }
+    // enemies (skip half the time during speed buff)
+    let doEnemies=true; if(Game.player.buff.speed>0){ Game.hasteFlip=!Game.hasteFlip; if(Game.hasteFlip) doEnemies=false; Game.player.buff.speed--; }
+    if(doEnemies) enemyTurn();
+    // effects tick + apply to visible monsters
+    for(const ch of Game.chunks.values()){
+      for(const e of ch.ents){ if(e.type!==ENT.ITEM && e.type!==ENT.AI){ damageFromEffects(e.x,e.y,e); if(e.hp<=0){ if(chance(0.22)) ch.ents.push(dropItem(e.x,e.y)); ch.ents=ch.ents.filter(x=>x!==e); log(`${entName(e)} burns out.`); } } }
+    }
+    tickEffects();
+
+    // buff decay
+    if(Game.player.buff.fov>0) Game.player.buff.fov--; if(Game.player.buff.rad>0) Game.player.buff.rad--;
+
+    hpbar.max=Game.player.maxhp; hpbar.value=Math.max(0,Game.player.hp);
+    psybar.max=Game.player.maxpsy; psybar.value=Math.max(0,Game.player.psyche||0);
+    weaponEl.textContent=`${Game.player.weapon.name} (${Game.player.weapon.dmg})`;
+    armorEl.textContent=Game.player.armor?`Wheelie-bin (${Game.player.armor})`:'—';
+    turnEl.textContent=Game.turn;
+    const pcx=Math.floor(Game.player.x/CHUNK), pcy=Math.floor(Game.player.y/CHUNK); if(!lastChunk || lastChunk.cx!==pcx || lastChunk.cy!==pcy){ announceZone(); lastChunk={cx:pcx,cy:pcy}; }
+  }
+
+  function die(){ Game.running=false; log('You become another statue on a roundabout. — PERMADEATH — Press R to begin another drift.'); saveHighscore(); }
+
+  // --- Orifice Questline ----------------------------------------------------
+  function initOrifice(){ const seedVal = xmur3(Game.seed+'|ORIFICE')(); const rng = mulberry32(seedVal); let ox = Math.floor(rng()*60)-30; let oy = Math.floor(rng()*60)-30; for(let r=0;r<30;r++){ if(passable(ox,oy)) break; ox+= (rng()<0.5?-1:1); oy+= (rng()<0.5?-1:1); } Game.orifice={x:ox,y:oy}; Game.quests={ orifice:{ discovered:false, sigils:0, required:3, complete:false } }; }
+
+  function talk(){ const adj=[[1,0],[-1,0],[0,1],[0,-1],[0,0]]; for(const [dx,dy] of adj){ const es=entitiesAt(Game.player.x+dx,Game.player.y+dy); const ai=es.find(e=>e.type===ENT.AI); if(ai){ const q=Game.quests.orifice; if(!q.discovered){ q.discovered=true; log('Ω The Chelmsley Orifice speaks in tannoy glossolalia. "Bring me three Orifice Sigils from the roundabout idols. I will unseal Dreams of Liz Taylor."'); return; } const have=countInBag(ITEM.SIGIL); if(have>0){ removeFromBag(ITEM.SIGIL, have); q.sigils += have; log(`You deliver ${have} Orifice Sigil${have>1?'s':''}. (${q.sigils}/${q.required})`); } if(!q.complete && q.sigils>=q.required){ q.complete=true; Game.player.maxhp+=5; Game.player.hp=Game.player.maxhp; Game.player.maxpsy+=10; Game.player.psyche=Game.player.maxpsy; log('Ω "Initiating Dreams of Liz Taylor." A cool wave rinses your cortex. (+5 Max HP, +10 Max Psyche; fully restored)'); } if(q.complete){ log('Ω "The mall remembers you." (Quest complete)'); } else { log('Ω "The idols still hunger. Bring more sigils."'); } return; } } log('No one to talk to. The wind answers in binary.'); }
+
+  function showQuest(){ const q=Game.quests.orifice; if(!q.discovered){ log('Quest: Find The Chelmsley Orifice (listen for the tannoy).'); } else { log(`Quest — Orifice Protocols: Sigils delivered ${q.sigils}/${q.required}. Status: ${q.complete?'Complete':'In Progress'}.`); } }
+
+  // --- Throwables -----------------------------------------------------------
+  const THROW_RANGE = 7;
+  function getThrowables(){ return Game.player.bag.filter(n=>THROWABLE.has(n)); }
+  function projectilePath(x0,y0,x1,y1,maxRange){ let dx=Math.abs(x1-x0), dy=Math.abs(y1-y0); let sx=x0<x1?1:-1; let sy=y0<y1?1:-1; let err=dx-dy; let x=x0,y=y0; const pts=[]; let steps=0; while(true){ if(steps>maxRange) break; pts.push({x,y}); if(x===x1 && y===y1) break; const e2=2*err; if(e2>-dy){ err-=dy; x+=sx; } if(e2<dx){ err+=dx; y+=sy; } steps++; } return pts; }
+  function openThrow(){ const ts=getThrowables(); if(!ts.length){ log('You have nothing throwable.'); return; } Game.throwing=true; Game.throwItem=ts[0]; Game.throwCursor={x:Game.player.x+1,y:Game.player.y}; log(`Throwing ${Game.throwItem}: arrows/HJKL move cursor, Enter to throw, Tab to cycle, Esc cancel.`); draw(); }
+  function cycleThrow(){ const ts=getThrowables(); if(!ts.length) return; const i=ts.indexOf(Game.throwItem); Game.throwItem = ts[(i+1)%ts.length]; log(`Selected ${Game.throwItem}.`); draw(); }
+  function confirmThrow(){ if(!Game.throwing) return; const path = projectilePath(Game.player.x,Game.player.y, Game.throwCursor.x, Game.throwCursor.y, THROW_RANGE); // stop at wall
+    let hitTile = path[path.length-1]; for(const p of path){ if(!TILE_PASS[tileAt(p.x,p.y)] && !(p.x===Game.player.x && p.y===Game.player.y)){ hitTile=p; break; } }
+    // find first enemy on path (excluding origin)
+    let hitEnt=null; for(const p of path){ if(p.x===Game.player.x && p.y===Game.player.y) continue; const ents=entitiesAt(p.x,p.y).filter(e=>e.type!==ENT.ITEM && e.type!==ENT.AI); if(ents.length){ hitEnt=ents[0]; hitTile=p; break; } if(!TILE_PASS[tileAt(p.x,p.y)]) break; }
+    // consume one item
+    removeFromBag(Game.throwItem,1);
+    if(Game.throwItem===ITEM.BRICK){ if(hitEnt){ attack(Game.player, hitEnt, 3, {mult:1,quality:'THROWN',phase:0}); } else { log('The brick clatters uselessly.'); } }
+    else if(Game.throwItem===ITEM.FLARE){ addEffect(hitTile.x, hitTile.y, 'FIRE', 6); log('You lob a lithium flare. The ground sizzles.'); }
+    else if(Game.throwItem===ITEM.EMP){ let n=0; for(let dy=-2;dy<=2;dy++){ for(let dx=-2;dx<=2;dx++){ const x=hitTile.x+dx, y=hitTile.y+dy; const ents=entitiesAt(x,y).filter(e=>e.type!==ENT.ITEM && e.type!==ENT.AI); for(const e of ents){ if(e.type===ENT.DRONE||e.type===ENT.TRUCK){ e.hp-=4; n++; } else { e.hp-=1; n++; } } } } log(`EMP crackles. ${n} system${n===1?'':'s'} stutter.`); }
+    Game.throwing=false; endTurn(); draw(); }
+  function cancelThrow(){ Game.throwing=false; log('You lower your arm.'); draw(); }
+
+  // --- Input ---------------------------------------------------------------
+  const DIRS = [[0,-1],[1,0],[0,1],[-1,0]]; // U,R,D,L
+  const keys=new Map([ ['ArrowUp',[0,-1]], ['ArrowDown',[0,1]], ['ArrowLeft',[-1,0]], ['ArrowRight',[1,0]], ['KeyW',[0,-1]], ['KeyS',[0,1]], ['KeyA',[-1,0]], ['KeyD',[1,0]], ['KeyH',[-1,0]], ['KeyJ',[0,1]], ['KeyK',[0,-1]], ['KeyL',[1,0]] ]);
+
+  function openTargetSelector(){ Game.targeting = true; Game.targetDirIndex = 0; for(let i=0;i<DIRS.length;i++){ const [dx,dy]=DIRS[i]; const x=Game.player.x+dx, y=Game.player.y+dy; const target = entitiesAt(x,y).find(e=>e.type!==ENT.ITEM && e.type!==ENT.AI && e.type!==ENT.PLAYER); if(target){ Game.targetDirIndex=i; break; } } log('Targeting: choose a direction (arrows/HJKL). Enter/F to attack, Esc to cancel.'); draw(); }
+  function cancelTarget(){ Game.targeting=false; log('Targeting cancelled.'); draw(); }
+  function confirmTarget(){
+    const [dx,dy]=DIRS[Game.targetDirIndex];
+    const x=Game.player.x+dx, y=Game.player.y+dy;
+    const target = entitiesAt(x,y).find(e=>e.type!==ENT.ITEM && e.type!==ENT.AI && e.type!==ENT.PLAYER);
+    if(!target){ log('No target that way.'); draw(); return; }
+    Game.targeting=false;
+    startMinigame(target);
+  }
+
+  // --- Combat Minigame (moving bar) ---------------------------------------
+  function startMinigame(target){ Game.minigame={active:true,target,t:0,speed:1.6+Math.random()*0.7}; log('Strike window: Space/Enter to hit when the arrow is in the glow. Esc cancels.'); }
+  function resolveMinigame(commit){ if(!Game.minigame||!Game.minigame.active) return; const pos=(Game.minigame.t*Game.minigame.speed)%1; const dist=Math.abs(pos-0.5); let mult,quality; if(dist<0.06){mult=2.0;quality='PERFECT';} else if(dist<0.17){mult=1.5;quality='GOOD';} else if(dist<0.27){mult=1.0;quality='OK';} else {mult=0.6;quality='GLANCING';} const t={mult,quality,phase:pos}; if(commit){ attack(Game.player, Game.minigame.target, undefined, t); endTurn(); } Game.minigame.active=false; draw(); }
+
+  function onKey(e){
+    try{
+      const prevent = ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' ','Tab'];
+      if(prevent.includes(e.key)) e.preventDefault();
+      e.stopPropagation();
+      lastInputTs = performance.now();
+      if(e.key==='F2'){ DEBUG=!DEBUG; log('Debug HUD '+(DEBUG?'on':'off')); return; }
+
+      // Minigame capture
+      if(Game.minigame && Game.minigame.active){
+        if(e.key===' '||e.code==='Space'||e.key==='Enter'||e.code==='Enter'){ resolveMinigame(true); return; }
+        if(e.key==='Escape' || e.code==='Escape'){ log('You lower your hand. The moment passes.'); resolveMinigame(false); return; }
+        return;
+      }
+
+      // Throwing mode
+      if(Game.throwing){
+        const code = e.code || e.key;
+        const d = keys.get(code) || keys.get(e.key) || keys.get(e.code);
+        if(d){
+          let nx = Game.throwCursor.x + d[0];
+          let ny = Game.throwCursor.y + d[1];
+          const dx = nx - Game.player.x, dy = ny - Game.player.y;
+          const range = Math.max(Math.abs(dx), Math.abs(dy));
+          if(range <= THROW_RANGE){ Game.throwCursor.x = nx; Game.throwCursor.y = ny; draw(); }
+          return;
+        }
+        if(e.key==='Tab'){ cycleThrow(); return; }
+        if(e.key==='Enter' || e.code==='Enter'){ confirmThrow(); return; }
+        if(e.key==='Escape'){ cancelThrow(); return; }
+        return;
+      }
+
+      if(!Game.running){ if(Game.player && Game.player.hp>0){ Game.running=true; } else { if(e.key==='r' or e.key==='R'){ newRun(); } return; } }
+
+      // Targeting selector
+      if(Game.targeting){
+        const code = e.code or e.key;
+        const d = keys.get(code) or keys.get(e.key) or keys.get(e.code);
+        if(d){ const idx = DIRS.findIndex(([dx,dy])=> dx===d[0] and dy===d[1]); if(idx!==-1){ Game.targetDirIndex = idx; draw(); } return; }
+        if(e.key==='f' or e.key==='F' or e.key==='Enter'){ confirmTarget(); return; }
+        if(e.key==='Escape'){ cancelTarget(); return; }
+        return;
+      }
+
+      // Normal play
+      const code = e.code || e.key; const dir = keys.get(code) || keys.get(e.key) || keys.get(e.code);
+      if(dir){ const [dx,dy]=dir; if(moveEntity(Game.player,dx,dy)) endTurn(); draw(); return; }
+      if(e.key==='f' || e.key==='F' || e.code==='KeyF'){ openTargetSelector(); return; }
+      if(e.key==='v' || e.key==='V' || e.code==='KeyV'){ openThrow(); return; }
+      if(e.key==='.' || e.code==='Period'){ log('You wait. The fog thinks about you.'); endTurn(); draw(); return; }
+      if(e.key==='g' || e.key==='G'){ if(pickup()){ endTurn(); draw(); } return; }
+      if(e.key==='e' || e.key==='E'){ if(useItem()){ endTurn(); draw(); } return; }
+      if(e.key==='i' || e.key==='I'){ log('Inventory: '+(Game.player.bag.join(', ')||'empty')); return; }
+      if(e.key==='x' || e.key==='X'){ inspect(); return; }
+      if(e.code==='KeyQ' || e.key==='q' || e.key==='Q'){ showQuest(); return; }
+      if(e.code==='KeyT' || e.key==='t' || e.key==='T'){ talk(); return; }
+      if(e.key==='R'){ newRun(); return; }
+    }catch(err){ log('Input error: '+err.message); }
+  }
+  window.addEventListener('keydown', onKey, {passive:false, capture:true});
+  
+  // --- Rendering ------------------------------------------------------------
+  let animT=0, flashPulse=0, lastChunk=null, lastInputTs=performance.now(), DEBUG=false;
+  const palette=(t)=>{ const r=Math.floor(128+127*Math.sin(t*0.9)); const g=Math.floor(128+127*Math.sin(t*1.3+2.0)); const b=Math.floor(128+127*Math.sin(t*1.7+4.0)); return [r,g,b]; };
+
+  function drawTile(gx,gy,t,visible,seen){
+    const px=Math.floor(c.width/2 - Math.floor(VIEW_W/2)*TILE + gx*TILE);
+    const py=Math.floor(c.height/2 - Math.floor(VIEW_H/2)*TILE + gy*TILE);
+    const [r,g,b]=palette(animT*0.4 + (gx+gy)*0.12); ctx.fillStyle=`rgb(${r>>1},${g>>1},${b>>1})`; ctx.fillRect(px,py,TILE,TILE);
+    if(t===TILES.FLOOR){ for(let i=0;i<12;i++){ ctx.fillStyle=`rgba(${r},${g},${b},${0.04+(i%3)*0.02})`; ctx.fillRect(px+(i*7%TILE), py+((i*11+gy)%TILE), 2,2);} }
+    else if(t===TILES.WALL){ ctx.fillStyle=`rgba(${r/2},0,${b/2},0.8)`; ctx.fillRect(px,py,TILE,TILE); ctx.strokeStyle='rgba(255,255,255,0.08)'; ctx.strokeRect(px+1,py+1,TILE-2,TILE-2); for(let i=2;i<TILE;i+=6){ ctx.fillStyle='rgba(255,255,255,0.06)'; ctx.fillRect(px+i,py,2,TILE);} }
+    else if(t===TILES.ROAD){ ctx.fillStyle=`rgba(${b},${g/2},${r/3},0.65)`; ctx.fillRect(px,py,TILE,TILE); ctx.fillStyle='rgba(255,255,255,0.27)'; ctx.fillRect(px+TILE/2-1, py+4, 2, TILE-8); }
+    else if(t===TILES.HAZ){ ctx.fillStyle='rgba(255,51,85,0.7)'; ctx.fillRect(px,py,TILE,TILE); for(let i=0;i<TILE;i+=4){ ctx.fillRect(px+i,py+(i%8),2,2);} }
+    else if(t===TILES.IDOL){ ctx.fillStyle='rgba(255,255,255,0.1)'; ctx.beginPath(); ctx.arc(px+TILE/2,py+TILE/2,TILE/2.2,0,TAU); ctx.fill(); ctx.strokeStyle=`rgba(${r},${g},${b},0.6)`; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(px+TILE*0.2,py+TILE*0.8); ctx.lineTo(px+TILE*0.8,py+TILE*0.2); ctx.stroke(); }
+    else if(t===TILES.WATER){ ctx.fillStyle=`rgba(${r/3},${g/3},${b},0.55)`; ctx.fillRect(px,py,TILE,TILE); for(let i=0;i<TILE;i+=3){ ctx.fillStyle='rgba(255,255,255,0.05)'; ctx.fillRect(px+i,py+(i%5),1,1);} }
+    if(!seen){ ctx.fillStyle='rgba(0,0,0,0.8)'; ctx.fillRect(px,py,TILE,TILE); } else if(!visible){ ctx.fillStyle='rgba(5,5,10,0.45)'; ctx.fillRect(px,py,TILE,TILE); }
+    ctx.strokeStyle='rgba(255,255,255,0.03)'; ctx.strokeRect(px,py,TILE,TILE);
+  }
+
+  function drawGlyph(gx,gy,char,color){ const px=Math.floor(c.width/2 - Math.floor(VIEW_W/2)*TILE + gx*TILE); const py=Math.floor(c.height/2 - Math.floor(VIEW_H/2)*TILE + gy*TILE); ctx.save(); ctx.translate(px+TILE/2, py+TILE/2); ctx.fillStyle='rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.arc(0,0,TILE*0.45,0,TAU); ctx.fill(); ctx.fillStyle=color; ctx.font=`bold ${Math.floor(TILE*0.8)}px monospace`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(char,0,1); ctx.restore(); }
+
+  function drawOverlay(){
+    octx.clearRect(0,0,o.width,o.height);
+    if(Game.crt){ const grd=octx.createRadialGradient(o.width/2,o.height/2,Math.min(o.width,o.height)*0.2,o.width/2,o.height/2,Math.max(o.width,o.height)*0.7); grd.addColorStop(0,'rgba(0,0,0,0)'); grd.addColorStop(1,'rgba(0,0,0,0.6)'); octx.fillStyle=grd; octx.fillRect(0,0,o.width,o.height); octx.globalCompositeOperation='lighter'; octx.strokeStyle='rgba(125,249,255,0.06)'; octx.beginPath(); for(let i=20;i<o.height;i+=20){ octx.moveTo(0,i+Math.sin((i+animT*3)*0.05)*2); octx.lineTo(o.width,i+Math.sin((i+animT*3)*0.05)*2);} octx.stroke(); octx.globalCompositeOperation='source-over'; }
+    // Zone text
+    octx.fillStyle='rgba(255,255,255,0.9)'; octx.font='12px monospace'; const pcx=Math.floor(Game.player.x/CHUNK), pcy=Math.floor(Game.player.y/CHUNK); const ch=getChunk(pcx,pcy); octx.fillText(`— ${ch.zoneName} —`,16,20); octx.fillText(ch.zoneBlurb,16,36);
+    // Pulse meter
+    const W2=80, H2=6, x2=o.width- W2 -16, y2=16; octx.fillStyle='rgba(255,255,255,0.12)'; octx.fillRect(x2,y2,W2,H2); octx.fillStyle='rgba(255,255,255,0.25)'; octx.fillRect(x2+W2*0.48, y2, W2*0.04, H2); const phaseNow=(animT*1.35)%1; const tx2=x2+Math.floor(phaseNow*W2); octx.fillStyle='rgba(125,249,255,0.9)'; octx.fillRect(tx2-1, y2-2, 2, H2+4); octx.fillStyle='rgba(255,255,255,0.6)'; octx.font='10px monospace'; octx.fillText('PULSE', x2, y2-4);
+    // Minigame bar
+    if(Game.minigame && Game.minigame.active){ const W=300,H=14; const x=o.width/2 - W/2, y=o.height - 70; const center=x+W*0.5; const goodW=W*0.34; const perfectW=W*0.14; octx.fillStyle='rgba(255,255,255,0.18)'; octx.fillRect(x,y,W,H); octx.fillStyle='rgba(255,255,0,0.15)'; octx.fillRect(center-goodW/2, y, goodW, H); octx.fillStyle='rgba(0,255,200,0.22)'; octx.fillRect(center-perfectW/2, y, perfectW, H); const pos=(Game.minigame.t*Game.minigame.speed)%1; const tx=x+Math.floor(pos*W); octx.fillStyle='rgba(125,249,255,0.95)'; octx.fillRect(tx-1, y-3, 2, H+6); octx.fillStyle='rgba(255,255,255,0.85)'; octx.font='12px monospace'; octx.fillText('Strike! — Press Space/Enter while the arrow is in the glow', x, y-8); }
+    // Targeting selector
+    if(Game.targeting){ const cx=Math.floor(VIEW_W/2), cy=Math.floor(VIEW_H/2); for(let i=0;i<4;i++){ const [dx,dy]=DIRS[i]; const gx=cx+dx, gy=cy+dy; const px=Math.floor(o.width/2 - Math.floor(VIEW_W/2)*TILE + gx*TILE); const py=Math.floor(o.height/2 - Math.floor(VIEW_H/2)*TILE + gy*TILE); const hasTarget=entitiesAt(Game.player.x+dx, Game.player.y+dy).some(e=>e.type!==ENT.ITEM && e.type!==ENT.AI && e.type!==ENT.PLAYER); octx.strokeStyle=(i===Game.targetDirIndex)?'rgba(125,249,255,0.95)':'rgba(125,249,255,0.4)'; octx.lineWidth=(i===Game.targetDirIndex)?3:1; octx.strokeRect(px+2,py+2,TILE-4,TILE-4); if(hasTarget){ octx.fillStyle='rgba(255,255,255,0.08)'; octx.fillRect(px+4,py+4,TILE-8,TILE-8); } } octx.fillStyle='rgba(255,255,255,0.9)'; octx.font='12px monospace'; const help='Attack selector — arrows/HJKL choose • Enter/F to confirm • Esc cancel'; const tw=octx.measureText(help).width; octx.fillText(help, Math.max(12, o.width/2 - tw/2), o.height-16); }
+    // Throw preview
+    if(Game.throwing){ const path=projectilePath(Game.player.x,Game.player.y, Game.throwCursor.x, Game.throwCursor.y, THROW_RANGE); octx.strokeStyle='rgba(255,255,255,0.35)'; octx.lineWidth=1; octx.beginPath(); for(const p of path){ const gx=p.x-Game.player.x+Math.floor(VIEW_W/2); const gy=p.y-Game.player.y+Math.floor(VIEW_H/2); const px=Math.floor(o.width/2 - Math.floor(VIEW_W/2)*TILE + gx*TILE)+TILE/2; const py=Math.floor(o.height/2 - Math.floor(VIEW_H/2)*TILE + gy*TILE)+TILE/2; octx.lineTo(px,py); } octx.stroke(); const end=path[path.length-1]; const ex=end.x-Game.player.x+Math.floor(VIEW_W/2); const ey=end.y-Game.player.y+Math.floor(VIEW_H/2); const epx=Math.floor(o.width/2 - Math.floor(VIEW_W/2)*TILE + ex*TILE); const epy=Math.floor(o.height/2 - Math.floor(VIEW_H/2)*TILE + ey*TILE); octx.strokeStyle='rgba(255,200,50,0.9)'; octx.strokeRect(epx+2,epy+2,TILE-4,TILE-4); octx.fillStyle='rgba(255,255,255,0.9)'; octx.font='12px monospace'; const help2=`Throw ${Game.throwItem} — arrows/HJKL move • Enter to throw • Tab cycle • Esc cancel`; const tw2=octx.measureText(help2).width; octx.fillText(help2, Math.max(12, o.width/2 - tw2/2), o.height-16); }
+    if(flashPulse>0){ octx.fillStyle=`rgba(255,255,255,${flashPulse*0.3})`; octx.fillRect(0,0,o.width,o.height); flashPulse=Math.max(0,flashPulse-0.05); }
+    if(!Game.running){ octx.fillStyle='rgba(0,0,0,0.6)'; octx.fillRect(0,0,o.width,o.height); octx.fillStyle='rgba(255,255,255,0.95)'; octx.font='bold 28px monospace'; octx.fillText('PERMADEATH — Press R', 16, 72); }
+    if(DEBUG){ octx.fillStyle='rgba(255,255,255,0.85)'; octx.font='11px monospace'; octx.fillText('xy '+Game.player.x+','+Game.player.y+'  turn '+Game.turn+'  running '+Game.running,16,56); }
+  }
+
+  function draw(){ ctx.clearRect(0,0,c.width,c.height); const px=(Game.player.x|0), py=(Game.player.y|0); const cx=px, cy=py; const vis=computeFOV(px,py);
+    for(let gy=0; gy<VIEW_H; gy++){
+      for(let gx=0; gx<VIEW_W; gx++){
+        const wx=cx+gx-Math.floor(VIEW_W/2); const wy=cy+gy-Math.floor(VIEW_H/2); const t=tileAt(wx,wy); let visible=vis.has(wx+','+wy); if(wx===px && wy===py) visible=true; const ch=chunkFor(wx,wy); const lx=((wx%CHUNK)+CHUNK)%CHUNK; const ly=((wy%CHUNK)+CHUNK)%CHUNK; const seen=ch.seen[ly*CHUNK+lx]; drawTile(gx,gy,t,visible,seen);
+        if(visible){ const ents=entitiesAt(wx,wy); for(const e of ents){ if(e.type===ENT.ITEM){ drawGlyph(gx,gy,e.char,(e.item===ITEM.SIGIL?'#ff77ff':'#8ff')); } } const mob=ents.find(e=>e.type!==ENT.ITEM); if(mob){ drawGlyph(gx,gy,mob===Game.player?'@':mob.char, mob.color); } }
+        // effects (visual)
+        for(const ef of Game.effects){ if(ef.x===wx && ef.y===wy){ const px2=Math.floor(c.width/2 - Math.floor(VIEW_W/2)*TILE + gx*TILE); const py2=Math.floor(c.height/2 - Math.floor(VIEW_H/2)*TILE + gy*TILE); ctx.fillStyle='rgba(255,120,40,0.35)'; ctx.fillRect(px2+3,py2+3,TILE-6,TILE-6); } }
+      }
+    }
+    drawGlyph(Math.floor(VIEW_W/2), Math.floor(VIEW_H/2), '@', Game.player.color);
+    drawOverlay();
+  }
+
+  function loop(){ animT+=0.016; if(Game.minigame&&Game.minigame.active){ Game.minigame.t += 0.016; } if(performance.now()-lastInputTs>4000 && document.activeElement!==c){ try{ c.focus(); }catch(_){} } draw(); requestAnimationFrame(loop); }
+
+  // --- Persistence / New run / Buttons ------------------------------------
+  function saveHighscore(){ const best=JSON.parse(localStorage.getItem('chelm_high')||'{}'); const score=Math.abs(Game.player.x)+Math.abs(Game.player.y)+Game.turn*0.1; const run={score,turn:Game.turn,seed:Game.seed,time:Date.now()}; if(!best.score || score>best.score){ localStorage.setItem('chelm_high', JSON.stringify(run)); log(`New high score: ${score.toFixed(1)} (seed ${Game.seed})`); } else { log(`Score: ${score.toFixed(1)}. High: ${best.score.toFixed(1)} (seed ${best.seed})`); } }
+  function newRun(seedOpt){ Game.chunks.clear(); Game.messages.length=0; logEl.textContent=''; Game.effects.length=0; Game.running=true; Game.turn=0; Game.seed=seedOpt || ('CHELMSLEY-'+Math.random().toString(36).slice(2,7).toUpperCase()); Game.rng=seeded(Game.seed); lastChunk=null; flashPulse=0; initOrifice(); Player.spawn(); hpbar.max=Game.player.maxhp; psybar.max=Game.player.maxpsy; weaponEl.textContent=`${Game.player.weapon.name} (${Game.player.weapon.dmg})`; armorEl.textContent='—'; seedEl.textContent=Game.seed; const best=JSON.parse(localStorage.getItem('chelm_high')||'{}'); if(best.score){ log(`High score: ${best.score.toFixed(1)} (seed ${best.seed})`); } draw(); }
+  btnNew.addEventListener('click', ()=>{ const s=prompt('Enter seed (optional)'); newRun(s||undefined); });
+  btnCRT.addEventListener('click', ()=>{ Game.crt=!Game.crt; updateCRTUI(); log('CRT '+(Game.crt?'enabled':'disabled')); });
+
+  // --- Start ---------------------------------------------------------------
+  fitCanvas(); updateCRTUI(); newRun(); loop();
+
+})();
+</script>
+</body>
+</html>
+"""
+path = "/mnt/data/Chelmsley_World_Roguelike.html"
+with open(path, "w", encoding="utf-8") as f:
+    f.write(html)
+path
