@@ -1,0 +1,859 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dual-View Bot World — 10k Trails, DSL, Obstacles, Fatigue</title>
+<style>
+  :root{
+    --bg: #0c0f14;
+    --panel: #131823;
+    --text: #e6eef9;
+    --muted: #a2b3c7;
+  }
+  *{box-sizing:border-box}
+  html, body { height:100%; background:var(--bg); color:var(--text); margin:0; font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans"; }
+  #app { display:flex; flex-direction:column; height:100%; }
+  header{
+    background: linear-gradient(180deg, #0e131c 0%, #0b0f17 100%);
+    border-bottom: 1px solid #1f2633;
+    padding: 8px 12px;
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    position: sticky; top:0; z-index:5;
+  }
+  header .title{ font-weight:700; opacity:.9; letter-spacing:.2px; margin-right:8px; }
+  .pill{ background:#0f1420; border:1px solid #1d2432; border-radius:999px; padding:6px 10px; display:inline-flex; align-items:center; gap:8px; }
+  .btn{ cursor:pointer; border:1px solid #1e2634; background:#121826; color:var(--text); padding:6px 10px; border-radius:10px; transition:.15s ease; }
+  .btn:hover{ border-color:#2a3448; background:#0f1522; }
+  .btn:active{ transform:translateY(1px); }
+  .sep{ width:1px; height:26px; background:#20283a; margin:0 4px; }
+  .label{ color:var(--muted); font-size:12px; margin-right:6px; }
+  input[type="range"]{ accent-color: #69e090; }
+  .value{ font-variant-numeric: tabular-nums; }
+
+  main{ flex:1; display:grid; grid-template-columns: 1.6fr 1fr 0.9fr; gap:10px; padding:10px; overflow:hidden; }
+  .panel{ background:var(--panel); border:1px solid #1e2431; border-radius:14px; overflow:hidden; display:flex; flex-direction:column; min-height:0; }
+  .canvasWrap{ position:relative; flex:1; }
+  canvas{ display:block; width:100%; height:100%; background: #0a0e15; }
+  .border{ position:absolute; inset:0; pointer-events:none; border:1px solid #20283a; border-radius:12px; }
+  .hud{ padding:8px 10px; border-top:1px solid #1e2431; display:grid; grid-template-columns: 1fr 1fr; gap:6px 12px; font-size:12px; }
+  .hud .row{ display:flex; gap:6px; align-items:center; }
+  .state{ padding:4px 8px; border-radius:8px; background:#101827; border:1px solid #1f2838; color:#c9d6ea; }
+  .fatigueBar{ height:10px; background:#0f1420; border:1px solid #20283a; border-radius:6px; overflow:hidden; }
+  .fatigueBar > div{ height:100%; background: linear-gradient(90deg, #3ddf8f, #ff9900, #ff5577); width:0%; }
+  .status{ padding:10px; border-top:1px solid #1e2431; background:#0e1420; font-size:12px; color:#bdcbe2; white-space:normal; word-break:break-word; }
+  .status code{ color:#e9f3ff; background:#0d1320; padding:1px 4px; border-radius:6px; }
+
+  .sidebar{ display:flex; flex-direction:column; }
+  .sidebar .group{ padding:10px; border-bottom:1px solid #1e2431; }
+  .sidebar .group h3{ margin:0 0 8px 0; font-size:13px; color:#cfe2ff; opacity:.9; }
+  textarea{ width:100%; min-height:220px; resize:vertical; background:#0a0f19; color:#e9f3ff; border:1px solid #1d2331; border-radius:10px; padding:10px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+  .legend{ position:absolute; right:8px; top:8px; background:#0b111c; border:1px solid #1e2431; color:#c7d7ef; font-size:12px; padding:6px 8px; border-radius:8px; }
+  .legend .dot{ display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+  .legend .row{ white-space:nowrap; }
+  .footerNote{ font-size:11px; color:#8ea3c5; padding:6px 10px; opacity:.7; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="title">Dual-View Bot World</div>
+
+    <button id="pauseBtn" class="btn">Pause</button>
+    <button id="stepBtn" class="btn">Step ⏭️</button>
+    <div class="sep"></div>
+    <button id="exportBtn" class="btn">Export 10k Trail PNG</button>
+
+    <div class="sep"></div>
+
+    <span class="label">Zoom</span>
+    <input id="zoomSlider" type="range" min="0.01" max="2.50" value="0.10" step="0.01" />
+    <span class="value" id="zoomVal">0.10×</span>
+
+    <div class="sep"></div>
+
+    <span class="label">Speed</span>
+    <input id="speedSlider" type="range" min="0.1" max="10" value="1" step="0.05" />
+    <span class="value" id="speedVal">1.00×</span>
+
+    <div class="sep"></div>
+    <span class="state" id="runState">Running</span>
+    <div class="pill">
+      <span class="label">Focus</span>
+      <span class="value" id="focusInfo">A#0</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- Left: Follow Cam -->
+    <section class="panel" id="leftPanel">
+      <div class="canvasWrap">
+        <canvas id="followCanvas"></canvas>
+        <div class="border"></div>
+        <div class="legend">
+          <div class="row"><span class="dot" style="background:#2fe36e"></span>Type A</div>
+          <div class="row"><span class="dot" style="background:#ff9900"></span>Type B</div>
+        </div>
+      </div>
+      <div class="hud">
+        <div class="row"><span class="label">Fatigue</span><div class="fatigueBar" style="flex:1"><div id="fatigueFill"></div></div></div>
+        <div class="row"><span class="label">Goal Interval</span><span class="value" id="goalIntervalLbl">60.0 s</span></div>
+        <div class="row"><span class="label">Pos</span><span class="value" id="posLbl">-</span></div>
+        <div class="row"><span class="label">Heading</span><span class="value" id="headingLbl">-</span></div>
+        <div class="row"><span class="label">Wheel Ratio</span><span class="value" id="wheelRatioLbl">-</span></div>
+        <div class="row"><span class="label">Limp Amp</span><span class="value" id="limpAmpLbl">-</span></div>
+        <div class="row"><span class="label">Rest Left</span><span class="value" id="restLbl">0.0 s</span></div>
+        <div class="row"><span class="label">Goal</span><span class="value" id="goalLbl">-</span></div>
+      </div>
+      <div class="status" id="statusText"></div>
+    </section>
+
+    <!-- Right: Full Map -->
+    <section class="panel" id="rightPanel">
+      <div class="canvasWrap">
+        <canvas id="mapCanvas"></canvas>
+        <div class="border"></div>
+      </div>
+      <div class="footerNote">Full-world view (fit to canvas). Trails: A under B. Obstacles (polygons), single active goal, in-bounds reflection.</div>
+    </section>
+
+    <!-- Sidebar: DSL + Tips -->
+    <aside class="panel sidebar">
+      <div class="group">
+        <h3>Abstract Programming Language</h3>
+        <textarea id="dsl" spellcheck="false"></textarea>
+        <div style="display:flex; gap:8px; margin-top:8px;">
+          <button id="runBtn" class="btn">Run</button>
+          <button id="resetBtn" class="btn">Reset</button>
+        </div>
+      </div>
+      <div class="group">
+        <h3>Tips</h3>
+        <div class="tips">
+          “Bot type A (green) implies the author's leg length discrepancy and is therefore asymmetric and the extra effort required for forwards motion increases fatigue. Bot type B (orange) is a standard, symmetric bot with correspondingly reduced fatigue rate. At 100% fatigue, bots rest, then resume.”
+        </div>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  // ======= Constants & Utilities =======
+  const WORLD = { W: 10000, H: 10000 };
+  const TWO_PI = Math.PI * 2;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a,b,t) => a + (b-a)*t;
+  const angleWrap = (a) => { while(a > Math.PI) a -= TWO_PI; while(a < -Math.PI) a += TWO_PI; return a; };
+  const randRange = (a,b) => a + Math.random()*(b-a);
+  const dist2 = (x1,y1,x2,y2) => { const dx=x2-x1, dy=y2-y1; return dx*dx+dy*dy; };
+  const hexColorRe = /^#([0-9a-fA-F]{6})$/;
+
+  function pointInPoly(x, y, poly){
+    let inside = false;
+    for (let i=0, j=poly.length-1; i<poly.length; j=i++){
+      const xi = poly[i].x, yi=poly[i].y, xj = poly[j].x, yj = poly[j].y;
+      const intersect = ((yi>y)!=(yj>y)) && (x < (xj-xi)*(y-yi)/(yj-yi+1e-9) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+  function polyCentroid(poly){ let x=0,y=0; for(const p of poly){ x+=p.x; y+=p.y; } return {x:x/poly.length, y:y/poly.length}; }
+  function sanitizeTrailColor(type, c){ return hexColorRe.test(c||'') ? c : (type==='A' ? '#2fe36e' : '#ff9900'); }
+  function downloadURI(uri, name){ const a = document.createElement('a'); a.href = uri; a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
+
+  // ======= Offscreen Trail Layers (10k×10k) =======
+  let trailA, trailB, trailACtx, trailBCtx;
+  function ensureTrailLayers(){
+    if (trailA && trailB) return true;
+    try{
+      if (window.OffscreenCanvas){
+        trailA = new OffscreenCanvas(WORLD.W, WORLD.H);
+        trailB = new OffscreenCanvas(WORLD.W, WORLD.H);
+      }else{
+        trailA = document.createElement('canvas'); trailA.width = WORLD.W; trailA.height = WORLD.H;
+        trailB = document.createElement('canvas'); trailB.width = WORLD.W; trailB.height = WORLD.H;
+      }
+      trailACtx = trailA.getContext('2d'); trailBCtx = trailB.getContext('2d');
+      trailACtx.imageSmoothingEnabled = false; trailBCtx.imageSmoothingEnabled = false;
+      clearTrails();
+      return true;
+    }catch(e){
+      console.error('Trail layer allocation failed', e);
+      alert('Failed to allocate 10k trail layers. Your device may be out of memory.');
+      return false;
+    }
+  }
+  function clearTrails(){
+    if (!trailACtx||!trailBCtx) return;
+    for (const ctx of [trailACtx, trailBCtx]){
+      ctx.save(); ctx.globalCompositeOperation = 'source-over';
+      ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,WORLD.W,WORLD.H); ctx.restore();
+    }
+  }
+
+  // ======= Simulation Types & Defaults =======
+  const DefaultA = {
+    type:'A', color:'#2fe36e', trailColor:'#2fe36e', trailWidth:2, trailOpacity:1.0,
+    maxSpeed: 160, wheelRatio: 0.75, kp: 2.0, kd: 0.6, speedNoise: 0.04, steerNoise: 0.08,
+    fatigueRateScalar: 1.0, fatigueNoise: 0.02, restSeconds: 15,
+    limp: { amp: 0.35, freq: 0.25, bias: 0.0 },
+  };
+  const DefaultB = {
+    type:'B', color:'#ff9900', trailColor:'#ff9900', trailWidth:2, trailOpacity:1.0,
+    maxSpeed: 180, wheelRatio: 1.0, kp: 2.0, kd: 0.6, speedNoise: 0.03, steerNoise: 0.06,
+    fatigueRateScalar: 0.5, fatigueNoise: 0.01, restSeconds: 15,
+    limp: { amp: 0.0, freq: 0.0, bias: 0.0 },
+  };
+  let TypeDefaults = { A: JSON.parse(JSON.stringify(DefaultA)), B: JSON.parse(JSON.stringify(DefaultB)) };
+
+  // ======= World State =======
+  let bots = [];
+  let focusIndex = 0;
+  let obstacles = [];
+  let goal = null; // {x,y}
+  let goalInterval = 60; // seconds (sim-time)
+  let nextGoalTime = goalInterval;
+  let trailEnabled = true;
+
+  // ======= Global sim-tunable values (DSL: set sim.*) =======
+  let fatigueScale = 0.01;     // accumulate fatigue 1/100 as quickly
+  let aEscapeSpeed = 0.25;     // Type A escape speed while inside obstacle (0..1 of current v)
+  let wheelBase = 60;          // differential drive baseline (px)
+  let zoomMin = 0.01, zoomMax = 2.5; // follow-cam slider domain
+  let viewMinW = 600, viewMaxW = 4000; // world-width mapping for the follow-cam
+  let GOAL_MARGIN = 600;       // goal placement margin from edges
+
+  // Render/sim tunables
+  let trailCap = 'round';        // 'butt' | 'round' | 'square'
+  let trailJoin = 'round';       // 'miter' | 'round' | 'bevel'
+  let goalOuterR = 30;           // base outer radius
+  let goalInnerR = 6;            // base inner radius
+  let botScale = 1.0;            // bot glyph scale
+  let restSecondsGlobal = null;  // if set, overrides all bots' restSeconds
+
+  // ======= Runtime =======
+  const fixedDT = 1/60; // fixed step seconds
+  const maxSubsteps = 8; // cap
+  let simTime = 0; // seconds (sim-time)
+  let speedFactor = 1; // sim-time multiplier
+  let paused = false;
+  let accumulator = 0; // sim-time accumulator
+  let followZoom = 0.10; // default closer follow (can be changed via slider/DSL)
+
+  // ======= Canvases & Views =======
+  const followCanvas = document.getElementById('followCanvas');
+  const mapCanvas = document.getElementById('mapCanvas');
+  const fctx = followCanvas.getContext('2d');
+  const mctx = mapCanvas.getContext('2d');
+  fctx.imageSmoothingEnabled = false; mctx.imageSmoothingEnabled = false;
+
+  const leftPanel = document.getElementById('leftPanel');
+  const rightPanel = document.getElementById('rightPanel');
+
+  function resize(){
+    // Reserve more vertical space so HUD + status never clip
+    followCanvas.width = leftPanel.clientWidth;
+    followCanvas.height = leftPanel.clientHeight - 150; // was -120
+    mapCanvas.width = rightPanel.clientWidth;
+    mapCanvas.height = rightPanel.clientHeight - 26; // footer note
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ======= Bot Class =======
+  class Bot{
+    constructor(def){
+      Object.assign(this, JSON.parse(JSON.stringify(def)));
+      this.x = Math.random()*WORLD.W; this.y = Math.random()*WORLD.H;
+      this.theta = Math.random()*TWO_PI;
+      this.v = 0; this.w = 0;
+      this.prevErr = 0;
+      this.fatigue = 0; // 0..1
+      this.resting = false; this.restLeft = 0;
+      this.prevX = this.x; this.prevY = this.y;
+      this.id = 0; // assigned at push
+    }
+  }
+
+  // ======= Spawning & Helpers =======
+  function spawn(type){
+    const def = TypeDefaults[type];
+    const b = new Bot(def);
+    if (restSecondsGlobal != null) b.restSeconds = restSecondsGlobal;
+    b.id = bots.length;
+    bots.push(b);
+    return b;
+  }
+  function spawnMany(type, n){ for(let i=0;i<n;i++) spawn(type); }
+
+  function focus(i){ focusIndex = clamp(i|0, 0, Math.max(0,bots.length-1)); }
+
+  function isInsideAnyObstacle(x,y){
+    for(const poly of obstacles){ if (pointInPoly(x,y,poly)) return true; }
+    return false;
+  }
+
+  function randomGoal(){
+    const x = randRange(GOAL_MARGIN, WORLD.W - GOAL_MARGIN);
+    const y = randRange(GOAL_MARGIN, WORLD.H - GOAL_MARGIN);
+    goal = {x,y};
+  }
+  function setGoal(x,y){ goal = { x: clamp(x,0,WORLD.W), y: clamp(y,0,WORLD.H) }; }
+
+  // ======= Simulation Step =======
+  function step(dt){
+    simTime += dt;
+
+    if (simTime >= nextGoalTime){ randomGoal(); nextGoalTime += goalInterval; }
+
+    for (const b of bots){
+      if (b.resting){
+        b.restLeft -= dt;
+        if (b.restLeft <= 0){ b.resting = false; b.fatigue = 0; }
+        continue;
+      }
+
+      let vCmd = b.maxSpeed * (1 - 0.25*b.fatigue);
+      let wCmd = 0;
+      if (goal){
+        const toGoal = Math.atan2(goal.y - b.y, goal.x - b.x);
+        const err = angleWrap(toGoal - b.theta);
+        const derr = (err - b.prevErr) / dt;
+        wCmd = b.kp * err + b.kd * derr;
+        b.prevErr = err;
+      }
+
+      // Limp oscillator & bias
+      const limpTerm = (b.limp?.amp||0) * Math.sin(TWO_PI*(b.limp?.freq||0)*simTime) + (b.limp?.bias||0);
+      wCmd += limpTerm;
+
+      // Noise
+      wCmd += (Math.random()*2-1) * b.steerNoise;
+      vCmd *= (1 + (Math.random()*2-1) * b.speedNoise);
+
+      // Differential drive with asymmetry
+      let wl = vCmd - (wCmd*wheelBase)/2;
+      let wr = vCmd + (wCmd*wheelBase)/2;
+      wl *= b.wheelRatio; // weaker left wheel if wheelRatio<1
+      const v = (wl + wr)/2;
+      const w = (wr - wl)/wheelBase;
+
+      // Proposed new pose
+      let nx = b.x + Math.cos(b.theta) * v * dt;
+      let ny = b.y + Math.sin(b.theta) * v * dt;
+      let ntheta = angleWrap(b.theta + w * dt);
+
+      // Bounds reflection
+      if (nx < 0){ nx = 0; ntheta = Math.PI - ntheta; }
+      if (nx > WORLD.W){ nx = WORLD.W; ntheta = Math.PI - ntheta; }
+      if (ny < 0){ ny = 0; ntheta = -ntheta; }
+      if (ny > WORLD.H){ ny = WORLD.H; ntheta = -ntheta; }
+
+      // Obstacle rule
+      if (b.type==='A'){
+        const wasInside = isInsideAnyObstacle(b.x, b.y);
+        const willBeInside = isInsideAnyObstacle(nx, ny);
+        if (!wasInside && willBeInside){
+          // Cannot enter: cancel forward advance and gently steer away from nearest obstacle centroid
+          nx = b.x; ny = b.y;
+          let nearest = null; let bestD = Infinity;
+          for (const poly of obstacles){
+            const c = polyCentroid(poly); const d2 = dist2(b.x,b.y,c.x,c.y); if (d2 < bestD){ bestD = d2; nearest = c; }
+          }
+          if (nearest){
+            const away = Math.atan2(b.y - nearest.y, b.x - nearest.x);
+            const err = angleWrap(away - b.theta);
+            ntheta = angleWrap(b.theta + clamp(err, -0.5, 0.5) * 0.35);
+          }
+        } else if (wasInside && willBeInside){
+          // Escape mode: move outward at 25% speed toward outside
+          let nearest = null; let bestD = Infinity;
+          for (const poly of obstacles){
+            if (!pointInPoly(b.x,b.y,poly)) continue;
+            const c = polyCentroid(poly); const d2 = dist2(b.x,b.y,c.x,c.y); if (d2 < bestD){ bestD = d2; nearest = c; }
+          }
+          if (nearest){
+            const away = Math.atan2(b.y - nearest.y, b.x - nearest.x);
+            ntheta = away;
+            nx = b.x + Math.cos(ntheta) * (v*aEscapeSpeed) * dt;
+            ny = b.y + Math.sin(ntheta) * (v*aEscapeSpeed) * dt;
+          }
+        }
+      }
+      // Type B: may enter obstacles freely
+
+      // Trails
+      if (trailEnabled){
+        const ctx = (b.type==='A') ? trailACtx : trailBCtx;
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.lineCap = trailCap; ctx.lineJoin = trailJoin;
+        const color = sanitizeTrailColor(b.type, b.trailColor);
+        ctx.strokeStyle = color;
+        ctx.globalAlpha = clamp(b.trailOpacity ?? 1, 0, 1);
+        ctx.lineWidth = clamp(b.trailWidth ?? 2, 1, 16);
+        ctx.beginPath();
+        ctx.moveTo(b.prevX, b.prevY);
+        ctx.lineTo(nx, ny);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      b.prevX = b.x; b.prevY = b.y;
+      b.x = nx; b.y = ny; b.theta = ntheta;
+
+      // Fatigue accumulation (scaled to 1/100 by default)
+      const asym = Math.abs(1 - b.wheelRatio);
+      const limpAmt = Math.abs(b.limp?.amp||0) + Math.abs(b.limp?.bias||0);
+      const ineff = 1 + 1.2*asym + 0.8*limpAmt;
+      const controlEffort = 0.5 + Math.min(1, Math.abs(wCmd));
+      const baseRate = 0.004;
+      const noise = (Math.random()*2-1) * (b.fatigueNoise||0);
+      b.fatigue = clamp(b.fatigue + (baseRate * controlEffort * ineff * (b.fatigueRateScalar||1) + noise) * dt * 60 * fatigueScale, 0, 1);
+
+      if (b.fatigue >= 1){ b.resting = true; b.restLeft = (restSecondsGlobal ?? b.restSeconds) || 15; }
+    }
+  }
+
+  // ======= Rendering =======
+  function drawObstacles(ctx){
+    ctx.save();
+    ctx.lineWidth = 2; ctx.strokeStyle = '#5a6a86'; ctx.fillStyle = 'rgba(90,106,134,0.08)';
+    for (const poly of obstacles){
+      ctx.beginPath();
+      ctx.moveTo(poly[0].x, poly[0].y);
+      for (let i=1;i<poly.length;i++) ctx.lineTo(poly[i].x, poly[i].y);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Pulsing, prominent goal (sim-time based so speed slider affects rate)
+  function drawGoal(ctx, x,y){
+    ctx.save();
+    const pulse = 0.8 + 0.2 * Math.sin(simTime * TWO_PI * 0.5); // 0.5 Hz
+    const outerR = goalOuterR * (0.9 + 0.3*pulse);
+    const innerR = goalInnerR * (0.9 + 0.3*pulse);
+
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = '#00eaff';
+    ctx.fillStyle = 'rgba(0,234,255,0.25)';
+    ctx.shadowColor = '#00eaff';
+    ctx.shadowBlur = 18 * (0.8 + 0.4*pulse);
+
+    ctx.beginPath(); ctx.arc(x,y, outerR, 0, TWO_PI); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x,y, innerR, 0, TWO_PI); ctx.fill();
+
+    ctx.globalAlpha = 0.25 * pulse;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(x,y, outerR * (1.25 + 0.35*pulse), 0, TWO_PI); ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function roundRect(ctx, x, y, w, h, r){
+    ctx.beginPath();
+    ctx.moveTo(x+r, y);
+    ctx.lineTo(x+w-r, y);
+    ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+    ctx.lineTo(x+w, y+h-r);
+    ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+    ctx.lineTo(x+r, y+h);
+    ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+    ctx.lineTo(x, y+r);
+    ctx.quadraticCurveTo(x, y, x+r, y);
+    ctx.closePath();
+  }
+
+  function drawBot(ctx, b){
+    ctx.save();
+    ctx.translate(b.x, b.y); ctx.rotate(b.theta);
+    const isA = b.type==='A';
+    const body = isA? '#2fe36e' : '#ff9900';
+    const stroke = isA? '#1a8d4b' : '#b36a00';
+    ctx.fillStyle = body; ctx.strokeStyle = stroke; ctx.lineWidth = 2;
+    const w=36*botScale, h=22*botScale, r=6*botScale;
+    roundRect(ctx, -w/2, -h/2, w, h, r); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#0b0f15';
+    ctx.fillRect(-w/2-6*botScale, -h/2, 6*botScale, h);
+    ctx.fillRect(w/2, -h/2, 6*botScale, h);
+    ctx.beginPath(); ctx.moveTo(w/2+10*botScale, 0); ctx.lineTo(w/2-2*botScale, -8*botScale); ctx.lineTo(w/2-2*botScale, 8*botScale);
+    ctx.closePath(); ctx.fillStyle = isA? '#98f5c2' : '#ffd699'; ctx.fill();
+    ctx.restore();
+  }
+
+  function drawFollow(){
+    const W = followCanvas.width, H = followCanvas.height;
+    fctx.setTransform(1,0,0,1,0,0); fctx.clearRect(0,0,W,H);
+
+    if (bots.length===0){
+      fctx.fillStyle = '#0b0f18'; fctx.fillRect(0,0,W,H);
+      fctx.fillStyle = '#5b6b86'; fctx.textAlign='center'; fctx.font='12px ui-monospace';
+      fctx.fillText('No bots yet — use DSL to spawnA/spawnB', W/2, H/2);
+      return;
+    }
+    const fb = bots[focusIndex] || bots[0];
+
+    // Map slider domain (zoomMin..zoomMax) to world-width window (viewMinW..viewMaxW)
+    const t = clamp((followZoom - zoomMin) / (zoomMax - zoomMin), 0, 1);
+    const viewW = lerp(viewMinW, viewMaxW, t);
+    const viewH = viewW * (followCanvas.height/followCanvas.width);
+
+    let cx = clamp(fb.x, viewW/2, WORLD.W - viewW/2);
+    let cy = clamp(fb.y, viewH/2, WORLD.H - viewH/2);
+
+    const scaleX = W / viewW; const scaleY = H / viewH;
+    fctx.setTransform(scaleX, 0, 0, scaleY, -cx*scaleX + W/2, -cy*scaleY + H/2);
+
+    // Background
+    fctx.fillStyle = '#0a0e15'; fctx.fillRect(cx - viewW/2, cy - viewH/2, viewW, viewH);
+
+    // Trails (A then B)
+    if (trailA) fctx.drawImage(trailA, cx - viewW/2, cy - viewH/2, viewW, viewH, cx - viewW/2, cy - viewH/2, viewW, viewH);
+    if (trailB) fctx.drawImage(trailB, cx - viewW/2, cy - viewH/2, viewW, viewH, cx - viewW/2, cy - viewH/2, viewW, viewH);
+
+    drawObstacles(fctx);
+    if (goal && goal.x>=cx - viewW/2 && goal.x<=cx + viewW/2 && goal.y>=cy - viewH/2 && goal.y<=cy + viewH/2){
+      drawGoal(fctx, goal.x, goal.y);
+    }
+    for (const b of bots){ drawBot(fctx, b); }
+  }
+
+  function drawMap(){
+    const W = mapCanvas.width, H = mapCanvas.height;
+    mctx.setTransform(1,0,0,1,0,0); mctx.clearRect(0,0,W,H);
+    // Fit full world
+    const scale = Math.min(W/WORLD.W, H/WORLD.H);
+    const ox = (W - WORLD.W*scale)/2; const oy = (H - WORLD.H*scale)/2;
+    mctx.setTransform(scale, 0, 0, scale, ox, oy);
+
+    // Background & border
+    mctx.fillStyle = '#0a0e15'; mctx.fillRect(0,0,WORLD.W,WORLD.H);
+    mctx.strokeStyle = '#263047'; mctx.lineWidth = 4/scale; mctx.strokeRect(0,0,WORLD.W,WORLD.H);
+
+    // Trails
+    if (trailA) mctx.drawImage(trailA, 0,0);
+    if (trailB) mctx.drawImage(trailB, 0,0);
+
+    drawObstacles(mctx);
+    if (goal) drawGoal(mctx, goal.x, goal.y);
+
+    for (const b of bots){ drawBot(mctx, b); }
+  }
+
+  // ======= HUD & Controls =======
+  const runState = document.getElementById('runState');
+  const focusInfo = document.getElementById('focusInfo');
+  const fatigueFill = document.getElementById('fatigueFill');
+  const goalIntervalLbl = document.getElementById('goalIntervalLbl');
+  const posLbl = document.getElementById('posLbl');
+  const headingLbl = document.getElementById('headingLbl');
+  const wheelRatioLbl = document.getElementById('wheelRatioLbl');
+  const limpAmpLbl = document.getElementById('limpAmpLbl');
+  const restLbl = document.getElementById('restLbl');
+  const goalLbl = document.getElementById('goalLbl');
+  const statusText = document.getElementById('statusText');
+
+  const pauseBtn = document.getElementById('pauseBtn');
+  const stepBtn = document.getElementById('stepBtn');
+  const exportBtn = document.getElementById('exportBtn');
+  const zoomSlider = document.getElementById('zoomSlider');
+  const zoomVal = document.getElementById('zoomVal');
+  const speedSlider = document.getElementById('speedSlider');
+  const speedVal = document.getElementById('speedVal');
+
+  pauseBtn.addEventListener('click', ()=>{ paused = !paused; pauseBtn.textContent = paused? 'Resume' : 'Pause'; });
+  stepBtn.addEventListener('click', ()=>{ if (paused){ accumulator += fixedDT; }});
+  exportBtn.addEventListener('click', exportTrails);
+  zoomSlider.addEventListener('input', ()=>{ followZoom = parseFloat(zoomSlider.value); zoomVal.textContent = followZoom.toFixed(2)+'×'; });
+  speedSlider.addEventListener('input', ()=>{ speedFactor = parseFloat(speedSlider.value); speedVal.textContent = speedFactor.toFixed(2)+'×'; });
+
+  window.addEventListener('keydown', (e)=>{
+    if (e.key==='['){ focus(Math.max(0, focusIndex-1)); }
+    if (e.key===']'){ focus(Math.min(bots.length-1, focusIndex+1)); }
+  });
+
+  function updateHUD(){
+    runState.textContent = paused? 'Paused' : 'Running';
+    goalIntervalLbl.textContent = goalInterval.toFixed(1) + ' s';
+    if (bots.length>0){
+      const b = bots[focusIndex];
+      focusInfo.textContent = b.type + '#' + focusIndex;
+      fatigueFill.style.width = Math.round((b.fatigue||0)*100)+'%';
+      posLbl.textContent = `${b.x.toFixed(1)}, ${b.y.toFixed(1)}`;
+      headingLbl.textContent = (b.theta*180/Math.PI).toFixed(1) + '°';
+      wheelRatioLbl.textContent = (b.wheelRatio||1).toFixed(2);
+      limpAmpLbl.textContent = (b.limp?.amp||0).toFixed(2);
+      restLbl.textContent = (b.restLeft||0).toFixed(1) + ' s';
+    } else {
+      focusInfo.textContent = '-';
+      fatigueFill.style.width = '0%';
+      posLbl.textContent = headingLbl.textContent = wheelRatioLbl.textContent = limpAmpLbl.textContent = '—';
+      restLbl.textContent = '0.0 s';
+    }
+    goalLbl.textContent = goal? `${goal.x.toFixed(1)}, ${goal.y.toFixed(1)}` : '—';
+    statusText.innerHTML = `simTime=<code>${simTime.toFixed(2)}s</code>
+      &nbsp; speed=<code>${speedFactor.toFixed(2)}×</code>
+      &nbsp; bots=<code>${bots.length}</code>
+      &nbsp; obstacles=<code>${obstacles.length}</code>
+      &nbsp; trail=<code>${trailEnabled? 'on' : 'off'}</code>
+      &nbsp; fatScale=<code>${fatigueScale.toFixed(3)}</code>
+      &nbsp; wheelBase=<code>${wheelBase}</code>
+      &nbsp; margin=<code>${GOAL_MARGIN}</code>
+      &nbsp; trail=<code>${trailCap}/${trailJoin}</code>
+      &nbsp; goalR=<code>${goalOuterR}/${goalInnerR}</code>
+      &nbsp; botScale=<code>${botScale.toFixed(2)}</code>`;
+  }
+
+  // ======= Export Trails (A then B composited) =======
+  function exportTrails(){
+    if (!ensureTrailLayers()) return;
+    const out = document.createElement('canvas');
+    out.width = WORLD.W; out.height = WORLD.H;
+    const octx = out.getContext('2d');
+    octx.imageSmoothingEnabled = false;
+    octx.drawImage(trailA, 0,0);
+    octx.drawImage(trailB, 0,0);
+    const url = out.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url; a.download = 'bot_trails_10000x10000.png';
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+
+  // ======= DSL =======
+  const dslEl = document.getElementById('dsl');
+  const runBtn = document.getElementById('runBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  runBtn.addEventListener('click', runDSL);
+  resetBtn.addEventListener('click', ()=>{ resetWorld(); });
+
+  function parseValue(tok){
+    if (tok===undefined) return undefined;
+    if (tok==='true') return true; if (tok==='false') return false;
+    if (/^-?\d+(?:\.\d+)?$/.test(tok)) return parseFloat(tok);
+    if (hexColorRe.test(tok)) return tok;
+    return tok;
+  }
+  function setPath(obj, path, value){
+    const keys = path.split('.');
+    let cur = obj;
+    for (let i=0;i<keys.length-1;i++){
+      const k = keys[i]; if (cur[k]===undefined) cur[k] = {};
+      cur = cur[k];
+    }
+    cur[keys[keys.length-1]] = value;
+  }
+  function applySetType(type, path, value){
+    const d = TypeDefaults[type]; if (!d) return;
+    setPath(d, path, value);
+    for (const b of bots){ if (b.type===type) setPath(b, path, value); }
+  }
+  function applySetBot(path, value){
+    const b = bots[focusIndex]; if (!b) return;
+    setPath(b, path.replace(/^bot\./,''), value);
+  }
+  function applySetSim(path, value){
+    const key = path.replace(/^sim\./,'');
+    switch(key){
+      case 'goalInterval': goalInterval = Math.max(5, +value||goalInterval); nextGoalTime = simTime + goalInterval; break;
+      case 'fatigueScale': fatigueScale = Math.max(0, +value||fatigueScale); break;
+      case 'speedFactor': speedFactor = Math.max(0.01, +value||speedFactor); speedSlider.value = String(speedFactor); speedVal.textContent = speedFactor.toFixed(2)+'×'; break;
+      case 'trail': trailEnabled = !!(+value); break;
+      case 'escapeSpeedA': aEscapeSpeed = clamp(+value||aEscapeSpeed, 0, 1); break;
+      case 'followZoom': followZoom = clamp(+value||followZoom, zoomMin, zoomMax); zoomSlider.value = String(followZoom); zoomVal.textContent = followZoom.toFixed(2)+'×'; break;
+      case 'margin': GOAL_MARGIN = clamp(+value||GOAL_MARGIN, 0, Math.min(WORLD.W, WORLD.H)/2); break;
+      case 'wheelBase': wheelBase = clamp(+value||wheelBase, 1, 500); break;
+      case 'minViewW': viewMinW = clamp(+value||viewMinW, 50, viewMaxW-1); break;
+      case 'maxViewW': viewMaxW = clamp(+value||viewMaxW, viewMinW+1, WORLD.W); break;
+      case 'zoomMin': { const v = +value; if (isFinite(v)) { zoomMin = clamp(v, 0.001, zoomMax-0.001); zoomSlider.min = String(zoomMin); if (followZoom < zoomMin){ followZoom = zoomMin; } } break; }
+      case 'zoomMax': { const v = +value; if (isFinite(v)) { zoomMax = clamp(v, zoomMin+0.001, 10); zoomSlider.max = String(zoomMax); if (followZoom > zoomMax){ followZoom = zoomMax; } } break; }
+      case 'trailCap': { const v = String(value||'round').toLowerCase(); if (['butt','round','square'].includes(v)) trailCap = v; break; }
+      case 'trailJoin': { const v = String(value||'round').toLowerCase(); if (['miter','round','bevel'].includes(v)) trailJoin = v; break; }
+      case 'goalOuterR': goalOuterR = clamp(+value||goalOuterR, 1, 1000); break;
+      case 'goalInnerR': goalInnerR = clamp(+value||goalInnerR, 0, 200); break;
+      case 'botScale':   botScale   = clamp(+value||botScale, 0.1, 10); break;
+      case 'restSeconds': {
+        const v = Math.max(0, +value||0);
+        restSecondsGlobal = v;
+        TypeDefaults.A.restSeconds = v; TypeDefaults.B.restSeconds = v;
+        for (const b of bots){ b.restSeconds = v; }
+        break;
+      }
+      default: break;
+    }
+  }
+
+  function addObstacleFromTokens(tokens){
+    if (tokens.length < 3) return;
+    const poly = [];
+    for (const t of tokens){
+      const [sx, sy] = t.split('/');
+      let x = parseFloat(sx), y = parseFloat(sy);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      x = clamp(x,0,WORLD.W); y = clamp(y,0,WORLD.H);
+      poly.push({x,y});
+    }
+    if (poly.length>=3) obstacles.push(poly);
+  }
+  function tokenizeLines(src){
+    const lines = src.split(/\r?\n/);
+    const clean = [];
+    for (let line of lines){
+      const i = line.indexOf('#'); if (i>=0) line = line.slice(0,i);
+      line = trimSpaces(line);
+      if (!line) continue;
+      const tokens = line.match(/(?:[^\s\"']+|\"[^\"]*\"|'[^']*')+/g) || [];
+      clean.push(tokens.map(t=>t.replace(/^\"|\"$/g,'').replace(/^'|'$/g,'')));
+    }
+    return clean;
+  }
+  function trimSpaces(s){ return (s||'').replace(/\s+$/,'').replace(/^\s+/,''); }
+  function expandMacros(tokens){
+    const out = []; const macros = {};
+    for (let i=0;i<tokens.length;i++){
+      const row = tokens[i];
+      if (row[0]==='macro'){
+        const name = row[1]; const body=[]; i++;
+        while(i<tokens.length && tokens[i][0] !== 'end'){ body.push(tokens[i]); i++; }
+        macros[name] = body; continue;
+      }
+      out.push(row);
+    }
+    const out2 = [];
+    for (let i=0;i<out.length;i++){
+      const row = out[i];
+      if (row[0]==='call'){ const name=row[1]; const body=macros[name]||[]; for(const r of body) out2.push(r); continue; }
+      if (row[0]==='repeat'){
+        const n = Math.max(0, parseInt(row[1]||'0')); const body=[]; i++;
+        while(i<out.length && out[i][0] !== 'end'){ body.push(out[i]); i++; }
+        for(let k=0;k<n;k++) for(const r of body) out2.push(r);
+        continue;
+      }
+      out2.push(row);
+    }
+    return out2;
+  }
+
+  function runDSL(){
+    if (!ensureTrailLayers()) return;
+    const src = dslEl.value || '';
+    const lines = expandMacros(tokenizeLines(src));
+
+    // Pass 1: obstacles first
+    for (const row of lines){
+      const cmd = row[0];
+      if (cmd==='addObstacle') addObstacleFromTokens(row.slice(1));
+      if (cmd==='clearObstacles'){ obstacles=[]; }
+    }
+
+    // Pass 2: everything else
+    for (const row of lines){
+      const cmd = row[0];
+      if (cmd==='addObstacle' || cmd==='clearObstacles') continue;
+
+      switch(cmd){
+        case 'spawnA': { const n = parseInt(row[1]||'1'); spawnMany('A', clamp(n,0,1000)); break; }
+        case 'spawnB': { const n = parseInt(row[1]||'1'); spawnMany('B', clamp(n,0,1000)); break; }
+        case 'focus': { const i = parseInt(row[1]||'0'); focus(i); break; }
+        case 'clearBots': { bots=[]; focusIndex=0; break; }
+        case 'addGoal': { const x=parseFloat(row[1]||'0'), y=parseFloat(row[2]||'0'); setGoal(x,y); nextGoalTime = simTime + goalInterval; break; }
+        case 'randomGoal': { randomGoal(); nextGoalTime = simTime + goalInterval; break; }
+        case 'setGoalInterval': { const s=Math.max(5, parseFloat(row[1]||'60')); goalInterval=s; nextGoalTime = simTime + goalInterval; break; }
+        case 'pause': { const v=parseInt(row[1]||'1'); paused = !!v; pauseBtn.textContent = paused? 'Resume':'Pause'; break; }
+        case 'trail': { const v = parseInt(row[1]||'1'); trailEnabled = !!v; break; }
+        case 'export': { exportTrails(); break; }
+        case 'teleport': { const b=bots[focusIndex]; if (b){ b.x = clamp(parseFloat(row[1]||b.x),0,WORLD.W); b.y = clamp(parseFloat(row[2]||b.y),0,WORLD.H); } break; }
+        case 'nudge': { const b=bots[focusIndex]; if (b){ b.x = clamp(b.x + parseFloat(row[1]||'0'),0,WORLD.W); b.y = clamp(b.y + parseFloat(row[2]||'0'),0,WORLD.H); } break; }
+        case 'setType': {
+          const type=row[1]; const path=row[2]; const value=parseValue(row[3]);
+          if ((type==='A'||type==='B') && path!==undefined) applySetType(type, path, value);
+          break; }
+        case 'set': {
+          const path=row[1]; const value=parseValue(row[2]);
+          if (!path) break;
+          if (path.startsWith('bot.')) { applySetBot(path, value); }
+          else if (path.startsWith('sim.')) { applySetSim(path, value); }
+          break; }
+        default: break;
+      }
+    }
+    for (const b of bots){ b.trailColor = sanitizeTrailColor(b.type, b.trailColor); }
+  }
+
+  // ======= Seed DSL =======
+  dslEl.value = `# Obstacles first (two examples)
+addObstacle 0/0 1000/0 1000/1000 0/1000
+addObstacle 5000/3500 6500/5000 5000/6500 3500/5000
+
+# Type-wide defaults
+setType A wheelRatio 0.70
+setType A limp.amp 0.45
+setType A limp.freq 0.22
+setType A speedNoise 0.05
+setType A fatigueNoise 0.10
+
+setType B trailColor #ff9900
+setType B fatigueRateScalar 0.5
+
+# Global/sim adjustments via set sim.*
+set sim.fatigueScale 0.01   # 1/100 fatigue rate (default)
+set sim.escapeSpeedA 0.25   # A's escape speed while inside obstacles
+set sim.goalInterval 60     # seconds
+set sim.followZoom 0.10     # default follow zoom
+set sim.margin 600          # goal spawn margin
+set sim.wheelBase 60        # differential drive baseline (px)
+set sim.minViewW 600        # follow-cam min world width
+set sim.maxViewW 4000       # follow-cam max world width
+# Rendering globals
+set sim.trailCap round       # butt|round|square
+set sim.trailJoin round      # miter|round|bevel
+set sim.goalOuterR 30        # goal ring radius
+set sim.goalInnerR 6         # goal center dot radius
+set sim.botScale 1.0         # bot glyph size scale
+# Global rest duration override (applies to all bots and defaults)
+# set sim.restSeconds 15
+
+# Spawn bots at random positions
+spawnA 10
+spawnB 10
+focus 0
+
+# Goal logic
+randomGoal
+`;
+
+  // ======= Main Loop =======
+  let lastWall = performance.now();
+  function frame(now){
+    const wallDT = Math.min(0.25, (now - lastWall)/1000);
+    lastWall = now;
+
+    accumulator += wallDT * speedFactor;
+
+    let sub=0;
+    if (!paused){
+      while(accumulator >= fixedDT && sub < maxSubsteps){
+        step(fixedDT);
+        accumulator -= fixedDT;
+        sub++;
+      }
+    }
+    drawFollow();
+    drawMap();
+    updateHUD();
+    requestAnimationFrame(frame);
+  }
+
+  // ======= Init =======
+  ensureTrailLayers();
+  runDSL();
+  requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>
