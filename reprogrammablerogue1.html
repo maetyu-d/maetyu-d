@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PsyRogue — Infinite Glyphlands</title>
+<style>
+  html, body { height: 100%; margin: 0; background: #06060a; color: #e7e7ff; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+  #wrap { display: grid; grid-template-columns: 1fr 320px; height: 100%; }
+  #left { position: relative; overflow: hidden; }
+  #right { border-left: 1px solid #24243a; display: grid; grid-template-rows: auto 1fr auto; }
+  #topbar { padding: 8px 10px; border-bottom: 1px solid #24243a; display: flex; gap: 10px; align-items: center; }
+  #topbar .badge { background: #131326; border: 1px solid #2a2a52; border-radius: 8px; padding: 3px 8px; font-size: 12px; color: #c7c7ff; }
+  #log { padding: 10px; overflow: auto; background: radial-gradient(1200px 400px at 10% 0%, rgba(50,0,70,.15), transparent), linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.08)); }
+  #log p { margin: 0 0 6px; font-size: 12px; color: #cfd; text-shadow: 0 0 6px rgba(80,255,200,0.15); }
+  #footer { padding: 10px; border-top: 1px solid #24243a; font-size: 12px; color: #b9b9ff; }
+  #game { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+  #overlay { position: absolute; inset: 0; pointer-events: none; }
+  .panel { pointer-events: auto; width: min(900px, 92vw); max-height: 86vh; overflow: hidden; border-radius: 14px; border: 1px solid #4b4b82; background: #0a0a18cc; box-shadow: 0 30px 80px rgba(0,0,0,0.6), inset 0 0 0 2px #1a1a3b; backdrop-filter: blur(4px); position: absolute; inset: 6% 4%; display: none; }
+  .panel header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 14px; border-bottom: 1px solid #2b2b4a; background: linear-gradient(180deg, #0e0e22, #0a0a18); color: #d7d7ff; }
+  .panel header h2 { margin: 0; font-size: 16px; letter-spacing: 0.5px; }
+  .panel main { padding: 12px; overflow: auto; }
+  button { background: #101030; color: #e7e7ff; border: 1px solid #3a3a82; padding: 6px 10px; border-radius: 8px; font-family: inherit; cursor: pointer; }
+  button:hover { border-color: #8a8aff; box-shadow: 0 0 18px rgba(130,130,230,.2); }
+  .kbd { display: inline-block; border: 1px solid #3a3a82; background: #0b0b18; border-radius: 6px; padding: 0 6px; font-size: 12px; color: #cfcfff; }
+  #console textarea { width: 100%; min-height: 260px; resize: vertical; background: #070712; color: #d6ffd6; border: 1px solid #3a3a82; border-radius: 10px; padding: 10px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.3; }
+  #console pre { white-space: pre-wrap; background: #06060f; color: #bdbdff; border: 1px dashed #3a3a82; padding: 8px; border-radius: 8px; }
+  .note { color: #9ef; }
+  .ok { color: #8f8; } .warn { color: #ff9; } .err { color: #f99; }
+
+  #codexList { display: grid; gap: 8px; max-height:60vh; overflow:auto; }
+  .snippetRow { display:flex; gap:8px; align-items:center; border:1px dashed #3a3a82; padding:8px; border-radius:8px; background:#06060f; }
+  .snippetRow code { flex:1; color:#aff; white-space:pre-wrap; }
+  .snippetRow button { white-space:nowrap; }
+
+  /* Inventory UI */
+  #inventoryList, #equipList { display: grid; gap: 8px; }
+  .invRow, .equipRow { display:flex; align-items:center; gap:8px; border:1px dashed #3a3a82; padding:8px; border-radius:8px; background:#06060f; }
+  .invRow .name { flex:1; }
+  .equipRow .slot { width:80px; color:#9ef; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="left">
+    <canvas id="game" width="1472" height="896"></canvas>
+    <div id="overlay">
+      <div id="death" class="panel" role="dialog" aria-modal="true">
+        <header><h2>☠ You died in the Glyphlands</h2><button id="restartBtn">Restart (R)</button></header>
+        <main>
+          <p class="warn">Permadeath is real here. Your run is gone, but your seed persists in memory.</p>
+          <pre id="deathStats"></pre>
+          <p>Press <span class="kbd">R</span> to reincarnate in a fresh shard.</p>
+        </main>
+      </div>
+      <div id="help" class="panel" role="dialog" aria-modal="true">
+        <header><h2>❓ Help & API</h2><button id="closeHelp">Close (Esc)</button></header>
+        <main>
+          <p>Turn-based, grid-based, procedural, permadeath. Each input advances one turn.</p>
+          <ul>
+            <li>Move: <span class="kbd">WASD</span> / Arrows / HJKL / Numpad</li>
+            <li>Wait: <span class="kbd">.</span> or <span class="kbd">Space</span> or <span class="kbd">5</span></li>
+            <li>Minimap: <span class="kbd">M</span> · Console: <span class="kbd">`</span> · Codex: <span class="kbd">C</span> · Inventory: <span class="kbd">I</span></li>
+          </ul>
+          <h3>Glyph Console — tiny Lisp</h3>
+          <p>Forms: <code>quote</code>, <code>if</code>, <code>define</code>, <code>lambda</code>, <code>begin</code>, <code>set!</code>. Math: <code>+</code> <code>-</code> <code>*</code> <code>/</code> <code>%</code> <code>=</code> <code>&lt;</code> <code>&gt;</code> <code>&lt;=</code> <code>&gt;=</code> <code>sin</code> <code>cos</code> <code>floor</code> <code>ceil</code> <code>rand</code> <code>noise2</code>.</p>
+          <p>Hooks: <code>(set-hook 'onTurn fn)</code>, <code>'onChunk</code>, <code>'onMove</code>(dx dy nx ny), <code>'onAttack</code>(enemyId dmg) → return new dmg, <code>'onDamaged</code>(dmg enemyId) → return new dmg, <code>'onKill</code>(enemyId type).</p>
+          <p>World & biomes: <code>(set-param k v)</code>, <code>(biome-define name wall water acid chasm paletteShift spawnRate)</code>, <code>(biome-add name)</code>, <code>(biome-set name k v)</code>.</p>
+          <p>Enemies: <code>(spawn type x y)</code>, <code>(enemy-type-define type glyph hpMin hpMax dmgLo dmgHi aggro color)</code>, <code>(enemy-type-set type k v)</code>, <code>(for-enemies r fn)</code>.</p>
+          <p>Tiles: <code>(tile-get x y)</code>, <code>(tile-set x y t)</code>, <code>(tile-disc cx cy r t)</code>, <code>(tile-ring cx cy r t)</code>, <code>(paint-near r t)</code>.</p>
+          <p>Player: <code>(player-get k)</code>, <code>(player-set k v)</code> keys <em>hp,maxHp,def,scale,speed,atkLo,atkHi</em>; <code>(heal n)</code>, <code>(damage n)</code>, <code>(teleport x y)</code>.</p>
+          <p>Items & equipment: <code>(item-define name fn desc)</code>, <code>(item-give name n)</code>, <code>(item-use name)</code>, <code>(equipment-define name slot hp maxHp def atkLo atkHi scale speed desc)</code>, <code>(equip name slot)</code>, <code>(unequip slot)</code>.</p>
+        </main>
+      </div>
+      <div id="console" class="panel" role="dialog" aria-modal="true">
+        <header><h2>⌘ Glyph Console</h2><div><button id="exampleBtn">Insert Examples</button> <button id="docsBtn">Docs</button> <button id="closeConsole">Close (Esc)</button></div></header>
+        <main>
+          <p class="note">Write S-expressions to modify the running world.</p>
+          <textarea id="code" spellcheck="false">(print "hello glyphlands")</textarea>
+          <div style="display:flex; gap:8px; margin-top:8px; align-items:center;">
+            <button id="runCode">Run (Shift+Enter)</button>
+          </div>
+          <h4>Output</h4>
+          <pre id="out"></pre>
+        </main>
+      </div>
+      <div id="codex" class="panel" role="dialog" aria-modal="true">
+        <header><h2>📜 Lore Codex</h2><button id="closeCodex">Close (Esc)</button></header>
+        <main>
+          <p class="note">Click a snippet to copy it and load it into the console.</p>
+          <div id="codexList"></div>
+        </main>
+      </div>
+      <div id="inventory" class="panel" role="dialog" aria-modal="true">
+        <header><h2>🎒 Inventory</h2><button id="closeInventory">Close (Esc)</button></header>
+        <main>
+          <h3>Equipment</h3>
+          <div id="equipList"></div>
+          <h3>Items</h3>
+          <div id="inventoryList"></div>
+          <p class="note">Tip: define items in the console, e.g.
+            <code>(item-define "blink" (lambda () (teleport (+ (player-x) 5) (player-y))) "short hop")</code>
+            then <code>(item-give "blink" 2)</code>.
+          </p>
+        </main>
+      </div>
+    </div>
+  </div>
+  <div id="right">
+    <div id="topbar">
+      <div class="badge" id="seedBadge">Seed: —</div>
+      <div class="badge" id="turnBadge">Turn: 0</div>
+      <div class="badge" id="hpBadge">HP: —</div>
+      <div class="badge" id="depthBadge">Depth: 0</div>
+      <div class="badge" id="keyBadge">Lore Keys: 0</div>
+    </div>
+    <div id="log"></div>
+    <div id="footer">WASD/Arrows move · <span class="kbd">.</span> wait · <span class="kbd">?</span> help · <span class="kbd">`</span> console · <span class="kbd">C</span> codex · <span class="kbd">I</span> inventory</div>
+  </div>
+</div>
+<script>
+(function(){
+'use strict';
+// ===== Utility & RNG =====
+const TAU = Math.PI*2;
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const mulberry32 = s=>()=>{ let t = s += 0x6D2B79F5; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+const hash2 = (x,y,seed)=>{ let h = (x|0) * 374761393 + (y|0) * 668265263 + (seed|0) * 982451653; h = (h ^ (h>>>13)) >>> 0; h = Math.imul(h,1274126177) >>> 0; return ((h ^ (h>>>16)) >>> 0) / 4294967295; };
+function noise2(x,y,seed){ const xi=Math.floor(x), yi=Math.floor(y); const xf=x-xi, yf=y-yi; const s=t=>t*t*(3-2*t); const n00=hash2(xi,yi,seed), n10=hash2(xi+1,yi,seed), n01=hash2(xi,yi+1,seed), n11=hash2(xi+1,yi+1,seed); const nx0=lerp(n00,n10,s(xf)), nx1=lerp(n01,n11,s(xf)); return lerp(nx0,nx1,s(yf)); }
+
+// ===== Canvas & View =====
+const canvas=document.getElementById('game');
+const ctx=canvas.getContext('2d');
+const VIEW_W=41, VIEW_H=25, TILE=32; canvas.width=VIEW_W*TILE; canvas.height=VIEW_H*TILE;
+
+// ===== UI elements =====
+const logEl=document.getElementById('log');
+const seedBadge=document.getElementById('seedBadge');
+const turnBadge=document.getElementById('turnBadge');
+const hpBadge=document.getElementById('hpBadge');
+const depthBadge=document.getElementById('depthBadge');
+const keyBadge=document.getElementById('keyBadge');
+const deathPanel=document.getElementById('death');
+const deathStats=document.getElementById('deathStats');
+const restartBtn=document.getElementById('restartBtn');
+const helpPanel=document.getElementById('help');
+const closeHelp=document.getElementById('closeHelp');
+const consolePanel=document.getElementById('console');
+const codeEl=document.getElementById('code');
+const outEl=document.getElementById('out');
+const runBtn=document.getElementById('runCode');
+const exampleBtn=document.getElementById('exampleBtn');
+const docsBtn=document.getElementById('docsBtn');
+const closeConsole=document.getElementById('closeConsole');
+const codexPanel=document.getElementById('codex');
+const codexList=document.getElementById('codexList');
+const closeCodex=document.getElementById('closeCodex');
+const inventoryPanel=document.getElementById('inventory');
+const inventoryList=document.getElementById('inventoryList');
+const equipList=document.getElementById('equipList');
+const closeInventory=document.getElementById('closeInventory');
+
+// ===== World State =====
+const TILE_TYPES={ floor:{walk:true,block:false}, wall:{walk:false,block:true}, water:{walk:false,block:false}, acid:{walk:true,block:false}, chasm:{walk:false,block:true}, terminal:{walk:true,block:false}, lorekey:{walk:true,block:false} };
+const CHUNK=64;
+const MONSTERS={ slime:{glyph:'●',hp:[4,8],dmg:[1,3],aggro:10,color:'#9fef9f'}, gnat:{glyph:'✶',hp:[2,4],dmg:[0,2],aggro:8,color:'#aff'}, wyrm:{glyph:'§',hp:[10,16],dmg:[2,5],aggro:13,color:'#ffb3ff'} };
+let G=null;
+
+function newGame(seed){
+  const rngSeed = seed ?? (Date.now()>>>0); const rng=mulberry32(rngSeed);
+  const params={ wallThreshold:0.42, waterThreshold:0.65, acidThreshold:0.78, chasmThreshold:0.88, paletteShift:0, spawnRate:0.06, monsterSkip:0 };
+  // Biomes: defaults
+  const biomes=new Map([
+    ['default',{wall:0.42,water:0.65,acid:0.78,chasm:0.88,paletteShift:0,spawnRate:0.06}],
+    ['fungal',{wall:0.38,water:0.60,acid:0.74,chasm:0.90,paletteShift:40,spawnRate:0.08}],
+    ['crystal',{wall:0.46,water:0.70,acid:0.80,chasm:0.86,paletteShift:220,spawnRate:0.05}]
+  ]);
+  const biomeOrder=['default','fungal','crystal'];
+  G={ seed:rngSeed,rng,turn:0,start:{x:0,y:0}, params, tiles:new Map(), seen:new Set(), monsters:new Map(), nextId:1,
+      player:{x:0,y:0,hp:24,maxHp:24,atk:[3,6],def:0,scale:1.0,speed:1.0,loreKeys:0,kills:0,score:0},
+      hooks:{ onTurn:null,onChunk:null,onMove:null,onAttack:null,onDamaged:null,onKill:null },
+      items:new Map(), inventory:new Map(), abilities:new Map(), equipmentDefs:new Map(), equipSlots:{weapon:null,armor:null,trinket:null},
+      biomes, biomeOrder, loreSnippets:[] };
+  seedBadge.textContent = `Seed: ${G.seed}`;
+  pushLog('You wake to the hum of geometry. The Glyphlands breathe.');
+  regenAround(0,0);
+  updateInventory();
+}
+
+const key=(x,y)=>x+','+y;
+function getTile(x,y){ const k=key(x,y); let t=G.tiles.get(k); if (!t){ t={type:genTile(x,y),seen:false}; G.tiles.set(k,t);} return t; }
+function biomeAt(x,y){ const n=noise2(x*0.03+300,y*0.03-300,G.seed); const idx=Math.floor(Math.min(0.999,n)*G.biomeOrder.length); return G.biomeOrder[idx]||'default'; }
+function genTile(x,y){ const s=G.seed; const d=Math.hypot(x-G.start.x,y-G.start.y); const scale=0.05, scale2=0.12; const n=(noise2(x*scale,y*scale,s)+noise2(x*scale2+1000,y*scale2-777,s*3+17))/2; const rare=hash2(x*7-3,y*7+11,s); if (d>80 && rare>0.995) return 'terminal'; if (d>120 && rare>0.992) return 'lorekey'; const bname=biomeAt(x,y); const b=G.biomes.get(bname)||{}; const th={wall:b.wall??G.params.wallThreshold, water:b.water??G.params.waterThreshold, acid:b.acid??G.params.acidThreshold, chasm:b.chasm??G.params.chasmThreshold}; if (n>th.chasm) return 'chasm'; if (n>th.acid) return 'acid'; if (n>th.water) return 'water'; if (n>th.wall) return 'wall'; return 'floor'; }
+function regenAround(cx,cy){ const cxi=Math.floor(cx/CHUNK), cyi=Math.floor(cy/CHUNK); for (let dy=-1;dy<=1;dy++) for (let dx=-1;dx<=1;dx++){ const sx=cxi+dx, sy=cyi+dy; const baseX=sx*CHUNK, baseY=sy*CHUNK; for (let y=0;y<CHUNK;y+=7) for (let x=0;x<CHUNK;x+=7) getTile(baseX+x, baseY+y); if (G.hooks.onChunk) try{ G.hooks.onChunk(sx,sy);}catch(e){ pushLog('{hook onChunk error: '+e.message+'}'); } } }
+
+// ===== Monsters =====
+function randRange(r){ return Math.floor(lerp(r[0],r[1]+1,G.rng())); }
+function spawn(type,x,y){ const t=MONSTERS[type]||MONSTERS.slime; const m={id:G.nextId++, type, x, y, hp:randRange(t.hp), maxHp:t.hp[1], dmg:t.dmg.slice(), aggro:t.aggro, color:t.color}; G.monsters.set(m.id,m); return m; }
+function monsterAt(x,y){ for (const m of G.monsters.values()) if (m.x===x && m.y===y) return m; return null; }
+function stepToward(m,tx,ty){ const options=[[1,0],[-1,0],[0,1],[0,-1]]; options.sort((a,b)=> (Math.abs((m.x+a[0])-tx)+Math.abs((m.y+a[1])-ty)) - (Math.abs((m.x+b[0])-tx)+Math.abs((m.y+b[1])-ty)) ); for (const [dx,dy] of options){ const nx=m.x+dx, ny=m.y+dy; if (TILE_TYPES[getTile(nx,ny).type].walk && !monsterAt(nx,ny)){ m.x=nx; m.y=ny; return; } } }
+
+// ===== Rendering =====
+function hueAt(x,y){ const s=G.seed; const bname=biomeAt(x,y); const b=G.biomes.get(bname)||{}; const t=G.turn*0.9 + (G.params.paletteShift + (b.paletteShift||0)); const base=(noise2(x*0.04+50,y*0.04-20,s)*360 + t)%360; const swirl=(noise2(x*0.11+200,y*0.11+200,s*7)*120); return (base+swirl)%360; }
+function drawTile(tx,ty,tt,ox,oy){ const x=ox+tx*TILE, y=oy+ty*TILE; const gx=tx+(G.player.x-Math.floor(VIEW_W/2)), gy=ty+(G.player.y-Math.floor(VIEW_H/2)); const h=hueAt(gx,gy); let sat=80,light=40; if (tt==='wall'){sat=70;light=22;} if (tt==='water'){sat=95;light=26;} if (tt==='acid'){sat=98;light=62;} if (tt==='chasm'){sat=40;light=8;} ctx.fillStyle=`hsl(${Math.floor(h)}, ${sat}%, ${light}%)`; ctx.fillRect(x,y,TILE,TILE); const rseed=hash2(gx*13, gy*13, G.seed); ctx.save(); ctx.translate(x+TILE/2,y+TILE/2); const layers=3+Math.floor(rseed*4); for (let i=0;i<layers;i++){ const rr=(TILE/2-2)*(i+1)/layers; const hh=(h+i*33+G.turn*3)%360; ctx.strokeStyle=`hsla(${Math.floor(hh)},90%,${tt==='chasm'?20:60}%,0.35)`; ctx.lineWidth=1.2; ctx.beginPath(); const spikes=5+((gx+gy+i)%5); for (let j=0;j<=spikes;j++){ const ang=(j/spikes)*TAU + rseed*TAU*0.25 + i*0.3; const rx=Math.cos(ang)*rr*(tt==='water'?0.9:1.0); const ry=Math.sin(ang)*rr*(tt==='wall'?0.7:1.0); if (j===0) ctx.moveTo(rx,ry); else ctx.lineTo(rx,ry);} ctx.stroke(); } ctx.restore(); if (tt==='terminal'){ ctx.strokeStyle='#d7b3ff'; ctx.lineWidth=1.5; ctx.strokeRect(x+6,y+6,TILE-12,TILE-12); ctx.fillStyle='#d7b3ffcc'; ctx.font='14px ui-monospace'; ctx.fillText('⌘', x+TILE/2-6,y+TILE/2+5);} if (tt==='lorekey'){ ctx.strokeStyle='#afff7a'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(x+TILE/2,y+TILE/2,10,0,TAU); ctx.stroke(); ctx.fillStyle='#afff7a'; ctx.font='14px ui-monospace'; ctx.fillText('⌑', x+TILE/2-6,y+TILE/2+5);} }
+function draw(){ ctx.clearRect(0,0,canvas.width,canvas.height); const ox=0,oy=0; const startX=G.player.x-Math.floor(VIEW_W/2); const startY=G.player.y-Math.floor(VIEW_H/2); for (let ty=0;ty<VIEW_H;ty++){ for (let tx=0;tx<VIEW_W;tx++){ const gx=startX+tx, gy=startY+ty; const t=getTile(gx,gy); drawTile(tx,ty,t.type,ox,oy); G.seen.add(key(gx,gy)); if (Math.abs(gx-G.player.x)+Math.abs(gy-G.player.y)>12){ ctx.fillStyle='rgba(0,0,0,0.25)'; ctx.fillRect(tx*TILE,ty*TILE,TILE,TILE);} } } for (const m of G.monsters.values()) if (Math.abs(m.x-G.player.x)<=Math.floor(VIEW_W/2)+1 && Math.abs(m.y-G.player.y)<=Math.floor(VIEW_H/2)+1){ const sx=(m.x-startX)*TILE, sy=(m.y-startY)*TILE; ctx.fillStyle='#000000aa'; ctx.fillRect(sx,sy,TILE,TILE); ctx.fillStyle=MONSTERS[m.type]?.color||'#fff'; ctx.font='20px ui-monospace'; ctx.fillText(MONSTERS[m.type]?.glyph||'?', sx+10, sy+22);} const px=Math.floor(VIEW_W/2)*TILE, py=Math.floor(VIEW_H/2)*TILE; ctx.fillStyle='#000000aa'; ctx.fillRect(px,py,TILE,TILE); ctx.save(); ctx.translate(px+TILE/2, py+TILE/2); ctx.scale(G.player.scale, G.player.scale); ctx.fillStyle='#fff4a3'; ctx.font='20px ui-monospace'; ctx.fillText('@', -8, +8); ctx.restore(); turnBadge.textContent=`Turn: ${G.turn}`; hpBadge.textContent=`HP: ${G.player.hp}/${G.player.maxHp}`; depthBadge.textContent=`Depth: ${Math.floor(Math.hypot(G.player.x, G.player.y))}`; keyBadge.textContent=`Lore Keys: ${G.player.loreKeys}`; }
+
+// ===== Input & Turn System =====
+const DIRS={
+  'ArrowUp':[0,-1],'ArrowDown':[0,1],'ArrowLeft':[-1,0],'ArrowRight':[1,0],
+  'KeyW':[0,-1],'KeyS':[0,1],'KeyA':[-1,0],'KeyD':[1,0],
+  'KeyK':[0,-1],'KeyJ':[0,1],'KeyH':[-1,0],'KeyL':[1,0],
+  'Numpad8':[0,-1],'Numpad2':[0,1],'Numpad4':[-1,0],'Numpad6':[1,0],
+  'Numpad7':[-1,-1],'Numpad9':[1,-1],'Numpad1':[-1,1],'Numpad3':[1,1]
+};
+let inputLocked=false;
+function tryMove(dx,dy){
+  const nx=G.player.x+dx, ny=G.player.y+dy;
+  const t=getTile(nx,ny).type;
+  const m=monsterAt(nx,ny);
+  if (m){
+    let dmg=randRange(G.player.atk);
+    if (G.hooks.onAttack){ try{ const nd=G.hooks.onAttack(m.id,dmg); if (typeof nd==='number') dmg=nd; }catch(e){ pushLog('{hook onAttack error: '+e.message+'}'); } }
+    m.hp -= dmg; pushLog(`You hit the ${m.type} for ${dmg}.`);
+    if (m.hp<=0){ G.monsters.delete(m.id); G.player.kills++; pushLog(`The ${m.type} dissolves.`); if (G.hooks.onKill){ try{ G.hooks.onKill(m.id,m.type); }catch(e){ pushLog('{hook onKill error: '+e.message+'}'); } } }
+    endTurn(); return;
+  }
+  if (!TILE_TYPES[t].walk){ pushLog('That way is blocked by '+t+'.'); return; }
+  G.player.x=nx; G.player.y=ny;
+  if (G.hooks.onMove){ try{ G.hooks.onMove(dx,dy,nx,ny); }catch(e){ pushLog('{hook onMove error: '+e.message+'}'); } }
+  const tt=t;
+  if (tt==='acid'){
+    const base=1; let dmg=base;
+    if (G.hooks.onDamaged){ try{ const nd=G.hooks.onDamaged(base,0); if (typeof nd==='number') dmg=nd; }catch(e){ pushLog('{hook onDamaged error: '+e.message+'}'); } }
+    G.player.hp -= dmg; pushLog(`Acid stings you (-${dmg}).`); checkDeath();
+  }
+  if (tt==='lorekey'){
+    G.player.loreKeys++;
+    const sn=pickSnippet(); G.loreSnippets.push(sn);
+    pushLog('You discover a shimmering Lore Key — a fragment of forgotten code is etched into your mind:');
+    pushLog('› '+sn);
+    outEl.textContent += 'Lore Key snippet acquired:\n'+sn+'\n';
+    updateCodex();
+  }
+  if (tt==='terminal'){ pushLog('A humming Terminal rises from the floor. (press ` to commune)'); }
+  endTurn();
+}
+function waitTurn(){ pushLog('You listen to the breath of angles.'); endTurn(); }
+function endTurn(){
+  if (inputLocked) return;
+  const px=G.player.x, py=G.player.y;
+  if (G.rng()>=G.params.monsterSkip){
+    for (const m of [...G.monsters.values()]){
+      const dist=Math.abs(m.x-px)+Math.abs(m.y-py);
+      if (dist<=1){
+        let dmg=randRange(MONSTERS[m.type].dmg); let final=dmg;
+        if (G.hooks.onDamaged){ try{ const nd=G.hooks.onDamaged(dmg,m.id); if (typeof nd==='number') final=nd; }catch(e){ pushLog('{hook onDamaged error: '+e.message+'}'); } }
+        if (final>0) pushLog(`The ${m.type} bites for ${final}.`); else pushLog(`The ${m.type} splats harmlessly.`);
+        G.player.hp -= final; checkDeath();
+      } else if (dist<=m.aggro){ stepToward(m,px,py); }
+    }
+  }
+  trySpawnAround(px,py); G.turn++;
+  if (G.hooks.onTurn){ try{ G.hooks.onTurn(); }catch(e){ pushLog('{hook onTurn error: '+e.message+'}'); } }
+  regenAround(px,py); draw();
+}
+function checkDeath(){
+  if (G.player.hp<=0){
+    inputLocked=true;
+    const depth=Math.floor(Math.hypot(G.player.x, G.player.y));
+    const score=G.turn + depth*2 + G.player.kills*5;
+    G.player.score=score;
+    if (deathStats) deathStats.textContent=`Seed: ${G.seed}\nTurns: ${G.turn}\nDepth: ${depth}\nKills: ${G.player.kills}\nScore: ${score}`;
+    if (deathPanel) deathPanel.style.display='block';
+  }
+}
+function restart(){ if (deathPanel) deathPanel.style.display='none'; inputLocked=false; newGame(); draw(); }
+
+// ===== Logging =====
+function pushLog(msg){ const p=document.createElement('p'); p.textContent=msg; logEl.appendChild(p); logEl.scrollTop=logEl.scrollHeight; }
+
+// ===== Lore snippets =====
+const SNIPPETS=[ '(set-hook \\'onTurn (lambda () (if (< (rand) 0.15) (heal 1) 0)))', '(paint-near 6 "floor")', '(enemy-type-define "orb" "◯" 6 12 2 4 9 "#7ff")', '(player-set "speed" 1.6)', '(set-param "spawnRate" 0.09)' ];
+function pickSnippet(){ return SNIPPETS[Math.floor(G.rng()*SNIPPETS.length)]; }
+
+// ===== Minimap =====
+let showMinimap=false;
+function drawMinimap(){ if (!showMinimap) return; const s=3, R=60; const cx=G.player.x, cy=G.player.y; const mw=R*2+1, mh=R*2+1; ctx.save(); ctx.globalAlpha=0.85; ctx.fillStyle='#0a0a18bb'; ctx.fillRect(canvas.width-mw*s-10,10,mw*s,mh*s); for (let y=-R;y<=R;y++) for (let x=-R;x<=R;x++){ const t=getTile(cx+x, cy+y).type; const col=t==='wall'?'#334':t==='water'?'#124':t==='acid'?'#6a4':t==='chasm'?'#111':'#29293f'; ctx.fillStyle=col; ctx.fillRect(canvas.width-mw*s-10+(x+R)*s, 10+(y+R)*s, s, s);} ctx.fillStyle='#ff6'; ctx.fillRect(canvas.width-mw*s-10+R*s, 10+R*s, s, s); ctx.restore(); }
+
+// ===== Console (Lisp) =====
+function tokenize(src){ const tokens=[]; let i=0; while(i<src.length){ const c=src[i]; if (c===';'){ while(i<src.length && src[i] !== '\n') i++; continue; } if (/\s/.test(c)){ i++; continue; } if (c==='('||c===')'){ tokens.push(c); i++; continue; } if (c==='"'){ let j=i+1, s=''; while(j<src.length && src[j] !== '"'){ if (src[j]==='\\' && j+1<src.length){ s += src[j+1]; j+=2; } else { s+=src[j++]; } } tokens.push({t:'str', v:s}); i=j+1; continue; } let j=i; while(j<src.length && !/\s|[()]/.test(src[j])) j++; const w=src.slice(i,j); i=j; if (/^[+-]?\d+(?:\.\d+)?$/.test(w)) tokens.push({t:'num', v:parseFloat(w)}); else tokens.push({t:'sym', v:w}); } return tokens; }
+function parse(tokens){ let i=0; function read(){ if (i>=tokens.length) return null; const t=tokens[i++]; if (t===')') throw new Error('unexpected )'); if (t==='('){ const arr=[]; while(tokens[i]!==')'){ if (i>=tokens.length) throw new Error('missing )'); arr.push(read()); } i++; return arr; } if (t.t==='num'||t.t==='str') return t.v; if (t.t==='sym') return {sym:t.v}; return t; } const ast=[]; while(i<tokens.length){ ast.push(read()); } return ast; }
+function Env(parent){ this.parent=parent; this.map=new Map(); }
+Env.prototype.get=function(k){ if (this.map.has(k)) return this.map.get(k); if (this.parent) return this.parent.get(k); throw new Error('unbound '+k); };
+Env.prototype.set=function(k,v){ this.map.set(k,v); };
+const isSym=(x)=>x&&typeof x==='object'&&x.sym; const toBool=(v)=>!(v===false||v===0||v===null||v===undefined||v==='');
+function makeBaseEnv(){ const env=new Env(null); const prim=(n,f)=>env.set(n,f);
+  prim('+', (...a)=> a.reduce((x,y)=>x+Number(y),0)); prim('-', (a,b)=> b===undefined ? -Number(a) : Number(a)-Number(b)); prim('*', (...a)=> a.reduce((x,y)=>x*Number(y),1)); prim('/', (a,b)=> Number(a)/Number(b)); prim('%',(a,b)=> Number(a)%Number(b)); prim('=',(a,b)=> Number(a)===Number(b)?1:0); prim('<',(a,b)=> Number(a)<Number(b)?1:0); prim('>',(a,b)=> Number(a)>Number(b)?1:0); prim('<=',(a,b)=> Number(a)<=Number(b)?1:0); prim('>=',(a,b)=> Number(a)>=Number(b)?1:0); prim('sin',(x)=> Math.sin(Number(x))); prim('cos',(x)=> Math.cos(Number(x))); prim('floor',(x)=> Math.floor(Number(x))); prim('ceil',(x)=> Math.ceil(Number(x))); prim('rand',()=> G.rng()); prim('noise2',(x,y)=> noise2(Number(x)*0.15, Number(y)*0.15, G.seed)); prim('print',(...args)=>{ const s=args.map(String).join(' '); pushLog('[LISP] '+s); outEl.textContent += s+'\\n'; return s; });
+  // info
+  prim('turn', ()=> G.turn); prim('player-x', ()=> G.player.x); prim('player-y', ()=> G.player.y);
+  // player
+  prim('player-get', (k)=>{ k=String(k); return G.player[k]; });
+  prim('player-set', (k,v)=>{ k=String(k); if (k==='hp'||k==='maxHp'||k==='def'||k==='scale'||k==='speed'){ G.player[k]=Number(v); if (k==='hp') G.player.hp=clamp(G.player.hp,0,G.player.maxHp); if (k==='speed'){ G.params.monsterSkip = clamp(1 - 1/Math.max(0.1,Number(v)), 0, 0.95); } return G.player[k]; } if (k==='atkLo'){ G.player.atk[0]=Number(v); return G.player.atk[0]; } if (k==='atkHi'){ G.player.atk[1]=Number(v); return G.player.atk[1]; } throw new Error('unknown player key'); });
+  prim('heal',(n)=>{ G.player.hp=clamp(G.player.hp+Number(n),0,G.player.maxHp); return G.player.hp; });
+  prim('damage',(n)=>{ let d=Number(n); if (G.hooks.onDamaged){ try{ const nd=G.hooks.onDamaged(d,0); if (typeof nd==='number') d=nd; }catch(e){ pushLog('{hook onDamaged error: '+e.message+'}'); } } G.player.hp=clamp(G.player.hp-d,0,G.player.maxHp); checkDeath(); return G.player.hp; });
+  prim('teleport',(x,y)=>{ x=Math.floor(Number(x)); y=Math.floor(Number(y)); if (TILE_TYPES[getTile(x,y).type].walk){ G.player.x=x; G.player.y=y; draw(); return 1;} return 0; });
+  // tiles
+  prim('tile-get',(x,y)=> getTile(Math.floor(Number(x)),Math.floor(Number(y))).type);
+  prim('tile-set',(x,y,tt)=>{ x=Math.floor(Number(x)); y=Math.floor(Number(y)); tt=String(tt); if (!TILE_TYPES[tt]) throw new Error('unknown tile '+tt); const t=getTile(x,y); t.type=tt; return tt; });
+  prim('tile-disc',(cx,cy,r,tt)=>{ cx=Math.floor(Number(cx)); cy=Math.floor(Number(cy)); r=Math.floor(Number(r)); tt=String(tt); for (let y=-r;y<=r;y++) for (let x=-r;x<=r;x++){ if (x*x+y*y<=r*r){ getTile(cx+x,cy+y).type=tt; } } return r; });
+  prim('tile-ring',(cx,cy,r,tt)=>{ cx=Math.floor(Number(cx)); cy=Math.floor(Number(cy)); r=Math.floor(Number(r)); tt=String(tt); const rr=r*r; for (let y=-r;y<=r;y++) for (let x=-r;x<=r;x++){ const d=x*x+y*y; if (d<=rr && d>rr-3*r){ getTile(cx+x,cy+y).type=tt; } } return r; });
+  prim('paint-near',(r,tt)=> env.get('tile-disc')(G.player.x,G.player.y,Number(r),String(tt)) );
+  // enemies
+  prim('spawn',(type,x,y)=>{ type=String(type); x=Math.floor(Number(x)); y=Math.floor(Number(y)); if (TILE_TYPES[getTile(x,y).type].walk && !monsterAt(x,y)){ const m=spawn(type,x,y); return m.id;} return 0; });
+  prim('enemy-at', (x,y)=>{ const m=monsterAt(Math.floor(Number(x)), Math.floor(Number(y))); return m? m.id : 0; });
+  prim('enemy-set',(id,k,v)=>{ id=Number(id); k=String(k); const m=G.monsters.get(id); if (!m) return 0; if (k==='hp'||k==='maxHp'||k==='aggro'){ m[k]=Number(v); return 1;} if (k==='dmgLo'){ m.dmg[0]=Number(v); return 1;} if (k==='dmgHi'){ m.dmg[1]=Number(v); return 1;} return 0; });
+  prim('enemy-type-set',(type,k,v)=>{ type=String(type); const t=MONSTERS[type]; if (!t) return 0; if (k==='hpMax'){ t.hp[1]=Number(v); return 1; } if (k==='hpMin'){ t.hp[0]=Number(v); return 1; } if (k==='glyph'){ t.glyph=String(v); return 1; } if (k==='color'){ t.color=String(v); return 1; } if (k==='aggro'){ t.aggro=Number(v); return 1; } if (k==='dmgLo'){ t.dmg[0]=Number(v); return 1; } if (k==='dmgHi'){ t.dmg[1]=Number(v); return 1; } return 0; });
+  prim('enemy-type-define',(type,glyph,hpMin,hpMax,dmgLo,dmgHi,aggro,color)=>{ type=String(type); MONSTERS[type]={ glyph:String(glyph||'?'), hp:[Number(hpMin)||1,Number(hpMax)||2], dmg:[Number(dmgLo)||0,Number(dmgHi)||1], aggro:Number(aggro)||8, color:String(color||'#fff') }; pushLog('[LISP] enemy type defined: '+type); return type; });
+  prim('for-enemies',(r,fn)=>{ r=Number(r); if (typeof fn!=='function') throw new Error('fn required'); let c=0; for (const m of G.monsters.values()){ const d=Math.abs(m.x-G.player.x)+Math.abs(m.y-G.player.y); if (d<=r){ fn(m.id); c++; } } return c; });
+  // params & hooks
+  prim('set-param',(k,v)=>{ G.params[String(k)]=Number(v); return v; });
+  prim('get-param',(k)=> G.params[String(k)] ?? 0);
+  prim('set-hook',(k,fn)=>{ const kk=String(k); const allowed=['onTurn','onChunk','onMove','onAttack','onDamaged','onKill']; if (!allowed.includes(kk)) throw new Error('unknown hook'); if (typeof fn!=='function') throw new Error('hook needs a function'); G.hooks[kk]=(...args)=> fn(...args); return 1; });
+  prim('remove-hook',(k)=>{ const kk=String(k); if (G.hooks[kk]){ G.hooks[kk]=null; return 1;} return 0; });
+  // biomes
+  prim('biome-define',(name,wall,water,acid,chasm,pShift,spawn)=>{ name=String(name); G.biomes.set(name,{ wall:Number(wall),water:Number(water),acid:Number(acid),chasm:Number(chasm),paletteShift:Number(pShift||0),spawnRate:Number(spawn||0.06)}); if (!G.biomeOrder.includes(name)) G.biomeOrder.push(name); pushLog('[LISP] biome defined: '+name); return name; });
+  prim('biome-add',(name)=>{ name=String(name); if (!G.biomes.has(name)) throw new Error('define biome first'); if (!G.biomeOrder.includes(name)) G.biomeOrder.push(name); return G.biomeOrder.length; });
+  prim('biome-set',(name,k,v)=>{ name=String(name); const b=G.biomes.get(name); if (!b) return 0; b[String(k)]= Number(v); return 1; });
+  // items & abilities & equipment
+  prim('item-define',(name,fn,desc)=>{ name=String(name); if (typeof fn!=='function') throw new Error('fn needed'); G.items.set(name,{fn,desc:String(desc||'')}); return name; });
+  prim('item-give',(name,n)=>{ name=String(name); n=n?Number(n):1; const cur=G.inventory.get(name)||0; G.inventory.set(name,cur+n); pushLog('You gain '+n+'x '+name+'.'); updateInventory(); return G.inventory.get(name); });
+  prim('item-use',(name)=>{ name=String(name); const have=G.inventory.get(name)||0; if (!have){ pushLog('You have no '+name+'.'); return 0; } const proto=G.items.get(name); if (!proto){ pushLog('Unknown item '+name+'.'); return 0; } G.inventory.set(name,have-1); try{ proto.fn(); pushLog('You use '+name+'.'); }catch(e){ pushLog('{item error: '+e.message+'}'); } updateInventory(); return G.inventory.get(name); });
+  prim('ability-define', (name, fn)=>{ name=String(name); if (typeof fn!=='function') throw new Error('fn needed'); G.abilities.set(name, fn); return name; });
+  prim('ability-trigger', (name)=>{ name=String(name); const fn=G.abilities.get(name); if (!fn){ pushLog('No ability named '+name+'.'); return 0; } try { return fn(); } catch(e){ pushLog('{ability error: '+e.message+'}'); return 0; } });
+  prim('equipment-define',(name,slot,hp,maxHp,def,atkLo,atkHi,scale,speed,desc)=>{ name=String(name); slot=String(slot); const defn={name,slot,hp:Number(hp)||0,maxHp:Number(maxHp)||0,def:Number(def)||0,atkLo:Number(atkLo)||0,atkHi:Number(atkHi)||0,scale:Number(scale)||0,speed:Number(speed)||0,desc:String(desc||'')}; G.equipmentDefs.set(name,defn); pushLog('[LISP] equipment '+name+' defined for '+slot); return name; });
+  prim('equip',(name,slot)=>{ name=String(name); slot=String(slot); const def=G.equipmentDefs.get(name); if (!def || def.slot!==slot){ pushLog('Cannot equip '+name+' to '+slot); return 0; } if (G.equipSlots[slot]){ const old=G.equipSlots[slot]; applyEquip(old,-1); } G.equipSlots[slot]=def; applyEquip(def, +1); pushLog('Equipped '+name+' on '+slot); updateInventory(); return 1; });
+  prim('unequip',(slot)=>{ slot=String(slot); const def=G.equipSlots[slot]; if (!def) return 0; applyEquip(def,-1); G.equipSlots[slot]=null; pushLog('Unequipped '+slot); updateInventory(); return 1; });
+  function applyEquip(def,sgn){ G.player.hp = clamp(G.player.hp + sgn*def.hp, 0, G.player.maxHp + sgn*def.maxHp); G.player.maxHp += sgn*def.maxHp; G.player.def += sgn*def.def; G.player.atk[0] += sgn*def.atkLo; G.player.atk[1] += sgn*def.atkHi; G.player.scale += sgn*def.scale; G.player.speed = Math.max(0.1, G.player.speed + sgn*def.speed); G.params.monsterSkip = clamp(1 - 1/Math.max(0.1,G.player.speed), 0, 0.95); }
+  return env;
+}
+function evaluate(x,env){ if (isSym(x)) return env.get(x.sym); if (!Array.isArray(x)) return x; if (x.length===0) return null; const head=x[0]; if (isSym(head)){ switch(head.sym){ case 'quote': return x[1]; case 'begin':{ let v=null; for (let i=1;i<x.length;i++) v=evaluate(x[i],env); return v; } case 'if':{ const c=evaluate(x[1],env); return toBool(c)? evaluate(x[2],env): evaluate(x[3],env); } case 'define':{ const name=x[1]; const val=evaluate(x[2],env); env.set(name.sym,val); return val; } case 'set!':{ const name=x[1].sym; let e=env; while(e && !e.map.has(name)) e=e.parent; if (!e) throw new Error('unbound '+name); const val=evaluate(x[2],env); e.map.set(name,val); return val; } case 'lambda':{ const params=x[1].map(s=>s.sym); const body=x.slice(2); return function(...args){ const e=new Env(env); for (let i=0;i<params.length;i++) e.set(params[i], args[i]); let v=null; for (const b of body) v=evaluate(b,e); return v; }; } } } const fn=evaluate(head,env); const args=x.slice(1).map(a=> evaluate(a,env)); if (typeof fn!=='function') throw new Error('not a function: '+String(head.sym||head)); return fn(...args); }
+function runLisp(src){ outEl.textContent=''; try{ const ast=parse(tokenize(src)); const env=makeBaseEnv(); let result=null; for (const form of ast) result=evaluate(form,env); outEl.textContent += '=> '+String(result)+'\n'; pushLog('[LISP] ok'); draw(); }catch(e){ outEl.textContent += 'Error: '+e.message; pushLog('[LISP] error: '+e.message); } }
+
+// ===== Codex =====
+function updateCodex(){ const esc=(s)=> s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); const escAttr=(s)=> s.replace(/&/g,'&amp;').replace(/\"/g,'&quot;'); codexList.innerHTML = G.loreSnippets.map((s,i)=> `
+<div class="snippetRow">
+  <code>${i+1}. ${esc(s)}</code>
+  <button class="copyBtn" data-snippet="${escAttr(s)}">Copy & Load</button>
+</div>`).join(''); }
+
+// ===== Inventory UI =====
+function updateInventory(){
+  if (!inventoryList || !equipList || !G) return;
+  // Equipment
+  const slots = ['weapon','armor','trinket'];
+  equipList.innerHTML = slots.map(slot=>{
+    const e = G.equipSlots[slot];
+    const label = e ? (e.name || '[custom]') : '(empty)';
+    const stats = e ? `hp:${e.hp} maxHp:${e.maxHp} def:${e.def} atk:${e.atkLo}-${e.atkHi} spd:${e.speed}` : '';
+    return `<div class="equipRow"><span class="slot">${slot}</span><span class="name">${label}</span><span class="stats">${stats}</span>${e?`<button class="unequipBtn" data-slot="${slot}">Unequip</button>`:''}</div>`;
+  }).join('');
+  // Items
+  const rows = [];
+  for (const [name,count] of G.inventory.entries()){
+    rows.push(`<div class="invRow"><span class="name">${name}</span><span class="count">x${count}</span><button class="useBtn" data-name="${name}">Use</button></div>`);
+  }
+  inventoryList.innerHTML = rows.length? rows.join('') : '<p class="note">No items. Create some with the console.</p>';
+}
+
+// ===== Event wiring =====
+window.addEventListener('keydown',(e)=>{
+  if (e.key==='?'){ helpPanel.style.display='block'; e.preventDefault(); return; }
+  if (e.key==='Escape'){ helpPanel.style.display='none'; consolePanel.style.display='none'; codexPanel.style.display='none'; inventoryPanel.style.display='none'; return; }
+  if (e.key.toLowerCase()==='m'){ showMinimap=!showMinimap; draw(); drawMinimap(); return; }
+  if (e.key.toLowerCase()==='r'){ restart(); return; }
+  if (e.key==='`'){ consolePanel.style.display='block'; return; }
+  if (e.key.toLowerCase()==='i'){ inventoryPanel.style.display='block'; updateInventory(); return; }
+  if (consolePanel.style.display==='block'){ if (e.key==='Enter' && e.shiftKey){ runLisp(codeEl.value); e.preventDefault(); } return; }
+  if (e.key.toLowerCase()==='c'){ codexPanel.style.display='block'; updateCodex(); return; }
+  const dir=DIRS[e.code]; if (dir){ tryMove(dir[0],dir[1]); e.preventDefault(); drawMinimap(); return; }
+  if (e.key==='.'||e.code==='Space'||e.code==='Numpad5'){ waitTurn(); e.preventDefault(); drawMinimap(); return; }
+});
+runBtn.addEventListener('click',()=> runLisp(codeEl.value));
+exampleBtn.addEventListener('click',()=>{ codeEl.value=`; examples
+(begin
+  (print "hooks + biomes + equipment")
+  ; hook: extra heal every 10 turns
+  (set-hook 'onTurn (lambda () (if (= (% (turn) 10) 0) (heal 1) 0)))
+  ; biome: add a marble variant and insert it
+  (biome-define "marble" 0.40 0.60 0.76 0.90 300 0.05)
+  (biome-add "marble")
+  ; equipment: define and equip boots of haste
+  (equipment-define "boots_of_haste" "trinket" 0 0 0 0 0 0 0.6 "Move quicker")
+  (equip "boots_of_haste" "trinket")
+)`; });
+docsBtn.addEventListener('click',()=>{ codeEl.value=`; hooks: (set-hook 'onTurn fn) (set-hook 'onChunk fn) (set-hook 'onMove fn) (set-hook 'onAttack fn) (set-hook 'onDamaged fn) (set-hook 'onKill fn)
+; biomes: (biome-define name wall water acid chasm paletteShift spawnRate) (biome-add name) (biome-set name k v)
+; enemies: (spawn type x y) (enemy-type-define type glyph hpMin hpMax dmgLo dmgHi aggro color) (enemy-type-set type k v) (enemy-set id k v) (enemy-at x y) (for-enemies r fn)
+; tiles: (tile-get x y) (tile-set x y t) (tile-disc cx cy r t) (tile-ring cx cy r t) (paint-near r t)
+; player: (player-get k) (player-set k v) hp maxHp def scale speed atkLo atkHi ; (heal n) (damage n) (teleport x y)
+; items: (item-define name fn desc) (item-give name n) (item-use name) ; abilities: (ability-define name fn) (ability-trigger name) ; equipment: (equipment-define name slot hp maxHp def atkLo atkHi scale speed desc) (equip name slot) (unequip slot)
+`; });
+closeConsole.addEventListener('click',()=> consolePanel.style.display='none');
+closeHelp.addEventListener('click',()=> helpPanel.style.display='none');
+closeCodex.addEventListener('click',()=> codexPanel.style.display='none');
+closeInventory.addEventListener('click',()=> inventoryPanel.style.display='none');
+codexList.addEventListener('click',(e)=>{ const btn=e.target.closest('button[data-snippet]'); if (!btn) return; const snippet=btn.getAttribute('data-snippet'); codeEl.value=snippet; consolePanel.style.display='block'; try{ navigator.clipboard.writeText(snippet); pushLog('Snippet copied to clipboard and loaded into console.'); }catch(_){ pushLog('Snippet loaded into console.'); } });
+inventoryList.addEventListener('click',(e)=>{ const btn=e.target.closest('button.useBtn'); if (!btn) return; const name=btn.getAttribute('data-name'); const have=G.inventory.get(name)||0; if (!have){ pushLog('You have no '+name+'.'); return; } G.inventory.set(name, have-1); const proto=G.items.get(name); if (proto){ try{ proto.fn(); pushLog('You use '+name+'.'); }catch(err){ pushLog('{item error: '+err.message+'}'); } } updateInventory(); });
+equipList.addEventListener('click',(e)=>{ const btn=e.target.closest('button.unequipBtn'); if (!btn) return; const slot=btn.getAttribute('data-slot'); const def=G.equipSlots[slot]; if (!def) return; // same as (unequip slot)
+  G.player.hp = clamp(G.player.hp - def.hp, 0, G.player.maxHp - def.maxHp);
+  G.player.maxHp -= def.maxHp; G.player.def -= def.def; G.player.atk[0] -= def.atkLo; G.player.atk[1] -= def.atkHi; G.player.scale -= def.scale; G.player.speed = Math.max(0.1, G.player.speed - def.speed);
+  G.params.monsterSkip = clamp(1 - 1/Math.max(0.1,G.player.speed), 0, 0.95);
+  G.equipSlots[slot]=null; pushLog('Unequipped '+slot); updateInventory();
+});
+
+// ===== Spawning =====
+function trySpawnAround(px,py){ if (G.rng()> (G.biomes.get(biomeAt(px,py))?.spawnRate ?? G.params.spawnRate)) return; for (let i=0;i<6;i++){ const r=8+Math.floor(G.rng()*10), a=G.rng()*TAU; const x=px+Math.round(Math.cos(a)*r), y=py+Math.round(Math.sin(a)*r); const t=getTile(x,y).type; if (TILE_TYPES[t].walk && !monsterAt(x,y)){ spawn(['slime','gnat','wyrm'][Math.floor(G.rng()*3)], x,y); break; } } }
+
+// ===== Boot =====
+newGame();
+draw();
+setInterval(()=>{ G.params.paletteShift=(G.params.paletteShift+1)%360; if (!inputLocked) draw(); }, 1200);
+
+})();
+</script>
+</body>
+</html>
