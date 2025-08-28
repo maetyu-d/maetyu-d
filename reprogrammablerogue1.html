@@ -280,7 +280,13 @@ function restart(){ if (deathPanel) deathPanel.style.display='none'; inputLocked
 function pushLog(msg){ const p=document.createElement('p'); p.textContent=msg; logEl.appendChild(p); logEl.scrollTop=logEl.scrollHeight; }
 
 // ===== Lore snippets =====
-const SNIPPETS=[ '(set-hook \\'onTurn (lambda () (if (< (rand) 0.15) (heal 1) 0)))', '(paint-near 6 "floor")', '(enemy-type-define "orb" "◯" 6 12 2 4 9 "#7ff")', '(player-set "speed" 1.6)', '(set-param "spawnRate" 0.09)' ];
+const SNIPPETS=[
+  "(set-hook 'onTurn (lambda () (if (= (% (turn) 10) 0) (heal 1) 0)))",
+  "(paint-near 6 \"floor\")",
+  "(enemy-type-define \"orb\" \"◯\" 6 12 2 4 9 \"#7ff\")",
+  "(player-set \"speed\" 1.6)",
+  "(set-param \"spawnRate\" 0.09)"
+];
 function pickSnippet(){ return SNIPPETS[Math.floor(G.rng()*SNIPPETS.length)]; }
 
 // ===== Minimap =====
@@ -315,7 +321,7 @@ function makeBaseEnv(){ const env=new Env(null); const prim=(n,f)=>env.set(n,f);
   prim('enemy-at', (x,y)=>{ const m=monsterAt(Math.floor(Number(x)), Math.floor(Number(y))); return m? m.id : 0; });
   prim('enemy-set',(id,k,v)=>{ id=Number(id); k=String(k); const m=G.monsters.get(id); if (!m) return 0; if (k==='hp'||k==='maxHp'||k==='aggro'){ m[k]=Number(v); return 1;} if (k==='dmgLo'){ m.dmg[0]=Number(v); return 1;} if (k==='dmgHi'){ m.dmg[1]=Number(v); return 1;} return 0; });
   prim('enemy-type-set',(type,k,v)=>{ type=String(type); const t=MONSTERS[type]; if (!t) return 0; if (k==='hpMax'){ t.hp[1]=Number(v); return 1; } if (k==='hpMin'){ t.hp[0]=Number(v); return 1; } if (k==='glyph'){ t.glyph=String(v); return 1; } if (k==='color'){ t.color=String(v); return 1; } if (k==='aggro'){ t.aggro=Number(v); return 1; } if (k==='dmgLo'){ t.dmg[0]=Number(v); return 1; } if (k==='dmgHi'){ t.dmg[1]=Number(v); return 1; } return 0; });
-  prim('enemy-type-define',(type,glyph,hpMin,hpMax,dmgLo,dmgHi,aggro,color)=>{ type=String(type); MONSTERS[type]={ glyph:String(glyph||'?'), hp:[Number(hpMin)||1,Number(hpMax)||2], dmg:[Number(dmgLo)||0,Number(dmgHi)||1], aggro:Number(aggro)||8, color:String(color||'#fff') }; pushLog('[LISP] enemy type defined: '+type); return type; });
+  prim('enemy-type-define',(type,glyph,hpMin,hpMax,dmgLo,dmgHi,aggro,color)=>{ type=String(type); MONSTERS[type]={ glyph:String(glyph||'?'), hp:[Number(hpMin)||1,Number(hpMax)||2], dmg:[Number(dmgLo)||0,Number(dmgHi)||1], aggro:Number(aggro)||8, color:String(String(color||'#fff')) }; pushLog('[LISP] enemy type defined: '+type); return type; });
   prim('for-enemies',(r,fn)=>{ r=Number(r); if (typeof fn!=='function') throw new Error('fn required'); let c=0; for (const m of G.monsters.values()){ const d=Math.abs(m.x-G.player.x)+Math.abs(m.y-G.player.y); if (d<=r){ fn(m.id); c++; } } return c; });
   // params & hooks
   prim('set-param',(k,v)=>{ G.params[String(k)]=Number(v); return v; });
@@ -406,7 +412,8 @@ closeCodex.addEventListener('click',()=> codexPanel.style.display='none');
 closeInventory.addEventListener('click',()=> inventoryPanel.style.display='none');
 codexList.addEventListener('click',(e)=>{ const btn=e.target.closest('button[data-snippet]'); if (!btn) return; const snippet=btn.getAttribute('data-snippet'); codeEl.value=snippet; consolePanel.style.display='block'; try{ navigator.clipboard.writeText(snippet); pushLog('Snippet copied to clipboard and loaded into console.'); }catch(_){ pushLog('Snippet loaded into console.'); } });
 inventoryList.addEventListener('click',(e)=>{ const btn=e.target.closest('button.useBtn'); if (!btn) return; const name=btn.getAttribute('data-name'); const have=G.inventory.get(name)||0; if (!have){ pushLog('You have no '+name+'.'); return; } G.inventory.set(name, have-1); const proto=G.items.get(name); if (proto){ try{ proto.fn(); pushLog('You use '+name+'.'); }catch(err){ pushLog('{item error: '+err.message+'}'); } } updateInventory(); });
-equipList.addEventListener('click',(e)=>{ const btn=e.target.closest('button.unequipBtn'); if (!btn) return; const slot=btn.getAttribute('data-slot'); const def=G.equipSlots[slot]; if (!def) return; // same as (unequip slot)
+equipList.addEventListener('click',(e)=>{ const btn=e.target.closest('button.unequipBtn'); if (!btn) return; const slot=btn.getAttribute('data-slot'); const def=G.equipSlots[slot]; if (!def) return;
+  // same effect as (unequip slot)
   G.player.hp = clamp(G.player.hp - def.hp, 0, G.player.maxHp - def.maxHp);
   G.player.maxHp -= def.maxHp; G.player.def -= def.def; G.player.atk[0] -= def.atkLo; G.player.atk[1] -= def.atkHi; G.player.scale -= def.scale; G.player.speed = Math.max(0.1, G.player.speed - def.speed);
   G.params.monsterSkip = clamp(1 - 1/Math.max(0.1,G.player.speed), 0, 0.95);
@@ -425,3 +432,4 @@ setInterval(()=>{ G.params.paletteShift=(G.params.paletteShift+1)%360; if (!inpu
 </script>
 </body>
 </html>
+
