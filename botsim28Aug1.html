@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lopsided / Limping Bot — 10k World Split-Screen</title>
+  <style>
+    :root { --bg:#0b0f14; --panel:#121822; --ink:#e8f0ff; --muted:#96a3b5; --accent:#37d06f; }
+    html, body { height: 100%; margin: 0; background: var(--bg); color: var(--ink); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+    .wrap { display: grid; grid-template-rows: auto 1fr; height: 100%; }
+    header { display:flex; gap:.75rem; align-items:center; padding:.75rem 1rem; background: linear-gradient(180deg, #141b26, #0f1620); border-bottom:1px solid #1c2432; position:sticky; top:0; z-index:10; }
+    header h1 { font-size: 1rem; font-weight:600; margin:.1rem 1rem .1rem 0; color:#d7e3ff; letter-spacing:.3px }
+    button, select, input[type="number"], input[type="text"] { background:#0f1620; border:1px solid #293344; color:var(--ink); padding:.5rem .7rem; border-radius:.5rem; }
+    button:hover { border-color:#3a475e; cursor:pointer }
+    button.primary { background:#14301f; border-color:#2b794a; }
+    button.primary:hover { background:#184226; }
+    .badge { font-size:.8rem; color:var(--muted); }
+    .grid { display:grid; grid-template-columns: 2fr 1fr; gap:10px; height: 100%; }
+    .panels { display:grid; grid-template-columns: 1fr 1fr; gap:10px; height:100%; }
+    .panel { position:relative; background: var(--panel); border:1px solid #1b2433; border-radius:12px; overflow:hidden; box-shadow: 0 10px 30px rgba(0,0,0,.25) inset; }
+    .panel h2 { position:absolute; left:.75rem; top:.5rem; margin:0; font-size:.85rem; color:#b7c5db; font-weight:600; text-shadow:0 1px 0 rgba(0,0,0,.7) }
+    .panel .hud { position:absolute; right:.75rem; top:.5rem; font-size:.8rem; color:#b7c5db; background:#0f1620aa; padding:.3rem .5rem; border-radius:.4rem; border:1px solid #223049; }
+    #left, #right { width:100%; height:100%; display:block; }
+    .sidebar { display:flex; flex-direction:column; gap:10px; }
+    .card { background: var(--panel); border:1px solid #1b2433; border-radius:12px; padding:10px; }
+    textarea { width:100%; min-height:220px; background:#0a111a; color:#d7e3ff; border:1px solid #223049; border-radius:10px; padding:10px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:.9rem; }
+    .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .grow { flex:1 1 auto; }
+    .bar { height:10px; background:#0e1420; border:1px solid #233049; border-radius:999px; overflow:hidden; }
+    .bar > i { display:block; height:100%; background: linear-gradient(90deg, #1e7a39, #35c76b); width:0%; }
+    small.mono { font-family: ui-monospace, Menlo, Consolas, monospace; color:#98a7c1; }
+    .footnote { color:#9fb1cc; font-size:.85rem; }
+    .muted { color:#8ea1bb; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Asymmetrical / Limping Bot — 10,000 × 10,000 World</h1>
+    <button id="toggle" class="primary">Pause</button>
+    <button id="step">Step</button>
+    <button id="export">Export 10k Trail PNG</button>
+    <span class="badge">Zoom:</span>
+    <input id="zoom" type="range" min="0.4" max="3.0" value="1.2" step="0.05" />
+    <span class="badge">Speed ×<span id="speedx">1</span></span>
+    <input id="speed" type="range" min="0.25" max="4" value="1" step="0.25" />
+    <div class="badge">Fatigue</div>
+    <div class="bar" style="width:160px"><i id="fatigueBar"></i></div>
+    <div class="badge">State: <span id="stateLabel">Moving</span></div>
+  </header>
+
+  <div class="grid" style="padding:10px; box-sizing:border-box;">
+    <div class="panels">
+      <div class="panel">
+        <h2>Follow Cam</h2>
+        <canvas id="left"></canvas>
+        <div class="hud"><small class="mono">Focus Bot: <span id="focusHUD">—</span> · Left ratio: <span id="ratioHUD">—</span> · Limp: <span id="limpHUD">—</span> · Goal interval: <span id="goalHUD">60s</span></small></div>
+      </div>
+      <div class="panel">
+        <h2>Map View (Full 10k World)</h2>
+        <canvas id="right"></canvas>
+      </div>
+    </div>
+    <div class="sidebar">
+      <div class="card">
+        <div class="row">
+          <strong>Abstract Programming Language</strong>
+          <span class="muted">(live while running)</span>
+        </div>
+        <p class="footnote">Commands (line-based):
+          <br><small class="mono">spawnA &lt;n&gt;</small>, <small class="mono">spawnB &lt;n&gt;</small>, <small class="mono">clearBots</small>, <small class="mono">focus &lt;index&gt;</small>
+          <br><small class="mono">set &lt;path&gt; &lt;value&gt;</small> — applies to the focused bot (e.g. <small class="mono">set bot.wheelRatio 0.72</small>, <small class="mono">set bot.limp.amp 0.4</small>, <small class="mono">set bot.kp 2.0</small>)
+          <br><small class="mono">addGoal &lt;x&gt; &lt;y&gt;</small>, <small class="mono">randomGoal</small>, <small class="mono">setGoalInterval &lt;sec&gt;</small>
+          <br><small class="mono">teleport &lt;x&gt; &lt;y&gt;</small>, <small class="mono">nudge &lt;dx&gt; &lt;dy&gt;</small>, <small class="mono">pause &lt;0|1&gt;</small>, <small class="mono">trail &lt;0|1&gt;</small>, <small class="mono">export</small>
+          <br><small class="mono">macro &lt;name&gt; ... end</small>, <small class="mono">call &lt;name&gt;</small>, <small class="mono">repeat &lt;n&gt; ... end</small>
+        </p>
+        <textarea id="code" spellcheck="false"># Example: spawn bots and tweak the focused one
+spawnA 3
+spawnB 2
+focus 0
+set bot.limp.amp 0.45
+set bot.wheelRatio 0.70
+setGoalInterval 45
+randomGoal
+</textarea>
+        <div class="row">
+          <button id="run" class="primary">Run Program</button>
+          <button id="reset">Reset World</button>
+          <span class="grow"></span>
+          <span class="badge">Trail: <span id="trailHUD">ON</span></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <strong>Status</strong>
+        <div class="row" style="margin-top:6px">
+          <div class="grow footnote">
+            Pos: <span id="posHUD">—</span><br>
+            Heading: <span id="hdgHUD">—</span><br>
+            Goal: <span id="goalPosHUD">—</span><br>
+            Fatigue: <span id="fatigueHUD">—</span> · Rest left: <span id="restHUD">—</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <strong>Tips</strong>
+        <p class="footnote">Bot A is deliberately asymmetric (smaller left wheel + limp oscillator). Bot B is symmetric with half the fatigue rate. The controller fights drift; extra effort increases fatigue. At 100% fatigue, bots rest for 15s, then resume.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ---------- Constants ----------
+  const WORLD_SIZE = 10000; // pixels
+  const GOAL_INTERVAL_DEFAULT = 60; // seconds
+  const REST_TIME_DEFAULT = 15; // seconds
+  const DEG = 180/Math.PI;
+
+  // ---------- State ----------
+  const state = {
+    running: true,
+    speedFactor: 1,
+    lastTime: performance.now(),
+    accumulator: 0,
+    trailEnabled: true,
+  };
+
+  // ---------- Bot Factory ----------
+  function makeBot(type) {
+    const isA = type === 'A';
+    const b = {
+      type,
+      x: Math.random()*WORLD_SIZE,
+      y: Math.random()*WORLD_SIZE,
+      th: Math.random()*Math.PI*2 - Math.PI,
+      v: 0, w: 0,
+      baseSpeed: 180,
+      maxSpeed: 200,
+      accel: 600,
+      drag: 0.8,
+      wheelBase: 80,
+      wheelMax: 1.0,
+      wheelRatio: isA ? 0.75 : 1.0,       // A is lopsided, B is symmetric
+      limp: { amp: isA ? 0.35 : 0.0, freq: 0.6, phase: Math.random()*Math.PI*2, bias: 0.0 },
+      steerNoise: 0.05,
+      kp: 1.8, kd: 0.2,
+      energy: 0,
+      energyRate: 1.0,
+      fatigue: 0,
+      fatigueRateScalar: isA ? 1.0 : 0.5, // B fatigues at half rate
+      resting: false,
+      restLeft: 0,
+      restTime: REST_TIME_DEFAULT,
+      color: isA ? '#37d06f' : '#ff9c2b',
+      trailColor: isA ? '#2fe36e' : '#ffb65a',
+      lastTrailX: 0, lastTrailY: 0,
+    };
+    b.lastTrailX = b.x; b.lastTrailY = b.y;
+    return b;
+  }
+
+  // ---------- Collections ----------
+  const bots = [];
+  let focusIndex = 0; // which bot the follow cam focuses on
+
+  const goals = [];
+  let currentGoal = null;
+  const goalRule = { interval: GOAL_INTERVAL_DEFAULT, tNext: 0 };
+
+  const macros = new Map();
+
+  // ---------- Canvases ----------
+  const left = document.getElementById('left');
+  const right = document.getElementById('right');
+  const lctx = left.getContext('2d');
+  const rctx = right.getContext('2d');
+
+  // Offscreen trail canvas at full 10k resolution
+  const trailCanvas = document.createElement('canvas');
+  trailCanvas.width = WORLD_SIZE;
+  trailCanvas.height = WORLD_SIZE;
+  const tctx = trailCanvas.getContext('2d', { alpha: true });
+  tctx.lineWidth = 2;
+  tctx.lineCap = 'round';
+  tctx.lineJoin = 'round';
+
+  // ---------- UI ----------
+  const toggleBtn = document.getElementById('toggle');
+  const stepBtn = document.getElementById('step');
+  const exportBtn = document.getElementById('export');
+  const zoomInput = document.getElementById('zoom');
+  const speedInput = document.getElementById('speed');
+
+  const posHUD = document.getElementById('posHUD');
+  const hdgHUD = document.getElementById('hdgHUD');
+  const goalPosHUD = document.getElementById('goalPosHUD');
+  const fatigueHUD = document.getElementById('fatigueHUD');
+  const restHUD = document.getElementById('restHUD');
+  const fatigueBar = document.getElementById('fatigueBar');
+  const stateLabel = document.getElementById('stateLabel');
+  const ratioHUD = document.getElementById('ratioHUD');
+  const limpHUD = document.getElementById('limpHUD');
+  const goalHUD = document.getElementById('goalHUD');
+  const trailHUD = document.getElementById('trailHUD');
+  const speedXLabel = document.getElementById('speedx');
+  const focusHUD = document.getElementById('focusHUD');
+
+  const codeTA = document.getElementById('code');
+  const runBtn = document.getElementById('run');
+  const resetBtn = document.getElementById('reset');
+
+  // ---------- Helpers ----------
+  function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+  function wrap(v, a, b){ const w=b-a; let x=v-a; x = ((x%w)+w)%w; return a+x; }
+  function rand(a,b){ return a + Math.random()*(b-a); }
+
+  function pickNewGoal() {
+    const margin = 600; // keep away from edges
+    currentGoal = {
+      x: rand(margin, WORLD_SIZE - margin),
+      y: rand(margin, WORLD_SIZE - margin),
+      created: performance.now()/1000,
+    };
+    goals.push(currentGoal);
+  }
+
+  function resetWorld() {
+    // Clear trails
+    tctx.clearRect(0,0,trailCanvas.width, trailCanvas.height);
+    // Reset collections
+    bots.length = 0;
+    focusIndex = 0;
+    goals.length = 0; currentGoal = null;
+    goalRule.tNext = 0;
+  }
+
+  // ---------- Control ----------
+  toggleBtn.addEventListener('click', () => {
+    state.running = !state.running;
+    toggleBtn.textContent = state.running ? 'Pause' : 'Resume';
+    stateLabel.textContent = state.running ? 'Running' : 'Paused';
+  });
+  stepBtn.addEventListener('click', () => { tick(1/60); render(); });
+  exportBtn.addEventListener('click', () => { exportTrails(); });
+
+  speedInput.addEventListener('input', () => { state.speedFactor = parseFloat(speedInput.value); speedXLabel.textContent = state.speedFactor.toFixed(2); });
+  zoomInput.addEventListener('input', () => {}); // handled in render
+
+  runBtn.addEventListener('click', () => runProgram(codeTA.value));
+  resetBtn.addEventListener('click', () => resetWorld());
+
+  // ---------- Geometry & Rendering ----------
+  function resize() {
+    [left, right].forEach((cv) => {
+      const rect = cv.parentElement.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      cv.width = Math.max(200, Math.floor(rect.width * dpr));
+      cv.height = Math.max(200, Math.floor((rect.height - 0) * dpr));
+      const ctx = cv.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // scale drawing so 1 CSS px == 1 unit
+    });
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function render() {
+    const focus = bots[focusIndex];
+
+    // LEFT: Follow cam
+    const lrect = left.getBoundingClientRect();
+    const lW = lrect.width, lH = lrect.height;
+    const viewZoom = parseFloat(zoomInput.value);
+
+    const viewW = Math.max(600, 1000 / viewZoom);
+    const viewH = viewW * (lH / lW);
+
+    let sx = 0, sy = 0;
+    if (focus) {
+      sx = clamp(focus.x - viewW/2, 0, WORLD_SIZE - viewW);
+      sy = clamp(focus.y - viewH/2, 0, WORLD_SIZE - viewH);
+    }
+
+    // Trails slice
+    lctx.clearRect(0,0,lW,lH);
+    lctx.fillStyle = '#0c111a';
+    lctx.fillRect(0,0,lW,lH);
+    lctx.save();
+    lctx.drawImage(trailCanvas, sx, sy, viewW, viewH, 0, 0, lW, lH);
+
+    // subtle grid
+    lctx.strokeStyle = '#2c384d'; lctx.lineWidth = 1;
+    const grid = 250;
+    const startX = Math.ceil(sx / grid) * grid;
+    const startY = Math.ceil(sy / grid) * grid;
+    for (let gx = startX; gx < sx + viewW; gx += grid) {
+      const X = (gx - sx) * (lW / viewW);
+      lctx.beginPath(); lctx.moveTo(X, 0); lctx.lineTo(X, lH); lctx.stroke();
+    }
+    for (let gy = startY; gy < sy + viewH; gy += grid) {
+      const Y = (gy - sy) * (lH / viewH);
+      lctx.beginPath(); lctx.moveTo(0, Y); lctx.lineTo(lW, Y); lctx.stroke();
+    }
+
+    // Goals in view
+    goals.forEach(g => {
+      if (g.x < sx || g.x > sx+viewW || g.y < sy || g.y > sy+viewH) return;
+      const gx = (g.x - sx) * (lW / viewW);
+      const gy = (g.y - sy) * (lH / viewH);
+      lctx.strokeStyle = '#4aa4ff'; lctx.lineWidth = 2;
+      lctx.beginPath(); lctx.arc(gx, gy, 10, 0, Math.PI*2); lctx.stroke();
+    });
+
+    // Bots in view
+    bots.forEach(b => {
+      if (b.x < sx || b.x > sx+viewW || b.y < sy || b.y > sy+viewH) return;
+      const bx = (b.x - sx) * (lW / viewW);
+      const by = (b.y - sy) * (lH / viewH);
+      lctx.save();
+      lctx.translate(bx, by);
+      lctx.rotate(b.th);
+      drawBot(lctx, 1, b);
+      lctx.restore();
+    });
+    lctx.restore();
+
+    // RIGHT: Map view
+    const rrect = right.getBoundingClientRect();
+    const rW = rrect.width, rH = rrect.height;
+    rctx.clearRect(0,0,rW,rH);
+    rctx.fillStyle = '#0c111a';
+    rctx.fillRect(0,0,rW,rH);
+
+    const scale = Math.min(rW / WORLD_SIZE, rH / WORLD_SIZE);
+    const ox = (rW - WORLD_SIZE*scale)/2;
+    const oy = (rH - WORLD_SIZE*scale)/2;
+
+    rctx.strokeStyle = '#2c384d'; rctx.lineWidth = 2;
+    rctx.strokeRect(ox, oy, WORLD_SIZE*scale, WORLD_SIZE*scale);
+
+    // Trails
+    rctx.drawImage(trailCanvas, 0, 0, WORLD_SIZE, WORLD_SIZE, ox, oy, WORLD_SIZE*scale, WORLD_SIZE*scale);
+
+    // Goals
+    goals.forEach(g => {
+      const gx = ox + g.x * scale;
+      const gy = oy + g.y * scale;
+      rctx.strokeStyle = '#4aa4ff'; rctx.lineWidth = 2;
+      rctx.beginPath(); rctx.arc(gx, gy, 5, 0, Math.PI*2); rctx.stroke();
+    });
+
+    // Bots
+    bots.forEach(b => {
+      rctx.save();
+      rctx.translate(ox + b.x * scale, oy + b.y * scale);
+      rctx.rotate(b.th);
+      drawBot(rctx, 0.5, b);
+      rctx.restore();
+    });
+
+    // HUD reflects focus bot
+    const fb = focus;
+    if (fb) {
+      document.getElementById('posHUD').textContent = `${fb.x.toFixed(1)}, ${fb.y.toFixed(1)} (Bot ${fb.type})`;
+      document.getElementById('hdgHUD').textContent = `${(wrap(fb.th*DEG,0,360)).toFixed(1)}°`;
+      document.getElementById('fatigueHUD').textContent = `${Math.round(fb.fatigue*100)}%`;
+      document.getElementById('restHUD').textContent = fb.resting ? `${fb.restLeft.toFixed(1)}s` : '—';
+      document.getElementById('fatigueBar').style.width = `${Math.max(0,Math.min(1,fb.fatigue))*100}%`;
+      document.getElementById('ratioHUD').textContent = fb.wheelRatio.toFixed(2);
+      document.getElementById('limpHUD').textContent = fb.limp.amp.toFixed(2);
+      document.getElementById('focusHUD').textContent = `${focusIndex}`;
+    } else {
+      document.getElementById('posHUD').textContent = '—';
+      document.getElementById('hdgHUD').textContent = '—';
+      document.getElementById('fatigueHUD').textContent = '—';
+      document.getElementById('restHUD').textContent = '—';
+      document.getElementById('fatigueBar').style.width = '0%';
+      document.getElementById('ratioHUD').textContent = '—';
+      document.getElementById('limpHUD').textContent = '—';
+      document.getElementById('focusHUD').textContent = '—';
+    }
+    document.getElementById('goalPosHUD').textContent = currentGoal ? `${currentGoal.x.toFixed(0)}, ${currentGoal.y.toFixed(0)}` : '—';
+    document.getElementById('stateLabel').textContent = state.running ? 'Running' : 'Paused';
+    document.getElementById('goalHUD').textContent = `${goalRule.interval|0}s`;
+    document.getElementById('trailHUD').textContent = state.trailEnabled ? 'ON' : 'OFF';
+  }
+
+  function drawBot(ctx, k=1, b) {
+    const bodyW = 38*k, bodyL = 60*k, wheelW = 8*k, wheelL = 42*k;
+    // body
+    ctx.fillStyle = b ? (b.type==='A' ? '#14301f' : '#261a0a') : '#14301f';
+    ctx.strokeStyle = b ? (b.type==='A' ? '#2b794a' : '#c97515') : '#2b794a';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(-bodyL/2, -bodyW/2, bodyL, bodyW, 10); else ctx.rect(-bodyL/2, -bodyW/2, bodyL, bodyW);
+    ctx.fill(); ctx.stroke();
+    // wheels
+    ctx.fillStyle = b ? (b.type==='A' ? '#0a2214' : '#33220c') : '#0a2214';
+    ctx.fillRect(-wheelL/2, -bodyW/2 - wheelW, wheelL, wheelW); // left
+    ctx.fillRect(-wheelL/2, bodyW/2, wheelL, wheelW); // right
+    // nose
+    ctx.fillStyle = b ? (b.type==='A' ? '#37d06f' : '#ff9c2b') : '#37d06f';
+    ctx.beginPath(); ctx.moveTo(bodyL/2, 0); ctx.lineTo(bodyL/2-10, -8); ctx.lineTo(bodyL/2-10, 8); ctx.closePath(); ctx.fill();
+  }
+
+  // ---------- Physics & Control ----------
+  function physics(dt) {
+    // Goal scheduling
+    const now = performance.now() / 1000;
+    if (!currentGoal || now >= goalRule.tNext) {
+      pickNewGoal();
+      goalRule.tNext = now + goalRule.interval;
+    }
+
+    bots.forEach(b => {
+      // Rest / fatigue handling
+      if (b.resting) {
+        b.restLeft -= dt;
+        if (b.restLeft <= 0) { b.resting = false; b.fatigue = 0; b.restLeft = 0; }
+        return; // skip movement while resting
+      }
+
+      // Heading to shared goal
+      let uL=0, uR=0;
+      if (currentGoal) {
+        const dx = currentGoal.x - b.x;
+        const dy = currentGoal.y - b.y;
+        const dist = Math.hypot(dx, dy);
+        const target = Math.atan2(dy, dx);
+        let err = smallestAngleDiff(b.th, target);
+
+        const desiredOmega = b.kp * err + b.kd * ((err - (b._prevErr||0)) / Math.max(dt, 1e-3));
+        b._prevErr = err;
+
+        const limpBias = b.limp.bias + b.limp.amp * Math.sin((performance.now()/1000)*Math.PI*2*b.limp.freq + b.limp.phase);
+        const noise = (Math.random()-0.5)*2 * b.steerNoise;
+
+        const base = clamp(dist * 0.5, 60, b.maxSpeed);
+        const vDesired = base;
+        const wDesired = desiredOmega + limpBias + noise;
+
+        let vR = vDesired + (wDesired * b.wheelBase)/2;
+        let vL = vDesired - (wDesired * b.wheelBase)/2;
+        const vMax = b.maxSpeed + b.wheelBase*Math.abs(wDesired)/2;
+        vR = clamp(vR / vMax, -1, 1);
+        vL = clamp(vL / vMax, -1, 1);
+        uR = vR; uL = vL;
+      }
+
+      const effL = b.wheelRatio; // asymmetry on A, 1.0 on B
+      const wheelSpeedR = uR * b.maxSpeed;
+      const wheelSpeedL = uL * b.maxSpeed * effL;
+
+      const v = (wheelSpeedR + wheelSpeedL) * 0.5;
+      const w = (wheelSpeedR - wheelSpeedL) / b.wheelBase;
+
+      b.th = wrap(b.th + w * dt, -Math.PI, Math.PI);
+      b.x += Math.cos(b.th) * v * dt;
+      b.y += Math.sin(b.th) * v * dt;
+
+      // bounds reflect
+      if (b.x < 0) { b.x = 0; b.th = Math.PI - b.th; }
+      else if (b.x > WORLD_SIZE) { b.x = WORLD_SIZE; b.th = Math.PI - b.th; }
+      if (b.y < 0) { b.y = 0; b.th = -b.th; }
+      else if (b.y > WORLD_SIZE) { b.y = WORLD_SIZE; b.th = -b.th; }
+
+      // Energy & fatigue
+      const effort = (uL*uL + uR*uR);
+      const ineff = 1 + Math.pow(1-effL, 2) + b.limp.amp*0.3;
+      const dE = effort * b.energyRate * ineff * dt * state.speedFactor;
+      b.energy += dE;
+      b.fatigue += dE * 0.005 * b.fatigueRateScalar;
+
+      if (b.fatigue >= 1.0) { b.fatigue = 1.0; b.resting = true; b.restLeft = b.restTime; }
+
+      // Trails
+      if (state.trailEnabled && (Math.hypot(b.x-b.lastTrailX, b.y-b.lastTrailY) > 0.5)) {
+        tctx.strokeStyle = b.trailColor;
+        tctx.beginPath();
+        tctx.moveTo(b.lastTrailX, b.lastTrailY);
+        tctx.lineTo(b.x, b.y);
+        tctx.stroke();
+        b.lastTrailX = b.x; b.lastTrailY = b.y;
+      }
+    });
+  }
+
+  function smallestAngleDiff(a, b) {
+    let d = (b - a + Math.PI) % (Math.PI*2);
+    if (d < 0) d += Math.PI*2;
+    return d - Math.PI;
+  }
+
+  function exportTrails() {
+    const out = document.createElement('canvas');
+    out.width = WORLD_SIZE; out.height = WORLD_SIZE;
+    const c = out.getContext('2d');
+    c.drawImage(trailCanvas, 0, 0);
+    c.strokeStyle = '#4aa4ff'; c.lineWidth = 3;
+    goals.forEach(g => { c.beginPath(); c.arc(g.x, g.y, 14, 0, Math.PI*2); c.stroke(); });
+    out.toBlob((blob) => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      const ts = new Date().toISOString().replace(/[:.]/g,'-');
+      a.download = `bot-trails-${ts}.png`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }, 'image/png');
+  }
+
+  // ---------- DSL Interpreter ----------
+  function runProgram(source) {
+    const lines = source.split(/\n/);
+    const clean = [];
+    for (let raw of lines) {
+      const line = raw.replace(/#.*/, '').trim();
+      if (!line) continue;
+      clean.push(line);
+    }
+
+    const prog = [];
+    for (let i=0; i<clean.length; i++) {
+      const line = clean[i];
+      if (line.startsWith('macro ')) {
+        const name = line.split(/\s+/)[1];
+        const body = [];
+        i++;
+        while (i < clean.length && clean[i] !== 'end') { body.push(clean[i]); i++; }
+        macros.set(name, body);
+        continue;
+      }
+      if (line.startsWith('repeat ')) {
+        const n = parseInt(line.split(/\s+/)[1]||'1',10);
+        const body=[]; i++;
+        while (i < clean.length && clean[i] !== 'end') { body.push(clean[i]); i++; }
+        for (let k=0;k<n;k++) prog.push(...body);
+        continue;
+      }
+      prog.push(line);
+    }
+
+    for (const ln of prog) execLine(ln);
+  }
+
+  function execLine(line) {
+    const parts = line.split(/\s+/);
+    const cmd = parts[0];
+    const args = parts.slice(1);
+    switch (cmd) {
+      case 'set': {
+        const path = args[0];
+        const val = parseFloatOrBool(args[1]);
+        setPath(path, val);
+        break; }
+      case 'addGoal': {
+        const x = parseFloat(args[0]);
+        const y = parseFloat(args[1]);
+        currentGoal = { x: clamp(x,0,WORLD_SIZE), y: clamp(y,0,WORLD_SIZE), created: performance.now()/1000 };
+        goals.push(currentGoal);
+        break; }
+      case 'randomGoal': { pickNewGoal(); break; }
+      case 'teleport': {
+        const fb = bots[focusIndex]; if (!fb) break;
+        fb.x = clamp(parseFloat(args[0]),0,WORLD_SIZE);
+        fb.y = clamp(parseFloat(args[1]),0,WORLD_SIZE);
+        fb.lastTrailX = fb.x; fb.lastTrailY = fb.y;
+        break; }
+      case 'nudge': {
+        const fb = bots[focusIndex]; if (!fb) break;
+        const vx = parseFloat(args[0])||0; const vy=parseFloat(args[1])||0;
+        fb.x = clamp(fb.x + vx, 0, WORLD_SIZE);
+        fb.y = clamp(fb.y + vy, 0, WORLD_SIZE);
+        break; }
+      case 'setGoalInterval': {
+        goalRule.interval = Math.max(5, parseFloat(args[0])||GOAL_INTERVAL_DEFAULT);
+        break; }
+      case 'setRestTime': {
+        const fb = bots[focusIndex]; if (!fb) break;
+        fb.restTime = Math.max(1, parseFloat(args[0])||REST_TIME_DEFAULT);
+        break; }
+      case 'pause': {
+        state.running = !(parseInt(args[0])===1);
+        toggleBtn.textContent = state.running ? 'Pause' : 'Resume';
+        break; }
+      case 'trail': { state.trailEnabled = !!parseInt(args[0]); break; }
+      case 'call': {
+        const name = args[0]; const body = macros.get(name);
+        if (body) { for (const ln of body) execLine(ln); }
+        break; }
+      case 'export': { exportTrails(); break; }
+      // ---- Multi-bot commands ----
+      case 'spawnA': { spawnMany('A', parseInt(args[0]||'1',10)); break; }
+      case 'spawnB': { spawnMany('B', parseInt(args[0]||'1',10)); break; }
+      case 'clearBots': { bots.length = 0; focusIndex = 0; break; }
+      case 'focus': { focusIndex = clamp(parseInt(args[0]||'0',10), 0, Math.max(0,bots.length-1)); break; }
+      default: { console.warn('Unknown command:', cmd, args); }
+    }
+  }
+
+  function parseFloatOrBool(s){
+    if (s === 'true') return true; if (s === 'false') return false;
+    const v = parseFloat(s); return isNaN(v) ? s : v;
+  }
+
+  function setPath(path, val){
+    const fb = bots[focusIndex];
+    const segs = path.split('.');
+    switch (segs[0]) {
+      case 'bot':
+        if (!fb) break;
+        if (segs[1] === 'limp') {
+          if (segs[2] === 'amp') fb.limp.amp = Number(val);
+          else if (segs[2] === 'freq') fb.limp.freq = Number(val);
+          else if (segs[2] === 'bias') fb.limp.bias = Number(val);
+        } else if (segs[1] === 'wheelRatio') fb.wheelRatio = Number(val);
+        else if (segs[1] === 'maxSpeed') fb.maxSpeed = Number(val);
+        else if (segs[1] === 'kp') fb.kp = Number(val);
+        else if (segs[1] === 'kd') fb.kd = Number(val);
+        else if (segs[1] === 'steerNoise') fb.steerNoise = Number(val);
+        else if (segs[1] === 'energyRate') fb.energyRate = Number(val);
+        else if (segs[1] === 'drag') fb.drag = Number(val);
+        else if (segs[1] === 'accel') fb.accel = Number(val);
+        else if (segs[1] === 'restSeconds') fb.restTime = Number(val);
+        break;
+      case 'goal':
+        if (segs[1] === 'interval') goalRule.interval = Number(val);
+        break;
+      case 'sim':
+        if (segs[1] === 'paused') state.running = !Boolean(val);
+        break;
+    }
+  }
+
+  function spawnMany(type, n){
+    for (let i=0;i<n;i++) bots.push(makeBot(type));
+    if (bots.length && focusIndex >= bots.length) focusIndex = bots.length - 1;
+  }
+
+  // ---------- Main Loop ----------
+  function tick(dt) {
+    dt *= state.speedFactor;
+    physics(dt);
+  }
+
+  function loop(ts) {
+    const now = performance.now();
+    const dt = (now - state.lastTime) / 1000;
+    state.lastTime = now;
+
+    if (state.running) {
+      const fixed = 1/60;
+      state.accumulator += dt;
+      let steps = 0, maxSteps = 8;
+      while (state.accumulator >= fixed && steps < maxSteps) {
+        tick(fixed);
+        state.accumulator -= fixed;
+        steps++;
+      }
+    }
+
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- Kick-off ----------
+  goalRule.tNext = 0; // force pick at first physics
+  if (!bots.length) spawnMany('A', 1); // default a single A unless DSL spawns
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
