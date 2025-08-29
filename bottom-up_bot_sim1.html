@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Asymmetric vs Symmetric Bots — 10k World (No Goals)</title>
+  <style>
+    :root{
+      --bg:#0d0f12;--panel:#12161c;--ink:#1f232b;--accent:#23c55e;--accent2:#ff9900;
+      --text:#e7ebf3;--muted:#9aa4b2;--gloss1:rgba(255,255,255,0.06);--gloss2:rgba(255,255,255,0.02);--danger:#ef4444;
+    }
+    *{box-sizing:border-box}
+    html, body{height:100%}
+    body{
+      margin:0; background:var(--bg); color:var(--text);
+      font:14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans";
+      display:flex; flex-direction:column;
+    }
+    header{
+      background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02)),
+                  linear-gradient(90deg, #0b0d11, #141922 60%, #0b0d11);
+      border-bottom:1px solid var(--ink); padding:10px 12px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; position:sticky; top:0; z-index:10;
+    }
+    header .brand{font-weight:700; letter-spacing:0.3px; opacity:0.95}
+    header .sep{width:1px; height:28px; background:linear-gradient(var(--gloss1), var(--gloss2)); margin:0 6px}
+    .btn{appearance:none; border:1px solid var(--ink); background:#151a21; color:var(--text); padding:8px 10px; border-radius:10px; cursor:pointer; transition:transform .06s ease, background .2s; box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 1px 0 rgba(0,0,0,0.5);}
+    .btn:hover{background:#1a2029} .btn:active{transform:translateY(1px)}
+    .btn.toggle-active{background:#1e2a22; border-color:#1f4d33}
+    .btn.danger{border-color:#3a1515; background:#221314}
+    .btn.small{padding:6px 8px; font-size:12px}
+    .row{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+    label{opacity:.9}
+    input[type="range"]{accent-color: var(--accent)}
+
+    .layout{flex:1; display:grid; grid-template-columns: 1.3fr 0.7fr 420px; gap:10px; padding:10px}
+    .panel{background:var(--panel); border:1px solid var(--ink); border-radius:14px; overflow:hidden; position:relative; box-shadow: 0 6px 18px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.03)}
+    .panel .inner{padding:10px}
+
+    canvas{display:block; width:100%; height:100%; touch-action:none}
+    .view{display:flex; flex-direction:column}
+    .view .canvas-wrap{flex:1; position:relative}
+    .view .overlay{position:absolute; inset:0; pointer-events:none}
+    .view .border{position:absolute; inset:6px; border:1px solid #2a2f38; border-radius:10px; pointer-events:none}
+
+    .hud{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-left:auto}
+    .tag{font-size:12px; color:var(--muted); padding:4px 8px; background:#0f1319; border:1px solid var(--ink); border-radius:999px}
+
+    .fatigue{ width:180px; height:10px; background:#0f1319; border:1px solid var(--ink); border-radius:999px; overflow:hidden; position:relative }
+    .fatigue > span{position:absolute; inset:0; width:0%; background: linear-gradient(90deg, #233, #2c6, #fa0); box-shadow: inset 0 0 10px rgba(0,0,0,0.6)}
+
+    .stats{display:grid; grid-template-columns: 1fr 1fr; gap:6px; font-size:12px; color:var(--muted)}
+    .stats div{background:#0f1319; border:1px solid var(--ink); border-radius:8px; padding:6px}
+
+    .sidebar{display:flex; flex-direction:column; gap:10px}
+    .sidebar textarea{width:100%; min-height:260px; resize:vertical; border-radius:12px; border:1px solid var(--ink); background:#0b0f14; color:#e7ebf3; padding:10px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:12px}
+    .tips{font-size:12px; color:var(--muted); background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border:1px dashed #27303a; border-radius:12px; padding:10px}
+
+    /* Sensor chart */
+    .chartwrap{height:160px; margin-top:10px; background:#0f1319; border:1px solid var(--ink); border-radius:10px; overflow:hidden; position:relative}
+    #sensorChart{width:100%; height:100%; display:block}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">Asymmetric vs Symmetric Bots — 10k</div>
+    <div class="sep"></div>
+    <div class="row">
+      <button id="pauseBtn" class="btn">Pause</button>
+      <button id="stepBtn" class="btn small" title="Advance one tick">Step</button>
+      <button id="exportBtn" class="btn" title="Export 10k×10k trails PNG">Export 10k Trail PNG</button>
+    </div>
+    <div class="sep"></div>
+    <div class="row">
+      <label>Zoom</label>
+      <input id="zoomSlider" type="range" min="0.25" max="3" step="0.01" value="1" />
+      <label>Speed</label>
+      <input id="speedSlider" type="range" min="0.25" max="5" step="0.05" value="1" />
+      <span id="speedValue" class="tag" title="Simulation speed factor">1.00×</span>
+    </div>
+    <div class="hud">
+      <span id="stateTag" class="tag">Running</span>
+      <div class="fatigue" title="Focus bot fatigue"><span id="fatigueFill"></span></div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <div class="panel view" id="leftView">
+      <div class="canvas-wrap">
+        <canvas id="leftCanvas"></canvas>
+        <div class="overlay border"></div>
+      </div>
+      <div class="inner">
+        <div class="stats" id="statsGrid"></div>
+        <div class="chartwrap"><canvas id="sensorChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="panel view" id="rightView">
+      <div class="canvas-wrap">
+        <canvas id="rightCanvas"></canvas>
+        <div class="overlay border"></div>
+      </div>
+      <div class="inner">
+        <div class="row" style="gap:6px; align-items:center">
+          <span class="tag" title="Focus bot index">Focus: <span id="focusIdx">–</span></span>
+          <span class="tag" title="Bots in world">Bots: <span id="countA">A:0</span> <span id="countB">B:0</span></span>
+        </div>
+        <div class="row" style="gap:8px; align-items:center; margin-top:8px">
+          <button id="brushBtn" class="btn small toggle-active" title="Toggle paint brush on the map">Brush</button>
+          <label>Size</label>
+          <input id="brushSize" type="range" min="50" max="2000" step="10" value="600" />
+          <label>Value</label>
+          <input id="brushValue" type="range" min="0" max="1" step="0.01" value="0.95" />
+          <label>Soft</label>
+          <input id="brushSoft" type="checkbox" checked />
+          <label>Mode</label>
+          <select id="brushMode" class="btn small" style="padding:4px 8px">
+            <option value="set" selected>Set</option>
+            <option value="add">Brighten</option>
+            <option value="sub">Darken</option>
+          </select>
+          <span class="tag">Right-click = Erase</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel sidebar">
+      <div class="inner">
+        <div class="row" style="justify-content:space-between; align-items:center">
+          <strong>Abstract Programming Language</strong>
+          <div class="row">
+            <button id="runBtn" class="btn">Run</button>
+            <button id="resetBtn" class="btn danger">Reset</button>
+          </div>
+        </div>
+        <textarea id="dsl" spellcheck="false" placeholder="# Example
+clearObstacles
+addObstacle 0/0 1000/0 1000/1000 0/1000
+spawnA 5
+spawnB 5
+focus 0
+setType A wheelRatio 0.7
+setType A limp.amp 0.45
+setType A speedNoise 0.05
+setType A fatigueNoise 0.1
+setType B trailColor #ff9900
+set bot.trailWidth 4
+"></textarea>
+        <div class="tips">
+          <strong>Tips</strong><br/>
+          Bot type A (green) implies the author's leg length discrepancy and is therefore asymmetric and the extra effort required for forwards motion increases fatigue. Bot type B (orange) is a standard, symmetric bot with correspondingly reduced fatigue rate. At 100% fatigue, bots rest, then resume.
+        </div>
+        <div class="tips">
+          <strong>Commands</strong>
+          <div style="opacity:0.9">
+            <code>spawnA n</code>, <code>spawnB n</code>, <code>focus i</code>, <code>clearBots</code>,
+            <code>addObstacle x/y ...</code>, <code>clearObstacles</code>,
+            <code>paintRect x y w h v</code>, <code>paintCircle x y r v</code>,
+            <code>setDarkThreshold t</code>, <code>regenLight</code>,
+            <code>pause 0|1</code>, <code>trail 0|1</code>, <code>export</code>, <code>teleport x y</code>, <code>nudge dx dy</code>,
+            <code>setType A|B path value</code>, <code>set path value</code>, blocks: <code>macro name … end</code>, <code>call name</code>, <code>repeat n … end</code>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  /*** Constants & State ***/
+  const WORLD_SIZE = 10000;
+  const GRID_CELLS = 100;
+  const CELL = WORLD_SIZE / GRID_CELLS; // 100 px
+  const FIXED_DT = 1/60; // 60 Hz
+  const MAX_SUBSTEPS = 32; // more headroom so high speed factors feel responsive
+
+  // Tiles below this brightness render black and count as "dark"
+  let darkThreshold = 0.5;
+
+  // DOM
+  const leftCanvas = document.getElementById('leftCanvas');
+  const rightCanvas = document.getElementById('rightCanvas');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const stepBtn = document.getElementById('stepBtn');
+  const exportBtn = document.getElementById('exportBtn');
+  const zoomSlider = document.getElementById('zoomSlider');
+  const speedSlider = document.getElementById('speedSlider');
+  const speedValue = document.getElementById('speedValue');
+  const runBtn = document.getElementById('runBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const dslTA = document.getElementById('dsl');
+
+  const stateTag = document.getElementById('stateTag');
+  const fatigueFill = document.getElementById('fatigueFill');
+  const statsGrid = document.getElementById('statsGrid');
+  const sensorChart = document.getElementById('sensorChart'); const sctx = sensorChart.getContext('2d');
+  const focusIdxEl = document.getElementById('focusIdx');
+  const countAEl = document.getElementById('countA');
+  const countBEl = document.getElementById('countB');
+
+  // Brush UI
+  const brushBtn = document.getElementById('brushBtn');
+  const brushSizeEl = document.getElementById('brushSize');
+  const brushValueEl = document.getElementById('brushValue');
+  const brushSoftEl = document.getElementById('brushSoft');
+  const brushModeEl = document.getElementById('brushMode');
+
+  // View contexts
+  const lctx = leftCanvas.getContext('2d');
+  const rctx = rightCanvas.getContext('2d');
+
+  // Offscreen trail layers (10k×10k)
+  const trailA = document.createElement('canvas'); trailA.width = WORLD_SIZE; trailA.height = WORLD_SIZE;
+  const trailB = document.createElement('canvas'); trailB.width = WORLD_SIZE; trailB.height = WORLD_SIZE;
+  const tctxA = trailA.getContext('2d');
+  const tctxB = trailB.getContext('2d');
+  tctxA.imageSmoothingEnabled = false; tctxB.imageSmoothingEnabled = false;
+
+  // Background (brightness grid + prerender)
+  const bgCanvas = document.createElement('canvas'); bgCanvas.width = WORLD_SIZE; bgCanvas.height = WORLD_SIZE;
+  const bgctx = bgCanvas.getContext('2d');
+
+  // Obstacles
+  let obstacles = [];
+
+  // Simulation
+  let bots = [];
+  let focusIndex = -1;
+  let paused = false;
+  let simSpeed = 1;
+  let accumulator = 0;
+  let trailEnabled = true;
+
+  // Sensor chart state
+  let simTime = 0;
+  let sensorHistory = []; // {t, bAhead,bL1,bR1,bL2,bR2, speed, angVel}
+  const SENSOR_INTERVAL = 0.1; // 10 Hz
+  const SENSOR_CAP = 300;      // ~30 s window
+  let sensorAccum = 0;
+  let lastSensorReading = null;
+
+  // Brush state
+  let brushEnabled = true;
+  let brushRadius = 600;
+  let brushVal = 0.95;
+  let brushSoft = true;
+  let brushMode = 'set'; // 'set' | 'add' | 'sub'
+  let isPainting = false;
+  let lastMouseWorld = {x:0,y:0,inside:false};
+  let lightDirty = false;
+
+  // Defaults per type
+  const defaults = {
+    A: { type:'A', color:'#22c55e', trailColor:'#2fe36e', trailWidth:3, trailOpacity:1,
+         maxSpeed:150, wheelRatio:0.8, limp:{amp:0.35,freq:0.5,bias:0}, kp:4.0, kd:0.9,
+         speedNoise:0.05, steerNoise:0.2, fatigueNoise:0.1, fatigueRateScalar:1.0, restSeconds:15 },
+    B: { type:'B', color:'#ff9900', trailColor:'#ff9900', trailWidth:3, trailOpacity:1,
+         maxSpeed:160, wheelRatio:1.0, limp:{amp:0,freq:0,bias:0}, kp:4.0, kd:0.9,
+         speedNoise:0.03, steerNoise:0.08, fatigueNoise:0.05, fatigueRateScalar:0.5, restSeconds:15 }
+  };
+
+  // Utils
+  const rand=(a=1,b=0)=> b + (a-b)*Math.random();
+  const clamp=(v,min,max)=> v<min?min : v>max?max : v;
+  const lerp=(a,b,t)=> a + (b-a)*t;
+  const TAU = Math.PI*2;
+  const wrapPI = a => { while(a>Math.PI) a-=TAU; while(a<-Math.PI) a+=TAU; return a; };
+
+  /*** Background brightness ***/
+  const GRID_SIZE = GRID_CELLS;
+  const brightness = new Float32Array(GRID_SIZE*GRID_SIZE);
+
+  function regenerateLight(){
+    for(let gy=0; gy<GRID_SIZE; gy++){
+      for(let gx=0; gx<GRID_SIZE; gx++){
+        brightness[gy*GRID_SIZE+gx] = Math.random();
+      }
+    }
+    // light blur
+    for(let pass=0; pass<2; pass++){
+      const copy = brightness.slice();
+      for(let gy=0; gy<GRID_SIZE; gy++){
+        for(let gx=0; gx<GRID_SIZE; gx++){
+          let acc=0, n=0;
+          for(let oy=-1; oy<=1; oy++){
+            for(let ox=-1; ox<=1; ox++){
+              const x=gx+ox, y=gy+oy;
+              if(x>=0 && x<GRID_SIZE && y>=0 && y<GRID_SIZE){ acc += copy[y*GRID_SIZE+x]; n++; }
+            }
+          }
+          brightness[gy*GRID_SIZE+gx] = acc/n;
+        }
+      }
+    }
+  }
+  function brightnessAt(x,y){
+    const gx = clamp(Math.floor(x / CELL), 0, GRID_SIZE-1);
+    const gy = clamp(Math.floor(y / CELL), 0, GRID_SIZE-1);
+    return brightness[gy*GRID_SIZE+gx];
+  }
+  function redrawBackground(){
+    const ctx = bgctx; ctx.save();
+    for(let gy=0; gy<GRID_SIZE; gy++){
+      for(let gx=0; gx<GRID_SIZE; gx++){
+        const b = brightness[gy*GRID_SIZE+gx];
+        if(b < darkThreshold){
+          ctx.fillStyle = 'rgb(0,0,0)';
+        } else {
+          const v = Math.floor(lerp(20, 235, b));
+          ctx.fillStyle = `rgb(${v},${v},${v})`;
+        }
+        ctx.fillRect(gx*CELL, gy*CELL, CELL, CELL);
+      }
+    }
+    ctx.restore();
+  }
+  regenerateLight();
+  redrawBackground();
+
+  /*** Obstacles ***/
+  function polyCentroid(poly){ let cx=0, cy=0; for(const p of poly){ cx+=p.x; cy+=p.y; } return {x:cx/poly.length, y:cy/poly.length}; }
+  function pointInPoly(x, y, poly){
+    let inside = false;
+    for(let i=0, j=poly.length-1; i<poly.length; j=i++){
+      const xi=poly[i].x, yi=poly[i].y; const xj=poly[j].x, yj=poly[j].y;
+      const intersect = ((yi>y)!=(yj>y)) && (x < (xj - xi)*(y - yi)/(yj - yi + 1e-6) + xi);
+      if(intersect) inside = !inside;
+    }
+    return inside;
+  }
+  function anyObstacleContains(x,y){ for(const p of obstacles){ if(pointInPoly(x,y,p)) return p; } return null; }
+
+  /*** Bots ***/
+  class Bot{
+    constructor(type='A', x=rand(WORLD_SIZE), y=rand(WORLD_SIZE)){
+      const d = JSON.parse(JSON.stringify(defaults[type]||defaults.A));
+      Object.assign(this, d);
+      this.x=x; this.y=y; this.heading=rand(TAU);
+      this.angularVel=0; this.forward=0;
+      this.fatigue=0; this.resting=false; this.restLeft=0;
+      this.escapeMode=false; this.lastErr=0; this.lastX=x; this.lastY=y;
+    }
+  }
+  function coerceColor(hex, fallback){
+    try{
+      if(typeof hex!=='string') return fallback;
+      const m=hex.trim().match(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/);
+      return m? hex : fallback;
+    }catch(_){ return fallback; }
+  }
+  function addBots(type, n=1){
+    for(let i=0;i<n;i++){
+      const b = new Bot(type, rand(WORLD_SIZE), rand(WORLD_SIZE));
+      bots.push(b);
+      if(focusIndex<0) focusIndex=0;
+    }
+    updateCounts();
+  }
+  function clearBots(){ bots.length=0; focusIndex=-1; updateCounts(); }
+  function updateCounts(){
+    const a = bots.filter(b=>b.type==='A').length;
+    const o = bots.filter(b=>b.type==='B').length;
+    countAEl.textContent = `A:${a}`; countBEl.textContent = `B:${o}`;
+    focusIdxEl.textContent = focusIndex>=0? String(focusIndex) : '–';
+  }
+  function setFocus(i){
+    if(i>=0 && i<bots.length){
+      focusIndex=i; sensorHistory=[]; lastSensorReading=null; updateCounts();
+    }
+  }
+
+  /*** DSL ***/
+  function parseDSL(text){
+    const raw = text.split('\n').map(l=>l.replace(/#.*/,'').trim()).filter(Boolean);
+    const macros={}, out=[];
+    for(let i=0;i<raw.length;i++){
+      const line=raw[i]; const tok=line.split(/\s+/);
+      if(tok[0]==='macro'){ const name=tok[1]; const body=[]; i++;
+        while(i<raw.length && raw[i]!=='end'){ body.push(raw[i]); i++; }
+        macros[name]=body.slice();
+      } else if(tok[0]==='repeat'){ const n=Math.max(0,parseInt(tok[1]||'0')); const body=[]; i++;
+        while(i<raw.length && raw[i]!=='end'){ body.push(raw[i]); i++; }
+        for(let k=0;k<n;k++) out.push(...body);
+      } else if(tok[0]==='call'){ const name=tok[1]; if(macros[name]) out.push(...macros[name]); }
+      else out.push(line);
+    }
+    const pass1=[], pass2=[];
+    for(const line of out){
+      if(/^addObstacle\b/.test(line) || /^clearObstacles$/.test(line)) pass1.push(line);
+      else pass2.push(line);
+    }
+    return {pass1, pass2};
+  }
+  function runCommand(line){
+    const t=line.split(/\s+/); const cmd = t.shift();
+    switch(cmd){
+      case 'clearObstacles': obstacles=[]; break;
+      case 'addObstacle': {
+        const pts = t.map(tok=>{ const m=tok.split('/'); return {x:parseFloat(m[0]), y:parseFloat(m[1])}; })
+                     .filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y));
+        if(pts.length>=3) obstacles.push(pts);
+        break;
+      }
+      case 'spawnA': addBots('A', parseInt(t[0]||'1')); break;
+      case 'spawnB': addBots('B', parseInt(t[0]||'1')); break;
+      case 'clearBots': clearBots(); break;
+      case 'focus': setFocus(parseInt(t[0]||'-1')); break;
+      case 'pause': paused = (parseInt(t[0]||'0')===1); updatePauseUI(); break;
+      case 'trail': trailEnabled = (parseInt(t[0]||'1')===1); break;
+      case 'export': exportTrailsPNG(); break;
+      case 'teleport': { const b=bots[focusIndex]; if(b){ b.x=clamp(parseFloat(t[0]),0,WORLD_SIZE); b.y=clamp(parseFloat(t[1]),0,WORLD_SIZE);} break; }
+      case 'nudge': { const b=bots[focusIndex]; if(b){ b.x=clamp(b.x+parseFloat(t[0]),0,WORLD_SIZE); b.y=clamp(b.y+parseFloat(t[1]),0,WORLD_SIZE);} break; }
+      case 'setType': {
+        const typ=(t.shift()||'A').toUpperCase(); const path=t.shift(); const val=t.join(' ');
+        setPath(defaults[typ], path, val);
+        for(const b of bots){ if(b.type===typ) setPath(b, path.startsWith('bot.')? path.slice(4) : path, val); }
+        break;
+      }
+      case 'set': { const path=t.shift(); const val=t.join(' '); const b=bots[focusIndex]; if(b) setPath(b, path.startsWith('bot.')? path.slice(4):path, val); break; }
+      case 'setDarkThreshold': { const v=clamp(parseFloat(t[0]||'0.5'),0,1); darkThreshold=v; redrawBackground(); break; }
+      case 'paintRect': {
+        const x=clamp(parseFloat(t[0]||'0'),0,WORLD_SIZE);
+        const y=clamp(parseFloat(t[1]||'0'),0,WORLD_SIZE);
+        const w=Math.max(0,parseFloat(t[2]||'0'));
+        const h=Math.max(0,parseFloat(t[3]||'0'));
+        const v=clamp(parseFloat(t[4]||'0'),0,1);
+        const gx0=clamp(Math.floor(x/CELL),0,GRID_SIZE-1), gy0=clamp(Math.floor(y/CELL),0,GRID_SIZE-1);
+        const gx1=clamp(Math.floor((x+w)/CELL),0,GRID_SIZE-1), gy1=clamp(Math.floor((y+h)/CELL),0,GRID_SIZE-1);
+        for(let gy=gy0; gy<=gy1; gy++) for(let gx=gx0; gx<=gx1; gx++) brightness[gy*GRID_SIZE+gx]=v;
+        redrawBackground(); break;
+      }
+      case 'paintCircle': {
+        const cx=clamp(parseFloat(t[0]||'0'),0,WORLD_SIZE), cy=clamp(parseFloat(t[1]||'0'),0,WORLD_SIZE);
+        const r=Math.max(0,parseFloat(t[2]||'0')), v=clamp(parseFloat(t[3]||'0'),0,1); const r2=r*r;
+        const gx0=clamp(Math.floor((cx-r)/CELL),0,GRID_SIZE-1), gy0=clamp(Math.floor((cy-r)/CELL),0,GRID_SIZE-1);
+        const gx1=clamp(Math.floor((cx+r)/CELL),0,GRID_SIZE-1), gy1=clamp(Math.floor((cy+r)/CELL),0,GRID_SIZE-1);
+        for(let gy=gy0; gy<=gy1; gy++) for(let gx=gx0; gx<=gx1; gx++){
+          const cellCx=(gx+0.5)*CELL, cellCy=(gy+0.5)*CELL; const dx=cellCx-cx, dy=cellCy-cy;
+          if(dx*dx+dy*dy<=r2) brightness[gy*GRID_SIZE+gx]=v;
+        }
+        redrawBackground(); break;
+      }
+      case 'regenLight': regenerateLight(); redrawBackground(); break;
+      default: /* ignore */ break;
+    }
+  }
+  function setPath(obj, path, rawVal){
+    if(!obj||!path) return;
+    const parts=path.split('.'); let ref=obj;
+    for(let i=0;i<parts.length-1;i++){ const k=parts[i]; if(!(k in ref)) ref[k]={}; ref=ref[k]; }
+    const key=parts[parts.length-1];
+    let v=rawVal;
+    if(/^(#[0-9a-fA-F]{3,6})$/.test(v)){
+      if(key==='trailColor') v=coerceColor(v, obj.type==='A'? '#2fe36e' : '#ff9900');
+    } else if(!isNaN(parseFloat(v)) && isFinite(parseFloat(v))) {
+      v = parseFloat(v);
+    } else if(v==='true' || v==='false'){
+      v = (v==='true');
+    }
+    ref[key]=v;
+  }
+  function runDSL(text){ const {pass1,pass2}=parseDSL(text); for(const l of pass1) runCommand(l); for(const l of pass2) runCommand(l); }
+
+  /*** Rendering ***/
+  function resize(){
+    const leftRect = document.getElementById('leftView').getBoundingClientRect();
+    const rightRect = document.getElementById('rightView').getBoundingClientRect();
+    leftCanvas.width = Math.floor(leftRect.width);
+    leftCanvas.height = Math.floor(leftRect.height-100);
+    rightCanvas.width = Math.floor(rightRect.width);
+    rightCanvas.height = Math.floor(rightRect.height-0);
+    // sensor chart
+    const chartEl = document.querySelector('.chartwrap'); const dpr = window.devicePixelRatio || 1;
+    if(chartEl && sensorChart){
+      const rect = chartEl.getBoundingClientRect();
+      sensorChart.width = Math.max(1, Math.floor(rect.width*dpr));
+      sensorChart.height= Math.max(1, Math.floor(rect.height*dpr));
+    }
+  }
+  window.addEventListener('resize', resize); resize();
+
+  function worldToView(x,y, sx,sy, viewW,viewH, vw,vh){ const px=(x-sx)/viewW*vw; const py=(y-sy)/viewH*vh; return [px,py]; }
+
+  function drawObstacles(ctx, sx, sy, viewW, viewH, vw, vh, dx=0, dy=0, scale=null){
+    ctx.save(); ctx.lineWidth=2; ctx.strokeStyle='#88a1ff66'; ctx.fillStyle='#88a1ff14';
+    for(const poly of obstacles){
+      ctx.beginPath();
+      if(scale!=null){
+        ctx.moveTo(dx + poly[0].x*scale, dy + poly[0].y*scale);
+        for(let i=1;i<poly.length;i++) ctx.lineTo(dx + poly[i].x*scale, dy + poly[i].y*scale);
+      } else {
+        const [x0,y0]=worldToView(poly[0].x,poly[0].y, sx,sy,viewW,viewH,vw,vh); ctx.moveTo(x0,y0);
+        for(let i=1;i<poly.length;i++){ const [x,y]=worldToView(poly[i].x,poly[i].y, sx,sy,viewW,viewH,vw,vh); ctx.lineTo(x,y); }
+      }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawBot(ctx, bot, sx, sy, viewW, viewH, vw, vh, dx=0, dy=0, scale=null){
+    let px,py, sc;
+    if(scale!=null){ px=dx + bot.x*scale; py=dy + bot.y*scale; sc=scale; }
+    else { [px,py]=worldToView(bot.x,bot.y, sx,sy, viewW,viewH, vw,vh); sc=vw/viewW; }
+    const size = 22 * (scale? scale : (vw/viewW));
+    ctx.save(); ctx.translate(px,py); ctx.rotate(bot.heading);
+    const bodyW=size*1.3, bodyH=size*0.8, r=6*sc;
+    ctx.fillStyle='#111519'; ctx.strokeStyle='#2a2f38'; ctx.lineWidth=2*sc;
+    ctx.fillRect(-bodyW/2, -bodyH/2 - 4*sc, bodyW, 6*sc);
+    ctx.fillRect(-bodyW/2, +bodyH/2 - 2*sc, bodyW, 6*sc);
+    roundRect(ctx, -bodyW/2, -bodyH/2, bodyW, bodyH, r); ctx.fillStyle='#182029'; ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(bodyW/2+6*sc,0); ctx.lineTo(0,-bodyH/3); ctx.lineTo(0, bodyH/3); ctx.closePath();
+    ctx.fillStyle = bot.type==='A'? shade(bot.color,1.0) : shade(bot.color,0.9); ctx.fill();
+    ctx.restore();
+  }
+  function roundRect(ctx,x,y,w,h,r){ const rr=Math.min(r,w/2,h/2); ctx.beginPath(); ctx.moveTo(x+rr,y); ctx.arcTo(x+w,y,x+w,y+h,rr); ctx.arcTo(x+w,y+h,x,y+h,rr); ctx.arcTo(x,y+h,x,y,rr); ctx.arcTo(x,y,x+w,y,rr); ctx.closePath(); }
+  function shade(hex,f=0.9){
+    try{
+      const m=hex.replace('#',''); const a=m.length===3? m.split('').map(ch=>parseInt(ch+ch,16)) : [parseInt(m.slice(0,2),16),parseInt(m.slice(2,4),16),parseInt(m.slice(4,6),16)];
+      const r=Math.max(0,Math.min(255,Math.floor(a[0]*f))), g=Math.max(0,Math.min(255,Math.floor(a[1]*f))), b=Math.max(0,Math.min(255,Math.floor(a[2]*f)));
+      return `rgb(${r},${g},${b})`;
+    }catch(_){ return '#888'; }
+  }
+
+  function drawFollowCam(){
+    const ctx=lctx; ctx.clearRect(0,0,leftCanvas.width,leftCanvas.height);
+    if(focusIndex<0 || !bots[focusIndex]) return;
+    const b=bots[focusIndex];
+    const aspect=leftCanvas.width/leftCanvas.height;
+    const baseWidth=1400;
+    const viewW=clamp(baseWidth/parseFloat(zoomSlider.value), 200, WORLD_SIZE);
+    const viewH=viewW/aspect;
+    let cx=clamp(b.x, viewW/2, WORLD_SIZE-viewW/2);
+    let cy=clamp(b.y, viewH/2, WORLD_SIZE-viewH/2);
+    const sx=cx-viewW/2, sy=cy-viewH/2;
+    ctx.imageSmoothingEnabled=false;
+    ctx.drawImage(bgCanvas, sx,sy, viewW,viewH, 0,0, leftCanvas.width,leftCanvas.height);
+    ctx.save(); ctx.globalCompositeOperation='source-over';
+    ctx.drawImage(trailA, sx,sy, viewW,viewH, 0,0, leftCanvas.width,leftCanvas.height);
+    ctx.drawImage(trailB, sx,sy, viewW,viewH, 0,0, leftCanvas.width,leftCanvas.height);
+    ctx.restore();
+    drawObstacles(ctx, sx,sy, viewW,viewH, leftCanvas.width,leftCanvas.height);
+    for(const bot of bots){
+      if(bot.x>=sx-60 && bot.x<=sx+viewW+60 && bot.y>=sy-60 && bot.y<=sy+viewH+60){
+        drawBot(ctx, bot, sx,sy, viewW,viewH, leftCanvas.width,leftCanvas.height);
+      }
+    }
+  }
+
+  function getRightMapTransform(){
+    const w=rightCanvas.width, h=rightCanvas.height;
+    const scale=Math.min(w/WORLD_SIZE, h/WORLD_SIZE);
+    const dx=(w - WORLD_SIZE*scale)/2, dy=(h - WORLD_SIZE*scale)/2;
+    return {scale, dx, dy};
+  }
+  function drawFullMap(){
+    const ctx=rctx; const w=rightCanvas.width, h=rightCanvas.height; ctx.clearRect(0,0,w,h);
+    const {scale, dx, dy} = getRightMapTransform();
+    const viewW=WORLD_SIZE, viewH=WORLD_SIZE;
+    ctx.imageSmoothingEnabled=false;
+    ctx.drawImage(bgCanvas, 0,0, viewW,viewH, dx,dy, viewW*scale,viewH*scale);
+    ctx.save(); ctx.globalCompositeOperation='source-over';
+    ctx.drawImage(trailA, 0,0, viewW,viewH, dx,dy, viewW*scale,viewH*scale);
+    ctx.drawImage(trailB, 0,0, viewW,viewH, dx,dy, viewW*scale,viewH*scale);
+    ctx.restore();
+    drawObstacles(ctx, 0,0, viewW,viewH, viewW*scale,viewH*scale, dx,dy, scale);
+
+    // Brush preview
+    if(brushEnabled && lastMouseWorld.inside){
+      const rpx=brushRadius*scale;
+      ctx.save(); ctx.beginPath();
+      ctx.arc(dx + lastMouseWorld.x*scale, dy + lastMouseWorld.y*scale, rpx, 0, TAU);
+      ctx.strokeStyle='rgba(255,255,255,0.6)'; ctx.setLineDash([6,4]); ctx.lineWidth=2; ctx.stroke();
+      let v = brushMode==='sub' ? 0 : Math.floor(lerp(20,235, brushMode==='add' ? 1 : brushVal));
+      ctx.fillStyle=`rgba(${v},${v},${v},0.15)`; ctx.fill(); ctx.restore();
+    }
+
+    ctx.strokeStyle='#2a2f38'; ctx.lineWidth=2; ctx.strokeRect(dx,dy, viewW*scale, viewH*scale);
+  }
+
+  /*** Physics & Control ***/
+  function step(dt){
+    const focusBotRef = bots[focusIndex] || null;
+    for(const b of bots){
+      // trail color safety
+      b.trailColor = coerceColor(b.trailColor, b.type==='A'? '#2fe36e' : '#ff9900');
+
+      // Resting
+      if(b.resting){ b.restLeft -= dt; if(b.restLeft<=0){ b.resting=false; b.fatigue=0; } continue; }
+
+      // Light sampling (avoid dark) with near/far samples
+      let desiredHeading = b.heading;
+      const d1=60, d2=120; const ang=b.heading;
+      const l1=ang+0.35, r1=ang-0.35; const l2=ang+0.90, r2=ang-0.90;
+      const bAhead=brightnessAt(b.x + Math.cos(ang)*d1, b.y + Math.sin(ang)*d1);
+      const bL1  =brightnessAt(b.x + Math.cos(l1)*d1,   b.y + Math.sin(l1)*d1);
+      const bR1  =brightnessAt(b.x + Math.cos(r1)*d1,   b.y + Math.sin(r1)*d1);
+      const bL2  =brightnessAt(b.x + Math.cos(l2)*d2,   b.y + Math.sin(l2)*d2);
+      const bR2  =brightnessAt(b.x + Math.cos(r2)*d2,   b.y + Math.sin(r2)*d2);
+
+      // Gradient toward brighter
+      let g = clamp((bR1-bL1),-1,1)*0.7 + clamp((bR2-bL2),-1,1)*0.3;
+      let delta = -g * 0.30;
+
+      // Dark-ahead amplification
+      if(bAhead < darkThreshold){
+        const darkness = (darkThreshold - bAhead) / Math.max(1e-6, darkThreshold);
+        delta *= (1 + 2.5*darkness);
+        if(bL1 < darkThreshold && bR1 < darkThreshold){
+          const preferRight = bR2 > bL2;
+          const nudge = (preferRight ? -1 : 1) * (0.25 + 0.75*darkness);
+          delta += nudge;
+        }
+      }
+
+      // Type A asymmetry: left turn easier / right harder
+      if(b.type==='A'){
+        const asym = clamp(1 - (b.wheelRatio||1), 0,1);
+        const gainLeft = 1 + 0.6*asym, gainRight = 1 - 0.6*asym;
+        delta *= (Math.sign(delta) >= 0 ? gainLeft : gainRight);
+      }
+      desiredHeading += delta;
+
+      // PD controller
+      const err = wrapPI(desiredHeading - b.heading);
+      const derr = (err - b.lastErr)/Math.max(dt,1e-6); b.lastErr = err;
+      let u = b.kp*err + b.kd*derr;
+
+      // Limp + noise + asym bias
+      const limpTerm = (b.limp?.amp||0) * Math.sin((performance.now()/1000)*TAU*(b.limp?.freq||0) + (b.limp?.bias||0));
+      const steerNoise = rand(-1,1)*(b.steerNoise||0);
+      const asymBias = (1 - (b.wheelRatio||1)) * 1.2;
+      const angVel = u + limpTerm + steerNoise + asymBias;
+      b.angularVel = angVel;
+
+      // Speed: turn slowdown + darkness slowdown
+      const turnSlow = 1 - clamp(Math.abs(err)/Math.PI, 0, 0.8);
+      let speedBase = (b.maxSpeed||120) * turnSlow * (1 + rand(-1,1)*(b.speedNoise||0));
+      const hereB = clamp(brightnessAt(b.x, b.y), 0, 1);
+      let speed = speedBase * (0.6 + 0.4 * hereB); // 0.6× at black → 1.0× at bright
+
+      if(b === focusBotRef){ lastSensorReading = { bAhead,bL1,bR1,bL2,bR2, speed, angVel }; }
+
+      // Obstacle interaction
+      const nx = b.x + Math.cos(b.heading)*speed*dt;
+      const ny = b.y + Math.sin(b.heading)*speed*dt;
+      const hit = anyObstacleContains(nx,ny);
+      const insideNow = anyObstacleContains(b.x,b.y);
+
+      if(b.type==='A'){
+        if(insideNow){
+          b.escapeMode=true;
+          const poly=insideNow, c=polyCentroid(poly);
+          const dir=Math.atan2(b.y - c.y, b.x - c.x);
+          const escapeSpeed = (b.maxSpeed||120)*0.10;
+          b.heading=dir; moveBot(b, escapeSpeed, 0, dt);
+          accumulateFatigue(b, dt, Math.abs(angVel), 0.10);
+          continue;
+        } else if(hit){
+          b.heading = wrapPI(b.heading + (Math.random()<0.5? 1 : -1)*0.6);
+          moveBot(b, 0, b.angularVel, dt);
+          accumulateFatigue(b, dt, Math.abs(angVel), 0.0);
+          continue;
+        } else b.escapeMode=false;
+      }
+
+      // Integrate
+      moveBot(b, speed, angVel, dt);
+
+      // Fatigue with inefficiency and speed factor
+      const ineff = 1 + (1 - (b.wheelRatio||1))*0.8 + Math.abs(b.limp?.amp||0)*0.5;
+      const effort = Math.abs(angVel)*0.6 + (1 - turnSlow)*0.4;
+      const speedNorm = (b.maxSpeed ? (speed / b.maxSpeed) : 0);
+      accumulateFatigue(b, dt, effort*ineff, speedNorm);
+
+      // Rest
+      if(b.fatigue >= 1){ b.resting = true; b.restLeft = getEffectiveRestSeconds(b); }
+    }
+
+    // Sim time & sensor sampling
+    simTime += dt; sensorAccum += dt;
+    if(sensorAccum >= SENSOR_INTERVAL && lastSensorReading){
+      sensorHistory.push({ t: simTime, ...lastSensorReading });
+      if(sensorHistory.length > SENSOR_CAP) sensorHistory.shift();
+      sensorAccum -= SENSOR_INTERVAL;
+    }
+  }
+
+  // Fatigue & rest
+  function accumulateFatigue(b, dt, amount, speedNorm=1){
+    const noise = 1 + rand(-1,1)*(b.fatigueNoise||0);
+    const RATE_SCALE = 0.01; // global 1/100×
+    const rate = (b.fatigueRateScalar||1) * RATE_SCALE;
+    const speedScale = 0.5 + 0.5 * clamp(speedNorm, 0, 1); // 0.5..1
+    b.fatigue = clamp(b.fatigue + (amount * rate * speedScale * dt * noise), 0, 1);
+  }
+  function getEffectiveRestSeconds(b){
+    const RATE_SCALE = 0.01;
+    const rate = (b.fatigueRateScalar||1) * RATE_SCALE;
+    const base = (b.restSeconds||15);
+    return Math.max(0.05, base * rate);
+  }
+
+  function moveBot(b, speed, angVel, dt){
+    b.heading = wrapPI(b.heading + angVel*dt);
+    const dx = Math.cos(b.heading)*speed*dt;
+    const dy = Math.sin(b.heading)*speed*dt;
+    let nx=b.x+dx, ny=b.y+dy;
+    if(nx<0){ nx=-nx; b.heading=wrapPI(Math.PI - b.heading); }
+    if(ny<0){ ny=-ny; b.heading=wrapPI(-b.heading); }
+    if(nx>WORLD_SIZE){ nx = WORLD_SIZE - (nx - WORLD_SIZE); b.heading=wrapPI(Math.PI - b.heading); }
+    if(ny>WORLD_SIZE){ ny = WORLD_SIZE - (ny - WORLD_SIZE); b.heading=wrapPI(-b.heading); }
+
+    if(trailEnabled){
+      const ctx = (b.type==='A')? tctxA : tctxB;
+      ctx.save(); ctx.globalCompositeOperation='source-over';
+      ctx.lineCap='round'; ctx.lineJoin='round';
+      ctx.strokeStyle = coerceColor(b.trailColor, b.type==='A'? '#2fe36e' : '#ff9900');
+      ctx.globalAlpha = clamp(b.trailOpacity ?? 1, 0, 1);
+      ctx.lineWidth = Math.max(1, b.trailWidth||2);
+      ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(nx, ny); ctx.stroke(); ctx.restore();
+    }
+
+    b.lastX=b.x; b.lastY=b.y; b.x=nx; b.y=ny;
+  }
+
+  /*** Export ***/
+  function exportTrailsPNG(){
+    try{
+      const out = document.createElement('canvas'); out.width=WORLD_SIZE; out.height=WORLD_SIZE;
+      const octx=out.getContext('2d'); octx.save(); octx.globalCompositeOperation='source-over';
+      octx.drawImage(trailA,0,0); octx.drawImage(trailB,0,0); octx.restore();
+      const url=out.toDataURL('image/png');
+      const a=document.createElement('a'); a.href=url; a.download=`trails_${WORLD_SIZE}.png`;
+      document.body.appendChild(a); a.click(); a.remove();
+    } catch(err){ alert('Export failed: '+err.message+'\nTip: Very large canvases require significant RAM.'); }
+  }
+
+  /*** Brush painting ***/
+  function applyBrushAt(wx, wy, erase=false){
+    const r = brushRadius, r2 = r*r;
+    const gx0=clamp(Math.floor((wx - r)/CELL),0,GRID_SIZE-1), gy0=clamp(Math.floor((wy - r)/CELL),0,GRID_SIZE-1);
+    const gx1=clamp(Math.floor((wx + r)/CELL),0,GRID_SIZE-1), gy1=clamp(Math.floor((wy + r)/CELL),0,GRID_SIZE-1);
+    const mode = erase? 'erase' : brushMode;
+    const amount = brushVal;
+
+    for(let gy=gy0; gy<=gy1; gy++){
+      for(let gx=gx0; gx<=gx1; gx++){
+        const idx=gy*GRID_SIZE+gx;
+        const cx=(gx+0.5)*CELL, cy=(gy+0.5)*CELL;
+        const dx=cx - wx, dy=cy - wy; const d2=dx*dx+dy*dy;
+        if(d2>r2) continue;
+        const dist = Math.sqrt(d2);
+        const weight = brushSoft? Math.pow(1 - (dist/r), 2) : 1; // 0..1
+        let b = brightness[idx];
+
+        if(mode==='erase'){
+          // set to black (0) with falloff
+          b = lerp(b, 0, weight);
+        } else if(mode==='set'){
+          b = lerp(b, amount, weight);
+        } else if(mode==='add'){
+          b = clamp(b + weight*amount, 0, 1);
+        } else if(mode==='sub'){
+          b = clamp(b - weight*amount, 0, 1);
+        }
+        brightness[idx]=b;
+      }
+    }
+    lightDirty = true;
+  }
+  function applyBrushSegment(from, to, erase=false){
+    // Draw along the drag path to avoid gaps
+    const step = Math.max(8, CELL*0.6);
+    const dx=to.x - from.x, dy=to.y - from.y;
+    const len=Math.hypot(dx,dy);
+    if(len===0){ applyBrushAt(to.x,to.y,erase); return; }
+    const n = Math.ceil(len/step);
+    for(let i=0;i<=n;i++){
+      const t=i/n; applyBrushAt(from.x + dx*t, from.y + dy*t, erase);
+    }
+  }
+  function screenToWorld(mx,my){
+    const {scale, dx, dy} = getRightMapTransform();
+    const wx=(mx - dx)/scale, wy=(my - dy)/scale;
+    const inside = wx>=0 && wx<=WORLD_SIZE && wy>=0 && wy<=WORLD_SIZE;
+    return {x:wx, y:wy, inside};
+  }
+
+  /*** UI wiring ***/
+  pauseBtn.addEventListener('click', ()=>{ paused=!paused; updatePauseUI(); });
+  function updatePauseUI(){ stateTag.textContent = paused? 'Paused' : 'Running'; pauseBtn.classList.toggle('toggle-active', paused); }
+  stepBtn.addEventListener('click', ()=>{ if(paused){ accumulator += FIXED_DT; tick(0); }});
+  exportBtn.addEventListener('click', exportTrailsPNG);
+
+  function updateSpeed(val){ simSpeed = val; speedValue.textContent = `${val.toFixed(2)}×`; }
+  speedSlider.addEventListener('input', ()=> updateSpeed(parseFloat(speedSlider.value)));
+  speedSlider.addEventListener('change', ()=> updateSpeed(parseFloat(speedSlider.value)));
+  updateSpeed(parseFloat(speedSlider.value || '1'));
+
+  runBtn.addEventListener('click', ()=> runDSL(dslTA.value));
+  resetBtn.addEventListener('click', ()=> resetAll());
+
+  function resetAll(){
+    bots.length=0; obstacles.length=0; focusIndex=-1; accumulator=0; trailEnabled=true;
+    tctxA.clearRect(0,0,WORLD_SIZE,WORLD_SIZE); tctxB.clearRect(0,0,WORLD_SIZE,WORLD_SIZE);
+    sensorHistory=[]; lastSensorReading=null; simTime=0; sensorAccum=0;
+    updateCounts();
+  }
+
+  // Brush controls
+  brushBtn.addEventListener('click', ()=>{ brushEnabled=!brushEnabled; brushBtn.classList.toggle('toggle-active', brushEnabled); });
+  brushSizeEl.addEventListener('input', ()=>{ brushRadius=parseFloat(brushSizeEl.value)||600; });
+  brushValueEl.addEventListener('input', ()=>{ brushVal=parseFloat(brushValueEl.value)||0.95; });
+  brushSoftEl.addEventListener('change', ()=>{ brushSoft=!!brushSoftEl.checked; });
+  brushModeEl.addEventListener('change', ()=>{ brushMode=brushModeEl.value; });
+
+  // Prevent context menu so right-click paints
+  rightCanvas.addEventListener('contextmenu', (e)=> e.preventDefault());
+
+  // Pointer painting
+  rightCanvas.addEventListener('pointerdown', (e)=>{
+    const rect=rightCanvas.getBoundingClientRect(); const x=e.clientX-rect.left, y=e.clientY-rect.top;
+    const wpos=screenToWorld(x,y); lastMouseWorld=wpos;
+    const erase = (e.button===2);
+    if(brushEnabled && wpos.inside){
+      isPainting=true; try{ rightCanvas.setPointerCapture(e.pointerId); }catch(_){}
+      applyBrushAt(wpos.x,wpos.y, erase);
+    }
+  });
+  rightCanvas.addEventListener('pointermove', (e)=>{
+    const rect=rightCanvas.getBoundingClientRect(); const x=e.clientX-rect.left, y=e.clientY-rect.top;
+    const wpos=screenToWorld(x,y);
+    if(brushEnabled && isPainting && wpos.inside && lastMouseWorld.inside){
+      const erase = (e.buttons===2) || (e.button===2);
+      applyBrushSegment(lastMouseWorld, wpos, erase);
+    }
+    lastMouseWorld=wpos;
+  });
+  function endPaint(e){ isPainting=false; try{ rightCanvas.releasePointerCapture(e.pointerId); }catch(_){} }
+  rightCanvas.addEventListener('pointerup', endPaint);
+  rightCanvas.addEventListener('pointercancel', endPaint);
+  rightCanvas.addEventListener('pointerleave', (e)=>{ lastMouseWorld={x:0,y:0,inside:false}; if(isPainting) endPaint(e); });
+
+  /*** HUD ***/
+  function updateHUD(){
+    const b=bots[focusIndex]; const f=b? Math.floor(b.fatigue*100) : 0; fatigueFill.style.width=`${f}%`;
+    statsGrid.innerHTML='';
+    const rows=[];
+    if(b){
+      rows.push(['Idx', focusIndex]);
+      rows.push(['Type', b.type]);
+      rows.push(['Pos', `${b.x.toFixed(1)}, ${b.y.toFixed(1)}`]);
+      rows.push(['Heading', `${(b.heading*180/Math.PI).toFixed(1)}°`]);
+      rows.push(['WheelRatio', (b.wheelRatio??1).toFixed(2)]);
+      rows.push(['Limp.Amp', (b.limp?.amp||0).toFixed(2)]);
+      rows.push(['Fatigue %', f+'%']);
+      rows.push(['Fatigue rate', (((b?.fatigueRateScalar)||1)*0.01).toFixed(3)+'×']);
+      rows.push(['Rest left', b.resting? b.restLeft.toFixed(1)+'s':'—']);
+      rows.push(['Rest (eff)', getEffectiveRestSeconds(b).toFixed(2)+'s']);
+      rows.push(['kp/kd', `${(b.kp||0).toFixed(2)} / ${(b.kd||0).toFixed(2)}`]);
+      rows.push(['MaxSpeed', `${b.maxSpeed||0}`]);
+      rows.push(['Trail', `${b.trailWidth||0}px @${(b.trailOpacity??1)}`]);
+    }
+    for(const [k,v] of rows){ const cell=document.createElement('div'); cell.textContent=`${k}: ${v}`; statsGrid.appendChild(cell); }
+  }
+
+  /*** Sensor Chart ***/
+  function drawSensorChart(){
+    if(!sctx || !sensorChart) return;
+    const dpr=window.devicePixelRatio||1; const w=sensorChart.width, h=sensorChart.height;
+    sctx.save(); sctx.setTransform(1,0,0,1,0,0); sctx.clearRect(0,0,w,h); sctx.imageSmoothingEnabled=false;
+    sctx.fillStyle='#0b0f14'; sctx.fillRect(0,0,w,h);
+    const pad=16*dpr; sctx.strokeStyle='#1f232b'; sctx.lineWidth=1*dpr; sctx.strokeRect(pad,pad,w-2*pad,h-2*pad);
+    sctx.beginPath(); for(let i=1;i<4;i++){ const y=pad+(h-2*pad)*(i/4); sctx.moveTo(pad,y); sctx.lineTo(w-pad,y);} sctx.stroke();
+    if(sensorHistory.length===0){ sctx.restore(); return; }
+    const tMax=sensorHistory[sensorHistory.length-1].t; const windowSec=SENSOR_CAP*SENSOR_INTERVAL; const tMin=Math.max(0,tMax-windowSec);
+    const tx=t=> pad + (t - tMin)/windowSec * (w-2*pad);
+    const tyBright=v=> { const cl=Math.max(0,Math.min(1,v)); return pad + (1 - cl)*(h-2*pad); };
+    // right axis ranges
+    let sMax=1, aMax=1; for(const d of sensorHistory){ if(d.t<tMin) continue; if(d.speed>sMax) sMax=d.speed; const av=Math.abs(d.angVel); if(av>aMax) aMax=av; }
+    sMax=Math.max(50, Math.ceil(sMax/10)*10); aMax=Math.max(0.5, Math.ceil(aMax*10)/10);
+    const tySpeed=v=> { const nv=Math.max(0,Math.min(sMax,v)); return pad + (1 - nv/sMax)*(h-2*pad); };
+    const tyAng=v=> { const nv=Math.max(-aMax,Math.min(aMax,v)); const norm=(nv+aMax)/(2*aMax); return pad + (1 - norm)*(h-2*pad); };
+
+    const brightSeries=[ {key:'bAhead',color:'#e5e7eb',label:'ahead'}, {key:'bL1',color:'#22c55e',label:'left'},
+                         {key:'bR1',color:'#ff9900',label:'right'}, {key:'bL2',color:'#14b8a6',label:'farL'},
+                         {key:'bR2',color:'#8b5cf6',label:'farR'} ];
+    for(const s of brightSeries) plotSeries(s, tyBright, 2*dpr, false);
+    plotCustom('speed','#60a5fa',tySpeed,2*dpr,false);
+    plotCustom('angVel','#f472b6',tyAng,2*dpr,true);
+
+    // right-axis ticks + angVel zero
+    sctx.save(); sctx.fillStyle='#9aa4b2'; sctx.font=`${10*dpr}px system-ui`;
+    sctx.textAlign='right'; sctx.textBaseline='middle';
+    for(let i=0;i<=4;i++){ const y=pad+(h-2*pad)*(1 - i/4); const val=Math.round((sMax*i/4)); sctx.fillText(String(val), w-2, y); }
+    const y0=tyAng(0); sctx.strokeStyle='#334155'; sctx.setLineDash([4*dpr,4*dpr]); sctx.beginPath(); sctx.moveTo(pad,y0); sctx.lineTo(w-pad,y0); sctx.stroke(); sctx.setLineDash([]); sctx.restore();
+
+    // legend
+    let lx=pad+4*dpr, ly=pad+4*dpr; const lh=12*dpr;
+    const legend=[...brightSeries.map(s=>({label:s.label,color:s.color,dash:false})), {label:'speed',color:'#60a5fa',dash:false}, {label:'angVel',color:'#f472b6',dash:true}];
+    sctx.font=`${10*dpr}px system-ui`;
+    for(const s of legend){
+      sctx.strokeStyle=s.color; sctx.beginPath(); if(s.dash) sctx.setLineDash([6*dpr,4*dpr]); sctx.moveTo(lx,ly-2*dpr); sctx.lineTo(lx+10*dpr,ly-2*dpr); sctx.stroke(); sctx.setLineDash([]);
+      sctx.fillStyle='#9aa4b2'; sctx.fillText(s.label, lx+14*dpr, ly+2*dpr); ly+=lh;
+    }
+    sctx.restore();
+
+    function plotSeries(s, yfn, lw, dashed){
+      sctx.save(); sctx.beginPath(); sctx.lineWidth=lw; sctx.strokeStyle=s.color; if(dashed) sctx.setLineDash([6*dpr,4*dpr]);
+      let first=true; for(const d of sensorHistory){ if(d.t<tMin) continue; const x=tx(d.t), y=yfn(d[s.key]); if(first){ sctx.moveTo(x,y); first=false; } else sctx.lineTo(x,y); }
+      sctx.stroke(); sctx.restore();
+    }
+    function plotCustom(key, color, yfn, lw, dashed){
+      sctx.save(); sctx.beginPath(); sctx.lineWidth=lw; sctx.strokeStyle=color; if(dashed) sctx.setLineDash([6*dpr,4*dpr]);
+      let first=true; for(const d of sensorHistory){ if(d.t<tMin) continue; const x=tx(d.t), y=yfn(d[key]); if(first){ sctx.moveTo(x,y); first=false; } else sctx.lineTo(x,y); }
+      sctx.stroke(); sctx.restore();
+    }
+  }
+
+  /*** Main loop ***/
+  let last = performance.now();
+  function tick(now){
+    const realDt=(now-last)/1000; last=now;
+    const simDt=realDt * simSpeed;
+    if(!paused) accumulator += simDt;
+    let sub=0;
+    while(accumulator >= FIXED_DT && sub<MAX_SUBSTEPS){
+      step(FIXED_DT); accumulator -= FIXED_DT; sub++;
+    }
+    if(lightDirty){ redrawBackground(); lightDirty=false; }
+    drawFollowCam(); drawFullMap(); updateHUD(); drawSensorChart(); requestAnimationFrame(tick);
+  }
+
+  // Seed a small swarm
+  addBots('A', 5); addBots('B', 5); setFocus(0);
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
