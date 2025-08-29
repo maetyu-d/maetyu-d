@@ -11,54 +11,35 @@
     }
     *{box-sizing:border-box}
     html, body{height:100%}
-    body{
-      margin:0; background:var(--bg); color:var(--text);
-      font:14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans";
-      display:flex; flex-direction:column;
-    }
-    header{
-      background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02)),
-                  linear-gradient(90deg, #0b0d11, #141922 60%, #0b0d11);
-      border-bottom:1px solid var(--ink); padding:10px 12px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; position:sticky; top:0; z-index:10;
-    }
-    header .brand{font-weight:700; letter-spacing:0.3px; opacity:0.95}
-    header .sep{width:1px; height:28px; background:linear-gradient(var(--gloss1), var(--gloss2)); margin:0 6px}
-    .btn{appearance:none; border:1px solid var(--ink); background:#151a21; color:var(--text); padding:8px 10px; border-radius:10px; cursor:pointer; transition:transform .06s ease, background .2s; box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 1px 0 rgba(0,0,0,0.5);}
-    .btn:hover{background:#1a2029} .btn:active{transform:translateY(1px)}
-    .btn.toggle-active{background:#1e2a22; border-color:#1f4d33}
-    .btn.danger{border-color:#3a1515; background:#221314}
-    .btn.small{padding:6px 8px; font-size:12px}
-    .row{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans";display:flex;flex-direction:column}
+    header{background:linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.02)),linear-gradient(90deg,#0b0d11,#141922 60%,#0b0d11);border-bottom:1px solid var(--ink);padding:10px 12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;position:sticky;top:0;z-index:10}
+    .brand{font-weight:700;letter-spacing:.3px;opacity:.95}
+    .sep{width:1px;height:28px;background:linear-gradient(var(--gloss1),var(--gloss2));margin:0 6px}
+    .btn{appearance:none;border:1px solid var(--ink);background:#151a21;color:var(--text);padding:8px 10px;border-radius:10px;cursor:pointer;transition:transform .06s,background .2s;box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 1px 0 rgba(0,0,0,.5)}
+    .btn:hover{background:#1a2029}.btn:active{transform:translateY(1px)}.btn.toggle-active{background:#1e2a22;border-color:#1f4d33}.btn.danger{border-color:#3a1515;background:#221314}.btn.small{padding:6px 8px;font-size:12px}
+    .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     label{opacity:.9}
-    input[type="range"]{accent-color: var(--accent)}
-
-    .layout{flex:1; display:grid; grid-template-columns: 1.3fr 0.7fr 420px; gap:10px; padding:10px}
-    .panel{background:var(--panel); border:1px solid var(--ink); border-radius:14px; overflow:hidden; position:relative; box-shadow: 0 6px 18px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.03)}
+    input[type="range"]{accent-color:var(--accent)}
+    .layout{flex:1;display:grid;grid-template-columns:1.3fr .7fr 420px;gap:10px;padding:10px}
+    .panel{background:var(--panel);border:1px solid var(--ink);border-radius:14px;overflow:hidden;position:relative;box-shadow:0 6px 18px rgba(0,0,0,.25),inset 0 1px 0 rgba(255,255,255,.03)}
     .panel .inner{padding:10px}
-
-    canvas{display:block; width:100%; height:100%; touch-action:none}
-    .view{display:flex; flex-direction:column}
-    .view .canvas-wrap{flex:1; position:relative}
-    .view .overlay{position:absolute; inset:0; pointer-events:none}
-    .view .border{position:absolute; inset:6px; border:1px solid #2a2f38; border-radius:10px; pointer-events:none}
-
-    .hud{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-left:auto}
-    .tag{font-size:12px; color:var(--muted); padding:4px 8px; background:#0f1319; border:1px solid var(--ink); border-radius:999px}
-
-    .fatigue{ width:180px; height:10px; background:#0f1319; border:1px solid var(--ink); border-radius:999px; overflow:hidden; position:relative }
-    .fatigue > span{position:absolute; inset:0; width:0%; background: linear-gradient(90deg, #233, #2c6, #fa0); box-shadow: inset 0 0 10px rgba(0,0,0,0.6)}
-
-    .stats{display:grid; grid-template-columns: 1fr 1fr; gap:6px; font-size:12px; color:var(--muted)}
-    .stats div{background:#0f1319; border:1px solid var(--ink); border-radius:8px; padding:6px}
-
-    .sidebar{display:flex; flex-direction:column; gap:10px}
-    .sidebar textarea{width:100%; min-height:260px; resize:vertical; border-radius:12px; border:1px solid var(--ink); background:#0b0f14; color:#e7ebf3; padding:10px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:12px}
-    .tips{font-size:12px; color:var(--muted); background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border:1px dashed #27303a; border-radius:12px; padding:10px}
-
-    /* Sensor chart */
-    .chartwrap{height:160px; margin-top:10px; background:#0f1319; border:1px solid var(--ink); border-radius:10px; overflow:hidden; position:relative}
-    #sensorChart{width:100%; height:100%; display:block}
-    .swatch{width:18px;height:18px;border:1px solid #2a2f38;border-radius:6px;display:inline-block;vertical-align:middle;background:#000;box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);} 
+    canvas{display:block;width:100%;height:100%;touch-action:none}
+    .view{display:flex;flex-direction:column}
+    .view .canvas-wrap{flex:1;position:relative}
+    .view .overlay{position:absolute;inset:0;pointer-events:none}
+    .view .border{position:absolute;inset:6px;border:1px solid #2a2f38;border-radius:10px;pointer-events:none}
+    .hud{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto}
+    .tag{font-size:12px;color:var(--muted);padding:4px 8px;background:#0f1319;border:1px solid var(--ink);border-radius:999px}
+    .fatigue{width:180px;height:10px;background:#0f1319;border:1px solid var(--ink);border-radius:999px;overflow:hidden;position:relative}
+    .fatigue>span{position:absolute;inset:0;width:0%;background:linear-gradient(90deg,#233,#2c6,#fa0);box-shadow:inset 0 0 10px rgba(0,0,0,.6)}
+    .stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px;color:var(--muted)}
+    .stats div{background:#0f1319;border:1px solid var(--ink);border-radius:8px;padding:6px}
+    .sidebar{display:flex;flex-direction:column;gap:10px}
+    .sidebar textarea{width:100%;min-height:260px;resize:vertical;border-radius:12px;border:1px solid var(--ink);background:#0b0f14;color:#e7ebf3;padding:10px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px}
+    .tips{font-size:12px;color:var(--muted);background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,.01));border:1px dashed #27303a;border-radius:12px;padding:10px}
+    .chartwrap{height:160px;margin-top:10px;background:#0f1319;border:1px solid var(--ink);border-radius:10px;overflow:hidden;position:relative}
+    #sensorChart{width:100%;height:100%;display:block}
+    .swatch{width:18px;height:18px;border:1px solid #2a2f38;border-radius:6px;display:inline-block;vertical-align:middle;background:#000;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
   </style>
 </head>
 <body>
@@ -102,11 +83,12 @@
         <div class="overlay border"></div>
       </div>
       <div class="inner">
-        <div class="row" style="gap:6px; align-items:center">
+        <div class="row" style="gap:6px;align-items:center">
           <span class="tag" title="Focus bot index">Focus: <span id="focusIdx">–</span></span>
           <span class="tag" title="Bots in world">Bots: <span id="countA">A:0</span> <span id="countB">B:0</span></span>
         </div>
-        <div class="row" style="gap:8px; align-items:center; margin-top:8px">
+        <!-- Brush controls -->
+        <div class="row" style="gap:8px;align-items:center;margin-top:8px">
           <button id="brushBtn" class="btn small toggle-active" title="Toggle paint brush on the map">Brush</button>
           <label for="brushSize">Size</label>
           <input id="brushSize" type="range" min="50" max="2000" step="10" value="600" />
@@ -128,7 +110,7 @@
 
     <div class="panel sidebar">
       <div class="inner">
-        <div class="row" style="justify-content:space-between; align-items:center">
+        <div class="row" style="justify-content:space-between;align-items:center">
           <strong>Abstract Programming Language</strong>
           <div class="row">
             <button id="runBtn" class="btn">Run</button>
@@ -154,7 +136,7 @@ set bot.trailWidth 4
         </div>
         <div class="tips">
           <strong>Commands</strong>
-          <div style="opacity:0.9">
+          <div style="opacity:.9">
             <code>spawnA n</code>, <code>spawnB n</code>, <code>focus i</code>, <code>clearBots</code>,
             <code>addObstacle x/y ...</code>, <code>clearObstacles</code>,
             <code>paintRect x y w h v</code>, <code>paintCircle x y r v</code>,
@@ -175,9 +157,7 @@ set bot.trailWidth 4
   const CELL = WORLD_SIZE / GRID_CELLS; // 100 px
   const FIXED_DT = 1/60; // 60 Hz
   const MAX_SUBSTEPS = 32;
-
-  // Tiles below this brightness render black and count as "dark"
-  let darkThreshold = 0.5;
+  let darkThreshold = 0.5; // < threshold is black & “dark”
 
   // DOM
   const leftCanvas = document.getElementById('leftCanvas');
@@ -212,14 +192,14 @@ set bot.trailWidth 4
   const lctx = leftCanvas.getContext('2d');
   const rctx = rightCanvas.getContext('2d');
 
-  // Offscreen trail layers (10k×10k)
+  // Trail layers (10k×10k)
   const trailA = document.createElement('canvas'); trailA.width = WORLD_SIZE; trailA.height = WORLD_SIZE;
   const trailB = document.createElement('canvas'); trailB.width = WORLD_SIZE; trailB.height = WORLD_SIZE;
   const tctxA = trailA.getContext('2d');
   const tctxB = trailB.getContext('2d');
   tctxA.imageSmoothingEnabled = false; tctxB.imageSmoothingEnabled = false;
 
-  // Background (brightness grid + prerender)
+  // Background (brightness)
   const bgCanvas = document.createElement('canvas'); bgCanvas.width = WORLD_SIZE; bgCanvas.height = WORLD_SIZE;
   const bgctx = bgCanvas.getContext('2d');
 
@@ -234,7 +214,7 @@ set bot.trailWidth 4
   let accumulator = 0;
   let trailEnabled = true;
 
-  // Sensor chart state
+  // Sensor chart
   let simTime = 0;
   let sensorHistory = []; // {t, bAhead,bL1,bR1,bL2,bR2, speed, angVel}
   const SENSOR_INTERVAL = 0.1; // 10 Hz
@@ -252,7 +232,13 @@ set bot.trailWidth 4
   let lastMouseWorld = {x:0,y:0,inside:false};
   let lightDirty = false;
 
-  // Brush preview mapping (includes dark threshold)
+  // Brush preview mapping (includes threshold)
+  const clamp=(v,min,max)=> v<min?min : v>max?max : v;
+  const lerp=(a,b,t)=> a + (b-a)*t;
+  const rand=(a=1,b=0)=> b + (a-b)*Math.random();
+  const TAU = Math.PI*2;
+  const wrapPI = a => { while(a>Math.PI) a-=TAU; while(a<-Math.PI) a+=TAU; return a; };
+
   function mapBrushGray(val){ return (val < darkThreshold ? 0 : Math.floor(lerp(20,235,val))); }
   function updateBrushSwatch(){
     let v = (brushMode === 'sub') ? 0 : mapBrushGray(brushVal);
@@ -268,13 +254,6 @@ set bot.trailWidth 4
          maxSpeed:160, wheelRatio:1.0, limp:{amp:0,freq:0,bias:0}, kp:4.0, kd:0.9,
          speedNoise:0.03, steerNoise:0.08, fatigueNoise:0.05, fatigueRateScalar:0.5, restSeconds:15 }
   };
-
-  // Utils
-  const rand=(a=1,b=0)=> b + (a-b)*Math.random();
-  const clamp=(v,min,max)=> v<min?min : v>max?max : v;
-  const lerp=(a,b,t)=> a + (b-a)*t;
-  const TAU = Math.PI*2;
-  const wrapPI = a => { while(a>Math.PI) a-=TAU; while(a<-Math.PI) a+=TAU; return a; };
 
   /*** Background brightness ***/
   const GRID_SIZE = GRID_CELLS;
@@ -342,10 +321,10 @@ set bot.trailWidth 4
 
   /*** Bots ***/
   class Bot{
-    constructor(type='A', x=rand(WORLD_SIZE), y=rand(WORLD_SIZE)){
+    constructor(type='A', x=Math.random()*WORLD_SIZE, y=Math.random()*WORLD_SIZE){
       const d = JSON.parse(JSON.stringify(defaults[type]||defaults.A));
       Object.assign(this, d);
-      this.x=x; this.y=y; this.heading=rand(TAU);
+      this.x=x; this.y=y; this.heading=Math.random()*TAU;
       this.angularVel=0; this.forward=0;
       this.fatigue=0; this.resting=false; this.restLeft=0;
       this.escapeMode=false; this.lastErr=0; this.lastX=x; this.lastY=y;
@@ -360,7 +339,7 @@ set bot.trailWidth 4
   }
   function addBots(type, n=1){
     for(let i=0;i<n;i++){
-      const b = new Bot(type, rand(WORLD_SIZE), rand(WORLD_SIZE));
+      const b = new Bot(type);
       bots.push(b);
       if(focusIndex<0) focusIndex=0;
     }
@@ -451,7 +430,7 @@ set bot.trailWidth 4
         redrawBackground(); break;
       }
       case 'regenLight': regenerateLight(); redrawBackground(); break;
-      default: /* ignore */ break;
+      default: /* ignore unknown */ break;
     }
   }
   function setPath(obj, path, rawVal){
@@ -469,7 +448,11 @@ set bot.trailWidth 4
     }
     ref[key]=v;
   }
-  function runDSL(text){ const {pass1,pass2}=parseDSL(text); for(const l of pass1) runCommand(l); for(const l of pass2) runCommand(l); }
+  function runDSL(text){
+    const {pass1,pass2}=parseDSL(text);
+    for(const l of pass1) runCommand(l);
+    for(const l of pass2) runCommand(l);
+  }
 
   /*** Rendering ***/
   function resize(){
@@ -581,7 +564,7 @@ set bot.trailWidth 4
       ctx.arc(dx + lastMouseWorld.x*scale, dy + lastMouseWorld.y*scale, rpx, 0, TAU);
       ctx.strokeStyle='rgba(255,255,255,0.6)'; ctx.setLineDash([6,4]); ctx.lineWidth=2; ctx.stroke();
       let v = mapBrushGray(brushVal);
-      if (brushMode === 'sub') v = 0; // darken preview
+      if (brushMode === 'sub') v = 0;
       ctx.fillStyle = `rgba(${v},${v},${v},0.15)`; ctx.fill(); ctx.restore();
     }
 
@@ -592,13 +575,13 @@ set bot.trailWidth 4
   function step(dt){
     const focusBotRef = bots[focusIndex] || null;
     for(const b of bots){
-      // trail color safety
+      // color safety
       b.trailColor = coerceColor(b.trailColor, b.type==='A'? '#2fe36e' : '#ff9900');
 
       // Resting
       if(b.resting){ b.restLeft -= dt; if(b.restLeft<=0){ b.resting=false; b.fatigue=0; } continue; }
 
-      // Light sampling (avoid dark) with near/far samples
+      // Light sensors (avoid dark)
       let desiredHeading = b.heading;
       const d1=60, d2=120; const ang=b.heading;
       const l1=ang+0.35, r1=ang-0.35; const l2=ang+0.90, r2=ang-0.90;
@@ -612,7 +595,7 @@ set bot.trailWidth 4
       let g = clamp((bR1-bL1),-1,1)*0.7 + clamp((bR2-bL2),-1,1)*0.3;
       let delta = -g * 0.30;
 
-      // Dark-ahead amplification
+      // Dark-ahead amplification/escape bias
       if(bAhead < darkThreshold){
         const darkness = (darkThreshold - bAhead) / Math.max(1e-6, darkThreshold);
         delta *= (1 + 2.5*darkness);
@@ -623,7 +606,7 @@ set bot.trailWidth 4
         }
       }
 
-      // Type A asymmetry: left turn easier / right harder
+      // Type A asymmetry: left turns amplified, right damped
       if(b.type==='A'){
         const asym = clamp(1 - (b.wheelRatio||1), 0,1);
         const gainLeft = 1 + 0.6*asym, gainRight = 1 - 0.6*asym;
@@ -631,7 +614,7 @@ set bot.trailWidth 4
       }
       desiredHeading += delta;
 
-      // PD controller
+      // PD
       const err = wrapPI(desiredHeading - b.heading);
       const derr = (err - b.lastErr)/Math.max(dt,1e-6); b.lastErr = err;
       let u = b.kp*err + b.kd*derr;
@@ -683,7 +666,7 @@ set bot.trailWidth 4
       const speedNorm = (b.maxSpeed ? (speed / b.maxSpeed) : 0);
       accumulateFatigue(b, dt, effort*ineff, speedNorm);
 
-      // Rest
+      // Rest if fatigued
       if(b.fatigue >= 1){ b.resting = true; b.restLeft = getEffectiveRestSeconds(b); }
     }
 
@@ -696,10 +679,10 @@ set bot.trailWidth 4
     }
   }
 
-  // Fatigue & rest
+  // Fatigue & rest (global 1/100×, rest scales with rate; speed-aware)
   function accumulateFatigue(b, dt, amount, speedNorm=1){
     const noise = 1 + rand(-1,1)*(b.fatigueNoise||0);
-    const RATE_SCALE = 0.01; // global 1/100×
+    const RATE_SCALE = 0.01;
     const rate = (b.fatigueRateScalar||1) * RATE_SCALE;
     const speedScale = 0.5 + 0.5 * clamp(speedNorm, 0, 1); // 0.5..1
     b.fatigue = clamp(b.fatigue + (amount * rate * speedScale * dt * noise), 0, 1);
@@ -796,8 +779,8 @@ set bot.trailWidth 4
   }
 
   /*** UI wiring ***/
-  pauseBtn.addEventListener('click', ()=>{ paused=!paused; updatePauseUI(); });
   function updatePauseUI(){ stateTag.textContent = paused? 'Paused' : 'Running'; pauseBtn.classList.toggle('toggle-active', paused); }
+  pauseBtn.addEventListener('click', ()=>{ paused=!paused; updatePauseUI(); });
   stepBtn.addEventListener('click', ()=>{ if(paused){ step(FIXED_DT); drawFollowCam(); drawFullMap(); updateHUD(); drawSensorChart(); } });
   exportBtn.addEventListener('click', exportTrailsPNG);
 
@@ -811,6 +794,7 @@ set bot.trailWidth 4
   resetBtn.addEventListener('click', ()=> resetAll());
 
   function resetAll(){
+    // Clear bots/obstacles and trails but keep the current brightness field
     bots.length=0; obstacles.length=0; focusIndex=-1; accumulator=0; trailEnabled=true;
     tctxA.clearRect(0,0,WORLD_SIZE,WORLD_SIZE); tctxB.clearRect(0,0,WORLD_SIZE,WORLD_SIZE);
     sensorHistory=[]; lastSensorReading=null; simTime=0; sensorAccum=0;
@@ -824,10 +808,8 @@ set bot.trailWidth 4
   brushSoftEl.addEventListener('change', ()=>{ brushSoft=!!brushSoftEl.checked; });
   brushModeEl.addEventListener('change', ()=>{ brushMode=brushModeEl.value; updateBrushSwatch(); });
 
-  // Prevent context menu so right-click paints
+  // Right-click paints "erase" (darken to black)
   rightCanvas.addEventListener('contextmenu', (e)=> e.preventDefault());
-
-  // Pointer painting
   rightCanvas.addEventListener('pointerdown', (e)=>{
     const rect=rightCanvas.getBoundingClientRect(); const x=e.clientX-rect.left, y=e.clientY-rect.top;
     const wpos=screenToWorld(x,y); lastMouseWorld=wpos;
@@ -888,7 +870,7 @@ set bot.trailWidth 4
     const tMax=sensorHistory[sensorHistory.length-1].t; const windowSec=SENSOR_CAP*SENSOR_INTERVAL; const tMin=Math.max(0,tMax-windowSec);
     const tx=t=> pad + (t - tMin)/windowSec * (w-2*pad);
     const tyBright=v=> { const cl=Math.max(0,Math.min(1,v)); return pad + (1 - cl)*(h-2*pad); };
-    // right axis ranges
+    // dynamic right-axis
     let sMax=1, aMax=1; for(const d of sensorHistory){ if(d.t<tMin) continue; if(d.speed>sMax) sMax=d.speed; const av=Math.abs(d.angVel); if(av>aMax) aMax=av; }
     sMax=Math.max(50, Math.ceil(sMax/10)*10); aMax=Math.max(0.5, Math.ceil(aMax*10)/10);
     const tySpeed=v=> { const nv=Math.max(0,Math.min(sMax,v)); return pad + (1 - nv/sMax)*(h-2*pad); };
@@ -950,5 +932,6 @@ set bot.trailWidth 4
 </script>
 </body>
 </html>
+
 
 
