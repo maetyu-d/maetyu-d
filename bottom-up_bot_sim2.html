@@ -781,7 +781,6 @@ set bot.trailWidth 4
     lightDirty = true;
   }
   function applyBrushSegment(from, to, erase=false){
-    // Draw along the drag path to avoid gaps
     const step = Math.max(8, CELL*0.6);
     const dx=to.x - from.x, dy=to.y - from.y;
     const len=Math.hypot(dx,dy);
