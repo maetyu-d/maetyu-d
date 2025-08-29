@@ -174,7 +174,7 @@ set bot.trailWidth 4
   const GRID_CELLS = 100;
   const CELL = WORLD_SIZE / GRID_CELLS; // 100 px
   const FIXED_DT = 1/60; // 60 Hz
-  const MAX_SUBSTEPS = 32; // headroom for fast speeds
+  const MAX_SUBSTEPS = 32;
 
   // Tiles below this brightness render black and count as "dark"
   let darkThreshold = 0.5;
@@ -651,7 +651,7 @@ set bot.trailWidth 4
 
       if(b === focusBotRef){ lastSensorReading = { bAhead,bL1,bR1,bL2,bR2, speed, angVel }; }
 
-      // Obstacle interaction
+      // Obstacles
       const nx = b.x + Math.cos(b.heading)*speed*dt;
       const ny = b.y + Math.sin(b.heading)*speed*dt;
       const hit = anyObstacleContains(nx,ny);
@@ -950,4 +950,5 @@ set bot.trailWidth 4
 </script>
 </body>
 </html>
+
 
