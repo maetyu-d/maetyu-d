@@ -1456,16 +1456,22 @@ setDarkThreshold 0.5
   const btnSetLabels = document.createElement('button');
   btnSetLabels.className='btn secondary'; btnSetLabels.textContent='Toggle Labels'; btnSetLabels.id='btnSetLabels';
 
-  // Insert DSL buttons next to DSL title
+  // Insert DSL buttons next to DSL title (no :contains()!)
   (function injectDSLButtons(){
-    const panel = document.querySelector('.panel h3:contains("World DSL")');
-    // Fallback: append to DSL panel top row if querySelector doesn't support :contains
-    const parentPanel = document.querySelectorAll('.panel')[3];
+    // Find the DSL panel robustly
+    const dslEl = document.getElementById('dsl');
+    if (!dslEl) return;
+    const parentPanel = dslEl.closest('.panel') || dslEl.parentElement;
+    if (!parentPanel) return;
+
     const row = document.createElement('div');
-    row.className='flex';
-    row.style.cssText='gap:8px; margin-bottom:8px';
+    row.className = 'flex';
+    row.style.cssText = 'gap:8px; margin-bottom:8px';
     row.append(btnRunDSL, btnStepDSL, btnClearBots, btnRegenLight, btnSetLabels);
-    parentPanel.insertBefore(row, parentPanel.children[1]);
+
+    // Insert just under the panel's <h3>, or at top if missing
+    const h3 = parentPanel.querySelector('h3');
+    parentPanel.insertBefore(row, (h3 && h3.nextSibling) ? h3.nextSibling : parentPanel.firstChild);
   })();
 
   const darkSlider = document.getElementById('darkThreshold');
@@ -1514,3 +1520,4 @@ setDarkThreshold 0.5
   </script>
 </body>
 </html>
+
