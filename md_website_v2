@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mat Dalgleish — Brutalist Minimal</title>
+  <style>
+  :root{
+    --bg:#fff; --fg:#111; --accent:#e60012; --ink:#fff; --border:#111; --focus:#ffcc00;
+    --thick:8px; --space:12px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0d0d0d; --fg:#f5f5f5; --border:#f5f5f5 }
+  }
+  html,body{height:100%}
+  body{margin:0; background:var(--bg); color:var(--fg);
+       font:16px/1.3 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+            "Noto Sans SC", "PingFang SC", "Microsoft YaHei", Arial}
+  a{color:var(--fg); text-decoration:none}
+  a:hover,a:focus{background:var(--accent); color:var(--ink)}
+  .wrap{min-height:100%; display:grid; grid-template-rows:auto 1fr; border:var(--thick) solid var(--border)}
+  header{border-bottom:var(--thick) solid var(--border)}
+  .bar{display:flex; align-items:center; justify-content:space-between; gap:var(--space); padding:var(--space)}
+  h1{margin:0; font-family:ui-monospace, monospace; font-size:clamp(22px,5vw,44px)}
+  nav{display:flex; gap:24px; font-weight:900; text-transform:uppercase; margin:0 auto;}
+  nav a{border:none; padding:0; font-size:14px}
+  nav a:hover,nav a:focus{outline:6px solid var(--focus); outline-offset:2px}
+  main{padding:var(--space)}
+  section{border:var(--thick) solid var(--border); margin-bottom:var(--space); padding:var(--space)}
+  section:last-of-type{margin-bottom:0}
+  .label{display:inline-block; padding:4px 8px; border:var(--thick) solid var(--border); background:var(--accent); color:var(--ink); font-weight:900}
+  .list{list-style:none; padding:0; margin:0}
+  .row{display:block; padding:10px 0; border-top:var(--thick) solid var(--border)}
+  .row:first-child{border-top:none}
+  .muted{opacity:.7}
+  .skip-link{ position:absolute; left:-9999px }
+  .skip-link:focus{ left:12px; top:12px; background:var(--accent); color:var(--ink); padding:6px 10px; border:var(--thick) solid var(--border)}
+
+  /* ===== Split view ===== */
+  .split{
+    --pos:50;
+    display:grid;
+    grid-template-columns: minmax(0, calc(var(--pos)*1%)) 16px minmax(0, calc((100 - var(--pos))*1%));
+    align-items:start;
+    gap:0;
+    height:100%;
+  }
+  .pane{ padding:0 var(--space); min-width:0; overflow:hidden; height:100%; overflow-y:auto; }
+  .pane > section{ margin-bottom:var(--space); }
+  .divider{
+    background:var(--border); cursor:col-resize; height:100%; position:relative; z-index:10;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .divider::before{ content:"≡"; font-size:20px; color:var(--fg); transform:rotate(90deg); }
+  .divider:focus{ outline:6px solid var(--focus); outline-offset:-4px }
+
+  /* Mobile: stack panes & drag vertically */
+  @media (max-width: 768px){
+    .split{
+      grid-template-columns:none;
+      grid-template-rows: minmax(0, calc(var(--pos)*1%)) 16px minmax(0, calc((100 - var(--pos))*1%));
+    }
+    .divider{ cursor:row-resize; }
+    .divider::before{ transform:none } /* ≡ upright for vertical dragging */
+  }
+  </style>
+</head>
+<body>
+  <a href="#main" class="skip-link">Skip to content</a>
+  <div class="wrap">
+    <header>
+      <div class="bar">
+        <div style="display:flex; align-items:center; gap:12px">
+          <h1>Mat Dalgleish</h1>
+        </div>
+        <nav aria-label="Primary">
+          <a href="#work">WORK / 作品</a>
+          <a href="#projects">SELECTED PROJECTS / 精选项目</a>
+          <a href="#writing">WRITING / 写作</a>
+          <a href="#contact">CONTACT / 联系</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <div class="split" id="split">
+        <!-- LEFT: ENGLISH (always) -->
+        <div class="pane" id="pane-en">
+          <section aria-labelledby="about-en">
+            <span class="label">ABOUT</span>
+            <div class="row">Artist-Designer · Researcher · Educator</div>
+            <div class="row muted">I'm interested in experimental audiovisual interfaces, creative coding (particularly procedural generation), modular synthesizers, and DIY/DIWO approaches to disability and technology.</div>
+          </section>
+
+          <section id="work" aria-labelledby="work-title-en">
+            <span class="label">WORK</span>
+            <ul class="list">
+              <li class="row"><strong>SL in Game Audio and Technical Design, University of Staffordshire</strong> <span class="muted">2023—present</span></li>
+              <li class="row"><strong>Trustee of the <a href="https://www.ohmi.org.uk/">The OHMI Trust</a></strong> <span class="muted">2024—present</span></li>
+              <li class="row"><strong>Research:</strong> Accessible musical instruments and interfaces, audiovisual systems (design and history), game audio (procedural audio), disability and technology.</li>
+              <li class="row"><strong>Teaching:</strong> Game audio (audio programming, procedural audio, generative music, sound synthesis and DSP), film sound and audiovisual theory (Chion, Altman, etc.), microcontrollers and embedded computing, game design, project management, and UG and PG project and PhD supervision.</li>
+            </ul>
+          </section>
+
+          <section id="projects" aria-labelledby="projects-title-en">
+            <span class="label">SELECTED PROJECTS</span>
+            <ul class="list">
+              <li class="row"><strong>limp.freq (2025)</strong> — symmetric bots that draw connections between mobility impairment—specifically my own experience of leg length discrepancy (LLD)—and its impact on daily movement, navigation, and spatial needs, while also challenging ideas of perfection that have been baked into AI since its earliest days.</li>
+              <li class="row"><strong>Procedural Audio Objects (2021)</strong> — with Sarah Whitfield. Two practical pieces (a prop and a generative radio play based on Interior, Maeterlinck's 1895 play in rhymed dialogue, and housed in a tactile, portable object) that explore the possibilities of sound in theatre and generative audio in particular.</li>
+              <li class="row"><strong>Beyond Audio Description for Theatre (2017-2019)</strong> — an ERAS-funded project that explored the use of ambiently-diffused sound design as supplement to and replacement for audio description for theatre.</li>
+              <li class="row"><strong>Postrum (2014-2015)</strong> — with Steve Spencer. A system that uses a 3D camera to track the posture of trumpet students, paired with a haptic belt that gently corrects deviations which could otherwise increase the risk of long-term injuries or musculoskeletal problems.</li>
+              <li class="row"><strong>The Haptic Drum Kit/Haptic Bracelets (2009-2012)</strong> — with Simon Holland and Anders Bouwer. Wearable systems that send haptic impulses to the user's wrists and ankles, giving guidance on how to play rhythm patterns, particularly multi-limb patterns.</li>
+            </ul>
+          </section>
+
+          <section id="writing" aria-labelledby="writing-title-en">
+            <span class="label">WRITING</span>
+            <ul class="list">
+              <li class="row">Bending the Clock: Modular Synthesizers and Disabled Temporalities (SyReN paper) <span class="muted">October 2025</span></li>
+              <li class="row"><a href="https://nime.org/proceedings/2025/nime2025_11.pdf">Chimera: Prototyping a New DMI for Congenital One-Handed Musicianship Through an Autoethnographic Lens (NIME proceedings paper)</a> <span class="muted">June 2025</span></li>
+              <li class="row">(Just Like) Starting Over? What traditional instruments can – and can’t – tell us about DMIs and disability (Innovation in Music) <span class="muted">June 2025</span></li>
+              <li class="row">And Then It Turned Outside-In: Rethinking Spatial Game Audio (Reproduced Sound) <span class="muted">November 2024</span></li>
+              <li class="row">TYG: Collaborative Music Creation in an UE5-Based Local Multiplayer Instrument (NoiseFloor) <span class="muted">April 2024</span></li>
+              <li class="row"><a href="https://scholar.google.com/citations?user=XXKExGkAAAAJ&hl=en">See HERE for more.</a></li>
+            </ul>
+          </section>
+
+          <section id="contact" aria-labelledby="contact-title-en">
+            <span class="label">CONTACT</span>
+            <ul class="list">
+              <li class="row"><strong>Email:</strong> <a class="mono" href="mailto:mathewdalgleish@gmail.com">mathewdalgleish@gmail.com</a></li>
+              <li class="row"><strong>LinkedIn:</strong> <a class="mono" href="https://www.linkedin.com/in/mat-dalgleish-b4406424a/">https://www.linkedin.com/in/mat-dalgleish-b4406424a/</a></li>
+              <li class="row"><strong>Mastodon:</strong> <a class="mono" href="https://mstdn.social/@drd">https://mstdn.social/@drd</a></li>
+            </ul>
+          </section>
+        </div>
+
+        <!-- DRAG HANDLE -->
+        <div class="divider" id="divider" role="separator" aria-orientation="vertical" aria-label="Drag to adjust English/Right-language split" tabindex="0"></div>
+
+        <!-- RIGHT: MULTILINGUAL (random each load) -->
+        <div class="pane" id="pane-right"></div>
+      </div>
+    </main>
+  </div>
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"Person","name":"Mat Dalgleish","url":"https://example.com","jobTitle":"Designer / Researcher","email":"mailto:mathewdalgleish@gmail.com","knowsAbout":["Brutalist web design","Interactive fiction","Game audio","Modular synthesis","Accessibility"],"worksFor":{"@type":"Organization","name":"Independent"}}
+  </script>
+
+<script>
+  // Language data for the RIGHT pane. Left pane is always English.
+  const LANGS = {
+    zh: {
+      labels:{about:'简介', work:'工作', projects:'精选项目', writing:'写作', contact:'联系'},
+      role:'艺术家/设计师 · 研究者 · 教育者',
+      interest:'关注实验性视听接口、创意编码（尤其程序生成）、模块化合成器，以及面向残障与技术的 DIY/DIWO 方法。',
+      work:[
+        '<strong>斯塔福德郡大学 游戏音频与技术设计讲师（SL）</strong> <span class="muted">2023—至今</span>',
+        '<strong><a href="https://www.ohmi.org.uk/">OHMI 基金会</a> 受托人</strong> <span class="muted">2024—至今</span>',
+        '<strong>研究：</strong> 可及/无障碍乐器与接口；视听系统（设计与历史）；游戏音频（程序音频）；残障与技术。',
+        '<strong>教学：</strong> 游戏音频（音频编程、程序音频、生成音乐、声音合成与 DSP）、影视声音与视听理论（Chion、Altman 等）、微控制器与嵌入式计算、游戏设计、项目管理，以及本科/硕士项目与博士指导。'
+      ],
+      projects:[
+        '<strong>limp.freq（2025）</strong> —— 对称机器人，将移动障碍——尤其我本人腿长差异（LLD）的经验——与日常移动、导航与空间需求的影响联系起来，同时质疑自 AI 早期以来被“内置”的完美主义观念。',
+        '<strong>程序化音频对象（2021）</strong> —— 与 Sarah Whitfield 合作。两件实践作品（一个道具与一部生成式广播剧，改编自梅特林克 1895 年押韵对白剧作《室内》，并封装于可触摸、可携带的物件中），探讨戏剧声音与生成音频的可能性。',
+        '<strong>超越剧场口述影像（2017–2019）</strong> —— ERAS 资助项目，探索将环境式扩声设计作为剧院口述影像的补充或替代方案。',
+        '<strong>Postrum（2014–2015）</strong> —— 与 Steve Spencer 合作。利用 3D 摄像头跟踪小号学生姿态，并配合触觉腰带温和纠正偏差，以降低长期伤害或肌骨问题的风险。',
+        '<strong>触觉鼓组/触觉手环（2009–2012）</strong> —— 与 Simon Holland、Anders Bouwer 合作。可穿戴系统通过手腕与脚踝的触觉脉冲引导多肢节奏的演奏。'
+      ],
+      writing:[
+        'Bending the Clock: 模块化合成器与残障时间性（SyReN 论文）<span class="muted">2025 年 10 月</span>',
+        '<a href="https://nime.org/proceedings/2025/nime2025_11.pdf">Chimera：以自我民族志为视角为先天单手演奏者原型化新的 DMI（NIME 论文）</a> <span class="muted">2025 年 6 月</span>',
+        '（Just Like）Starting Over? 传统乐器能/不能告诉我们的：关于 DMI 与残障（Innovation in Music）<span class="muted">2025 年 6 月</span>',
+        'And Then It Turned Outside-In：重思空间游戏音频（Reproduced Sound）<span class="muted">2024 年 11 月</span>',
+        'TYG：在 UE5 本地多人乐器中的协作音乐创作（NoiseFloor）<span class="muted">2024 年 4 月</span>',
+        '<a href="https://scholar.google.com/citations?user=XXKExGkAAAAJ&hl=en">更多请见此处</a>'
+      ],
+      contact:[
+        '<strong>邮箱：</strong> <a class="mono" href="mailto:mathewdalgleish@gmail.com">mathewdalgleish@gmail.com</a>',
+        '<strong>领英：</strong> <a class="mono" href="https://www.linkedin.com/in/mat-dalgleish-b4406424a/">linkedin.com/in/mat-dalgleish-b4406424a</a>',
+        '<strong>Mastodon：</strong> <a class="mono" href="https://mstdn.social/@drd">mstdn.social/@drd</a>'
+      ]
+    },
+    ja: {
+      labels:{about:'概要', work:'職歴', projects:'主なプロジェクト', writing:'執筆', contact:'連絡先'},
+      role:'アーティスト／デザイナー ・ 研究者 ・ 教育者',
+      interest:'実験的な視聴覚インターフェース、クリエイティブコーディング（特に手続き生成）、モジュラーシンセサイザー、そして障害とテクノロジーに対する DIY／DIWO のアプローチに関心があります。',
+      work:[
+        '<strong>スタッフォードシャー大学 ゲームオーディオ＆テクニカルデザイン 講師（SL）</strong> <span class="muted">2023—現在</span>',
+        '<strong><a href="https://www.ohmi.org.uk/">OHMI 財団</a> 理事</strong> <span class="muted">2024—現在</span>',
+        '<strong>研究：</strong> アクセシブルな楽器とインターフェース、視聴覚システム（デザインと歴史）、ゲームオーディオ（手続き音）、障害とテクノロジー。',
+        '<strong>教育：</strong> ゲームオーディオ（オーディオプログラミング、手続き音、ジェネラティブ音楽、合成とDSP）、映画音響と視聴覚理論（Chion、Altman 等）、マイコンと組込み、ゲームデザイン、プロジェクト管理、学部・大学院・博士課程指導。'
+      ],
+      projects:[
+        '<strong>limp.freq（2025）</strong> — 対称ボット。移動に関わる障害—特に自身の脚長差（LLD）の経験—が日々の移動・ナビゲーション・空間ニーズに与える影響を結び付け、AI 初期から内在する「完璧」観を問い直す試み。',
+        '<strong>Procedural Audio Objects（2021）</strong> — Sarah Whitfield と共同。小道具と生成的ラジオドラマの 2 作品。メーテルリンク『室内』（1895）を基に、触覚的で携帯可能なオブジェクトに収めた劇場向けサウンドの可能性を探る。',
+        '<strong>Beyond Audio Description for Theatre（2017–2019）</strong> — ERAS 助成。劇場における音声ガイドの補完／代替として、環境的に拡散するサウンドデザインを検討。',
+        '<strong>Postrum（2014–2015）</strong> — Steve Spencer と共同。3D カメラでトランペット学習者の姿勢を追跡し、触覚ベルトで逸脱を穏やかに矯正。',
+        '<strong>Haptic Drum Kit／Haptic Bracelets（2009–2012）</strong> — Simon Holland、Anders Bouwer と共同。手首と足首への触覚パルスで多肢リズムの演奏を誘導。'
+      ],
+      writing:[
+        'Bending the Clock: モジュラーシンセと障害の時間性（SyReN 論文）<span class="muted">2025年10月</span>',
+        '<a href="https://nime.org/proceedings/2025/nime2025_11.pdf">Chimera: 先天的片手演奏のための新 DMI を自己民族誌的にプロトタイピング（NIME 論文）</a> <span class="muted">2025年6月</span>',
+        '（Just Like）Starting Over? 伝統楽器が DMI と障害について語る／語らないこと（Innovation in Music）<span class="muted">2025年6月</span>',
+        'And Then It Turned Outside-In: 空間ゲームオーディオの再考（Reproduced Sound）<span class="muted">2024年11月</span>',
+        'TYG: UE5 ベースのローカルマルチプレイヤー楽器における協調音楽制作（NoiseFloor）<span class="muted">2024年4月</span>',
+        '<a href="https://scholar.google.com/citations?user=XXKExGkAAAAJ&hl=en">さらに見る</a>'
+      ],
+      contact:[
+        '<strong>メール：</strong> <a class="mono" href="mailto:mathewdalgleish@gmail.com">mathewdalgleish@gmail.com</a>',
+        '<strong>LinkedIn：</strong> <a class="mono" href="https://www.linkedin.com/in/mat-dalgleish-b4406424a/">linkedin.com/in/mat-dalgleish-b4406424a</a>',
+        '<strong>Mastodon：</strong> <a class="mono" href="https://mstdn.social/@drd">mstdn.social/@drd</a>'
+      ]
+    },
+    fr: {
+      labels:{about:'À PROPOS', work:'PARCOURS', projects:'PROJETS SÉLECTIONNÉS', writing:'PUBLICATIONS', contact:'CONTACT'},
+      role:'Artiste–designer · Chercheur · Enseignant',
+      interest:"Intéressé par les interfaces audiovisuelles expérimentales, le creative coding (notamment la génération procédurale), les synthétiseurs modulaires, et les approches DIY/DIWO du handicap et de la technologie.",
+      work:[
+        '<strong>Senior Lecturer en audio de jeu et conception technique, University of Staffordshire</strong> <span class="muted">2023—présent</span>',
+        '<strong>Administrateur de <a href="https://www.ohmi.org.uk/">The OHMI Trust</a></strong> <span class="muted">2024—présent</span>',
+        '<strong>Recherche :</strong> instruments et interfaces musicaux accessibles; systèmes audiovisuels (design et histoire); audio de jeu (audio procédurale); handicap et technologie.',
+        '<strong>Enseignement :</strong> audio de jeu (programmation audio, audio procédurale, musique générative, synthèse et DSP), théorie du son au cinéma et de l’audiovisuel (Chion, Altman…), microcontrôleurs et systèmes embarqués, game design, gestion de projet, et encadrement L/M/Doctorat.'
+      ],
+      projects:[
+        '<strong>limp.freq (2025)</strong> — des bots symétriques reliant l’impairment de mobilité — en particulier mon expérience du LLD — à l’orientation quotidienne et aux besoins spatiaux, tout en questionnant l’idéal de perfection ancré dans l’IA depuis ses débuts.',
+        '<strong>Procedural Audio Objects (2021)</strong> — avec Sarah Whitfield. Deux pièces pratiques (un accessoire et une pièce radiophonique générative basée sur « Intérieur » de Maeterlinck, 1895), logées dans un objet tactile et portable.',
+        '<strong>Beyond Audio Description for Theatre (2017–2019)</strong> — projet financé par ERAS explorant un design sonore ambiant comme complément/remplacement de l’audiodescription au théâtre.',
+        '<strong>Postrum (2014–2015)</strong> — avec Steve Spencer. Suivi postural d’élèves trompettistes par caméra 3D et ceinture haptique pour corriger en douceur les écarts.',
+        '<strong>Haptic Drum Kit / Haptic Bracelets (2009–2012)</strong> — avec Simon Holland et Anders Bouwer. Systèmes portables guidant des rythmes multi-membres via impulsions haptiques.'
+      ],
+      writing:[
+        'Bending the Clock : synthés modulaires et temporalités du handicap (SyReN) <span class="muted">octobre 2025</span>',
+        '<a href="https://nime.org/proceedings/2025/nime2025_11.pdf">Chimera : prototyper un nouveau DMI pour les musiciens congénitalement unihandés — approche autoethnographique (NIME)</a> <span class="muted">juin 2025</span>',
+        '(Just Like) Starting Over? Ce que les instruments traditionnels peuvent — ou non — dire des DMI et du handicap (Innovation in Music) <span class="muted">juin 2025</span>',
+        'And Then It Turned Outside-In : repenser l’audio spatial pour le jeu (Reproduced Sound) <span class="muted">novembre 2024</span>',
+        'TYG : création musicale collaborative dans un instrument local multijoueur basé sur UE5 (NoiseFloor) <span class="muted">avril 2024</span>',
+        '<a href="https://scholar.google.com/citations?user=XXKExGkAAAAJ&hl=en">Voir plus ici</a>'
+      ],
+      contact:[
+        '<strong>Email :</strong> <a class="mono" href="mailto:mathewdalgleish@gmail.com">mathewdalgleish@gmail.com</a>',
+        '<strong>LinkedIn :</strong> <a class="mono" href="https://www.linkedin.com/in/mat-dalgleish-b4406424a/">linkedin.com/in/mat-dalgleish-b4406424a</a>',
+        '<strong>Mastodon :</strong> <a class="mono" href="https://mstdn.social/@drd">mstdn.social/@drd</a>'
+      ]
+    },
+    es: {
+      labels:{about:'ACERCA DE', work:'TRAYECTORIA', projects:'PROYECTOS SELECCIONADOS', writing:'PUBLICACIONES', contact:'CONTACTO'},
+      role:'Artista–diseñador · Investigador · Docente',
+      interest:'Interesado en interfaces audiovisuales experimentales, creative coding (en especial generación procedural), sintetizadores modulares y enfoques DIY/DIWO sobre discapacidad y tecnología.',
+      work:[
+        '<strong>Profesor titular (SL) en Audio para Videojuegos y Diseño Técnico, University of Staffordshire</strong> <span class="muted">2023—presente</span>',
+        '<strong>Trustee de <a href="https://www.ohmi.org.uk/">The OHMI Trust</a></strong> <span class="muted">2024—presente</span>',
+        '<strong>Investigación:</strong> instrumentos e interfaces musicales accesibles; sistemas audiovisuales (diseño e historia); audio para videojuegos (audio procedural); discapacidad y tecnología.',
+        '<strong>Docencia:</strong> audio para juegos (programación de audio, audio procedural, música generativa, síntesis y DSP), teoría del sonido cinematográfico y audiovisual (Chion, Altman, etc.), microcontroladores y sistemas embebidos, game design, gestión de proyectos, y tutorías de grado/posgrado/doctorado.'
+      ],
+      projects:[
+        '<strong>limp.freq (2025)</strong> — bots simétricos que relacionan la discapacidad de movilidad —en particular mi experiencia de discrepancia en la longitud de las piernas (LLD)— con el movimiento cotidiano, la navegación y las necesidades espaciales, cuestionando la idea de perfección arraigada en la IA desde sus inicios.',
+        '<strong>Procedural Audio Objects (2021)</strong> — con Sarah Whitfield. Dos piezas prácticas (un utilería y una radionovela generativa basada en “Interior” de Maeterlinck, 1895) alojadas en un objeto táctil y portátil.',
+        '<strong>Beyond Audio Description for Theatre (2017–2019)</strong> — proyecto financiado por ERAS que explora el diseño sonoro ambiente como complemento/reemplazo de la audiodescripción teatral.',
+        '<strong>Postrum (2014–2015)</strong> — con Steve Spencer. Cámara 3D para seguimiento postural de estudiantes de trompeta con cinturón háptico que corrige suavemente desviaciones.',
+        '<strong>Haptic Drum Kit / Haptic Bracelets (2009–2012)</strong> — con Simon Holland y Anders Bouwer. Sistemas wearables que guían ritmos multi-miembro mediante impulsos hápticos.'
+      ],
+      writing:[
+        'Bending the Clock: sintetizadores modulares y temporalidades de la discapacidad (SyReN) <span class="muted">octubre de 2025</span>',
+        '<a href="https://nime.org/proceedings/2025/nime2025_11.pdf">Chimera: prototipado de un nuevo DMI para músicos congénitamente monomanuenses — enfoque autoetnográfico (NIME)</a> <span class="muted">junio de 2025</span>',
+        '(Just Like) Starting Over? Lo que los instrumentos tradicionales pueden —y no pueden— decir sobre los DMI y la discapacidad (Innovation in Music) <span class="muted">junio de 2025</span>',
+        'And Then It Turned Outside-In: repensar el audio espacial en videojuegos (Reproduced Sound) <span class="muted">noviembre de 2024</span>',
+        'TYG: creación musical colaborativa en un instrumento multijugador local basado en UE5 (NoiseFloor) <span class="muted">abril de 2024</span>',
+        '<a href="https://scholar.google.com/citations?user=XXKExGkAAAAJ&hl=en">Ver MÁS aquí</a>'
+      ],
+      contact:[
+        '<strong>Correo:</strong> <a class="mono" href="mailto:mathewdalgleish@gmail.com">mathewdalgleish@gmail.com</a>',
+        '<strong>LinkedIn:</strong> <a class="mono" href="https://www.linkedin.com/in/mat-dalgleish-b4406424a/">linkedin.com/in/mat-dalgleish-b4406424a</a>',
+        '<strong>Mastodon:</strong> <a class="mono" href="https://mstdn.social/@drd">mstdn.social/@drd</a>'
+      ]
+    },
+    pt: {
+      labels:{about:'SOBRE', work:'TRABALHO', projects:'PROJETOS SELECIONADOS', writing:'PUBLICAÇÕES', contact:'CONTATO'},
+      role:'Artista–designer · Pesquisador · Educador',
+      interest:'Interessa-me por interfaces audiovisuais experimentais, creative coding (especialmente geração procedural), sintetizadores modulares e abordagens DIY/DIWO para deficiência e tecnologia.',
+      work:[
+        '<strong>Professor (SL) em Áudio para Jogos e Design Técnico, University of Staffordshire</strong> <span class="muted">2023—presente</span>',
+        '<strong>Conselheiro da <a href="https://www.ohmi.org.uk/">The OHMI Trust</a></strong> <span class="muted">2024—presente</span>',
+        '<strong>Pesquisa:</strong> instrumentos e interfaces musicais acessíveis; sistemas audiovisuais (design e história); áudio para jogos (áudio procedural); deficiência e tecnologia.',
+        '<strong>Ensino:</strong> áudio para jogos (programação de áudio, áudio procedural, música generativa, síntese e DSP), teoria do som no cinema e audiovisual (Chion, Altman etc.), microcontroladores e computação embarcada, game design, gestão de projetos, e orientação de TCC/mestrado/doutorado.'
+      ],
+      projects:[
+        '<strong>limp.freq (2025)</strong> — bots simétricos que conectam a deficiência de mobilidade —especialmente minha experiência de discrepância de comprimento de pernas (LLD)— ao movimento diário, navegação e necessidades espaciais, desafiando o ideal de perfeição embutido na IA desde os primórdios.',
+        '<strong>Procedural Audio Objects (2021)</strong> — com Sarah Whitfield. Duas peças práticas (um adereço e um radiodrama generativo baseado em “Interior”, de Maeterlinck, 1895), alojadas num objeto tátil e portátil.',
+        '<strong>Beyond Audio Description for Theatre (2017–2019)</strong> — projeto financiado pela ERAS que explora design sonoro ambiente como complemento/substituto da audiodescrição no teatro.',
+        '<strong>Postrum (2014–2015)</strong> — com Steve Spencer. Câmera 3D para rastrear postura de estudantes de trompete, com cinto háptico que corrige suavemente desvios.',
+        '<strong>Haptic Drum Kit / Haptic Bracelets (2009–2012)</strong> — com Simon Holland e Anders Bouwer. Sistemas vestíveis que guiam ritmos multi-membros via impulsos hápticos.'
+      ],
+      writing:[
+        'Bending the Clock: sintetizadores modulares e temporalidades da deficiência (SyReN) <span class="muted">outubro de 2025</span>',
+        '<a href="https://nime.org/proceedings/2025/nime2025_11.pdf">Chimera: prototipando um novo DMI para musicistas com uma só mão congênita — abordagem autoetnográfica (NIME)</a> <span class="muted">junho de 2025</span>',
+        '(Just Like) Starting Over? O que instrumentos tradicionais podem — e não podem — dizer sobre DMIs e deficiência (Innovation in Music) <span class="muted">junho de 2025</span>',
+        'And Then It Turned Outside-In: repensando o áudio espacial em jogos (Reproduced Sound) <span class="muted">novembro de 2024</span>',
+        'TYG: criação musical colaborativa num instrumento local multiplayer baseado em UE5 (NoiseFloor) <span class="muted">abril de 2024</span>',
+        '<a href="https://scholar.google.com/citations?user=XXKExGkAAAAJ&hl=en">Veja MAIS aqui</a>'
+      ],
+      contact:[
+        '<strong>Email:</strong> <a class="mono" href="mailto:mathewdalgleish@gmail.com">mathewdalgleish@gmail.com</a>',
+        '<strong>LinkedIn:</strong> <a class="mono" href="https://www.linkedin.com/in/mat-dalgleish-b4406424a/">linkedin.com/in/mat-dalgleish-b4406424a</a>',
+        '<strong>Mastodon:</strong> <a class="mono" href="https://mstdn.social/@drd">mstdn.social/@drd</a>'
+      ]
+    }
+  };
+
+  function buildRight(langKey){
+    const pane = document.getElementById('pane-right');
+    const nav = document.querySelector('nav');
+    const L = LANGS[langKey];
+    if(!pane || !L) return;
+
+    // Update nav bilingual labels (English / chosen language)
+    const links = nav.querySelectorAll('a');
+    if(links[0]) links[0].innerHTML = `WORK / ${L.labels.work}`;
+    if(links[1]) links[1].innerHTML = `SELECTED PROJECTS / ${L.labels.projects}`;
+    if(links[2]) links[2].innerHTML = `WRITING / ${L.labels.writing}`;
+    if(links[3]) links[3].innerHTML = `CONTACT / ${L.labels.contact}`;
+
+    pane.innerHTML = `
+      <section aria-labelledby="about-rt">
+        <span class="label">${L.labels.about}</span>
+        <div class="row">${L.role}</div>
+        <div class="row muted">${L.interest}</div>
+      </section>
+      <section aria-labelledby="work-rt">
+        <span class="label">${L.labels.work}</span>
+        <ul class="list">${L.work.map(x=>`<li class="row">${x}</li>`).join('')}</ul>
+      </section>
+      <section aria-labelledby="projects-rt">
+        <span class="label">${L.labels.projects}</span>
+        <ul class="list">${L.projects.map(x=>`<li class="row">${x}</li>`).join('')}</ul>
+      </section>
+      <section aria-labelledby="writing-rt">
+        <span class="label">${L.labels.writing}</span>
+        <ul class="list">${L.writing.map(x=>`<li class="row">${x}</li>`).join('')}</ul>
+      </section>
+      <section aria-labelledby="contact-rt">
+        <span class="label">${L.labels.contact}</span>
+        <ul class="list">${L.contact.map(x=>`<li class="row">${x}</li>`).join('')}</ul>
+      </section>`;
+  }
+
+  // Pick a random language for the right pane on each load
+  (function(){
+    const keys = Object.keys(LANGS);
+    const pick = keys[Math.floor(Math.random()*keys.length)];
+    buildRight(pick);
+  })();
+</script>
+
+<script>
+  // Resizable split with handle + snap points (desktop: vertical, mobile: horizontal)
+  (function(){
+    const split = document.getElementById('split');
+    const divider = document.getElementById('divider');
+    if(!split || !divider) return;
+
+    const isDesktop = () => window.innerWidth > 768;
+
+    function setOrientation(){
+      divider.setAttribute('aria-orientation', isDesktop() ? 'vertical' : 'horizontal');
+    }
+
+    function applyPos(p){
+      p = Math.max(0, Math.min(100, p));
+      split.style.setProperty('--pos', p.toFixed(2));
+      // Grid rows are controlled via CSS @media; JS keeps --pos in sync
+    }
+
+    function getPos(){
+      const v = parseFloat(getComputedStyle(split).getPropertyValue('--pos'));
+      return Number.isNaN(v) ? 50 : v;
+    }
+
+    function setPosFromCoord(coord){
+      const rect = split.getBoundingClientRect();
+      if(isDesktop()){
+        const x = Math.min(Math.max(coord - rect.left, 0), rect.width);
+        applyPos((x / rect.width) * 100);
+      } else {
+        const y = Math.min(Math.max(coord - rect.top, 0), rect.height);
+        applyPos((y / rect.height) * 100);
+      }
+    }
+
+    let dragging = false;
+    // Mouse
+    divider.addEventListener('mousedown', e=>{ dragging = true; e.preventDefault(); });
+    window.addEventListener('mousemove', e=>{ if(dragging) setPosFromCoord(isDesktop()? e.clientX : e.clientY); });
+    window.addEventListener('mouseup', ()=> dragging = false);
+
+    // Touch
+    divider.addEventListener('touchstart', ()=>{ dragging = true; }, {passive:true});
+    window.addEventListener('touchmove', e=>{ if(dragging) setPosFromCoord(isDesktop()? e.touches[0].clientX : e.touches[0].clientY); }, {passive:false});
+    window.addEventListener('touchend', ()=> dragging = false);
+
+    // Keyboard
+    divider.addEventListener('keydown', e=>{
+      const step = (e.shiftKey ? 10 : 2);
+      const current = getPos();
+      if(e.key==='ArrowLeft' || (!isDesktop() && e.key==='ArrowUp')) applyPos(current - step);
+      if(e.key==='ArrowRight' || (!isDesktop() && e.key==='ArrowDown')) applyPos(current + step);
+      if(e.key==='Home') applyPos(0);
+      if(e.key==='End') applyPos(100);
+      if(e.key==='Enter' || e.key===' '){ e.preventDefault(); applyPos(50); }
+    });
+
+    // Double-click / double-tap to snap 0% → 50% → 100% → 0%
+    divider.addEventListener('dblclick', ()=>{
+      const p = getPos();
+      const snaps = [0, 50, 100];
+      let idx = snaps.findIndex(s => Math.abs(s - p) < 1);
+      if(idx === -1){
+        const nearest = snaps.reduce((a,b)=> Math.abs(b-p) < Math.abs(a-p) ? b : a, snaps[0]);
+        applyPos(nearest);
+      } else {
+        applyPos(snaps[(idx + 1) % snaps.length]);
+      }
+    });
+
+    let lastTap = 0;
+    divider.addEventListener('touchend', ()=>{
+      const now = Date.now();
+      if(now - lastTap < 300){
+        divider.dispatchEvent(new Event('dblclick'));
+        lastTap = 0;
+      } else {
+        lastTap = now;
+      }
+    });
+
+    // Init
+    setOrientation();
+    window.addEventListener('resize', setOrientation);
+  })();
+</script>
+</body>
+</html>
