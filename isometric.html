@@ -64,13 +64,17 @@
 </head>
 <body>
   <div class="wrap">
-    <section id="view">
+    <section id="view" class="crt">
       <canvas id="game"></canvas>
       <div id="badgeToggle" title="Toggle Spectral (Space)">
         <div><b>Mode:</b> <span id="modeLabel">Explore</span></div>
         <small>Space • Click</small>
       </div>
       <div id="toast"></div>
+      <div class="crt-overlay scanlines"></div>
+      <div class="crt-overlay aperture"></div>
+      <div class="crt-overlay vignette"></div>
+      <div class="crt-overlay bevel"></div>
     </section>
     <aside id="hud">
       <div class="hud-section">
@@ -87,6 +91,7 @@
           <div class="bar" title="Time Remaining"><span id="timeBar" style="width:100%"></span></div>
         </div>
       </div>
+
       <div class="hud-section">
         <h3>Inventory</h3>
         <div class="inventory">
@@ -96,6 +101,7 @@
           <div class="inv-slot" title="Frequency Cards"><div class="name">Freq Cards</div><div class="count" id="inv-card">0</div></div>
         </div>
       </div>
+
       <div class="hud-section">
         <h3>Radio HUD</h3>
         <div class="radio">
@@ -113,6 +119,7 @@
           <div class="legend">Band hint: <span id="bandHint" class="dim">—</span></div>
         </div>
       </div>
+
       <div class="hud-section">
         <h3>Controls</h3>
         <div class="legend">
@@ -120,6 +127,7 @@
           CRT overlay: <span class="kbd">T</span> • Heavy shader: <span class="kbd">Y</span>
         </div>
       </div>
+
       <div id="log"></div>
     </aside>
   </div>
@@ -141,6 +149,7 @@
       </div>
     </div>
   </div>
+
   <div class="overlay" id="debrief" style="display:none">
     <div class="card">
       <h1>Debrief</h1>
@@ -150,6 +159,7 @@
       </div>
     </div>
   </div>
+
   <div class="overlay" id="gameOver" style="display:none">
     <div class="card">
       <h1>Game Over</h1>
@@ -162,9 +172,9 @@
 
   <script>
   // --- Utilities -------------------------------------------------------------
-  const clamp=(v,a,b)=>Math.min(Math.max(v,a),b);
+  const clamp = (v,a,b)=>Math.min(Math.max(v,a),b);
   function rand(seed){ let t = seed >>> 0; return ()=>((t+=0x6D2B79F5), t=Math.imul(t ^ t>>>15, t | 1), t^=t+Math.imul(t ^ t>>>7, t | 61), ((t^t>>>14)>>>0)/4294967296); }
-  function choose(rng, arr){return arr[Math.floor(rng()*arr.length)]}
+  function choose(rng, arr){ return arr[Math.floor(rng()*arr.length)] }
   const hash2=(x,y)=>{ let h = 2166136261>>>0; h^=x; h=Math.imul(h,16777619); h^=(y|0); h=Math.imul(h,16777619); return h>>>0; };
 
   // --- Game constants --------------------------------------------------------
@@ -210,28 +220,25 @@
   let heavyShader=false; let ppScale=0.7;
   function resizeBuffers(){ const w=canvas.clientWidth, h=canvas.clientHeight; fb.width=w; fb.height=h; pp.width=Math.max(Math.floor(w*ppScale),16); pp.height=Math.max(Math.floor(h*ppScale),16); bloom.width=Math.max(Math.floor(w*0.25),8); bloom.height=Math.max(Math.floor(h*0.25),8); }
 
-  // --- UI refs ---------------------------------------------------------------
+  // --- UI refs (define once) -------------------------------------------------
   const elLives=document.getElementById('lives');
   const elMission=document.getElementById('mission');
   const elTimerTxt=document.getElementById('timerTxt');
   const elTimeBar=document.getElementById('timeBar');
   const elLog=document.getElementById('log');
   const elModeLabel=document.getElementById('modeLabel');
-  const elBadge=document.getElementById('badgeToggle');
   const elToast=document.getElementById('toast');
-  const elIntro=document.getElementById('intro');
   const elDebrief=document.getElementById('debrief');
   const elDebriefText=document.getElementById('debriefText');
   const elGameOver=document.getElementById('gameOver');
   const elGameOverText=document.getElementById('gameOverText');
-  const elStart=document.getElementById('startBtn');
-  const elSeedBtn=document.getElementById('seedBtn');
-  const elContinue=document.getElementById('continueBtn');
-  const elRestart=document.getElementById('restartBtn');
   const elInv={ batt:document.getElementById('inv-batt'), valve:document.getElementById('inv-valve'), qcoil:document.getElementById('inv-qcoil'), card:document.getElementById('inv-card') };
-  const elFreq=document.getElementById('freq'); const elQL=document.getElementById('q');
-  const elFreqLbl=document.getElementById('freqLbl'); const elQLbl=document.getElementById('qLbl');
-  const elAlignBar=document.getElementById('alignBar'); const elAlignTxt=document.getElementById('alignTxt');
+  const elFreq=document.getElementById('freq');
+  const elQL=document.getElementById('q');
+  const elFreqLbl=document.getElementById('freqLbl');
+  const elQLbl=document.getElementById('qLbl');
+  const elAlignBar=document.getElementById('alignBar');
+  const elAlignTxt=document.getElementById('alignTxt');
   const elBandHint=document.getElementById('bandHint');
 
   function log(msg){ const p=document.createElement('p'); p.innerHTML=msg; elLog.appendChild(p); elLog.scrollTop=elLog.scrollHeight; while(elLog.children.length>140) elLog.removeChild(elLog.firstChild); }
@@ -239,10 +246,9 @@
 
   // --- Endless world via modular chunk recombination ------------------------
   function seededRng(cx,cy, salt=0){ const base = (state.seedNum>>>0) ^ hash2(cx+salt, cy-salt); return rand(base); }
-  function worldToChunk(x,y){ const S=WORLD.CHUNK; const cx=Math.floor(x/S); const cy=Math.floor(y/S); const tx=x - cx*S; const ty=y - cy*S; return {cx,cy,tx,ty}; }
   const SUB = WORLD.SUB;
   function pat_stripes(u,v,rng){ return (u%3===0) && rng()<0.85; }
-  function pat_cross(u,v,rng){ return (u===SUB>>1 || v===SUB>>1) && rng()<0.95; }
+  function pat_cross(u,v,rng){ return (u===(SUB>>1) || v===(SUB>>1)) && rng()<0.95; }
   function pat_diags(u,v,rng){ return ((u===v)||(u+v===SUB-1)) && rng()<0.9; }
   function pat_ring(u,v,rng){ const b=1; return (u===b||v===b||u===SUB-1-b||v===SUB-1-b) && rng()<0.95; }
   function pat_dots(u,v,rng){ return ( (u%4===0 && v%3===0) || (u%5===2 && v%4===1) ) && rng()<0.8; }
@@ -261,14 +267,16 @@
         const flip = rng()<0.5;
         for(let v=0; v<SUB; v++){
           for(let u=0; u<SUB; u++){
-            let uu=u, vv=v; if(flip) uu = SUB-1-uu; [uu,vv]=rot(uu,vv,SUB,rotIdx);
+            let uu=u, vv=v;
+            if(flip) uu = SUB-1-uu;
+            [uu,vv]=rot(uu,vv,SUB,rotIdx);
             const blocked = pat(uu,vv, rng);
             if(blocked){ const x = sx*SUB + u; const y = sy*SUB + v; tiles[y*WORLD.CHUNK + x] = '#'; }
           }
         }
       }
     }
-    // corridors
+    // add loose corridors
     for(let k=0;k<3;k++){
       const row = Math.floor(rng()*WORLD.CHUNK);
       for(let x=0;x<WORLD.CHUNK;x++){ if(rng()<0.85) tiles[row*WORLD.CHUNK+x]='.'; }
@@ -280,7 +288,18 @@
     const entsRng=seededRng(cx,cy, 707);
     const picks = 3 + Math.floor(entsRng()*3);
     const passableAt=(tx,ty)=> tiles[ty*WORLD.CHUNK+tx]!== '#';
-    function placeOne(cb){ let tries=0; while(tries++<200){ const tx=Math.floor(entsRng()*WORLD.CHUNK); const ty=Math.floor(entsRng()*WORLD.CHUNK); if(passableAt(tx,ty)){ const wx=cx*WORLD.CHUNK+tx, wy=cy*WORLD.CHUNK+ty; if(!WORLD.removed.has(wx+','+wy)){ cb(wx,wy); } return; } } }
+    function placeOne(cb){
+      let tries=0;
+      while(tries++<200){
+        const tx=Math.floor(entsRng()*WORLD.CHUNK);
+        const ty=Math.floor(entsRng()*WORLD.CHUNK);
+        if(passableAt(tx,ty)){
+          const wx=cx*WORLD.CHUNK+tx, wy=cy*WORLD.CHUNK+ty;
+          if(!WORLD.removed.has(wx+','+wy)){ cb(wx,wy); }
+          return;
+        }
+      }
+    }
     for(let i=0;i<picks;i++) placeOne((wx,wy)=>{ items.push({type:choose(entsRng,itemTypes), x:wx, y:wy}); });
     const npcKinds=['Archivist','Vendor','Courier'];
     if(entsRng()<0.65) placeOne((wx,wy)=>{ npcs.push({type:choose(entsRng,npcKinds), x:wx, y:wy}); });
@@ -334,10 +353,7 @@
   document.getElementById('freq').addEventListener('input', ()=>{ state.spectral.freq=elFreq.value/1000; elFreqLbl.textContent=state.spectral.freq.toFixed(3); });
   document.getElementById('q').addEventListener('input', ()=>{ state.spectral.q=(elQL.value/60); elQLbl.textContent=state.spectral.q.toFixed(1); });
 
-  // add CRT overlay elements on boot
-  (function(){ const view=document.getElementById('view'); if(view && !view.classList.contains('crt')){ view.classList.add('crt'); ['scanlines','aperture','vignette','bevel'].forEach(c=>{ const d=document.createElement('div'); d.className='crt-overlay '+c; view.appendChild(d); }); } })();
-
-  // --- Exploration & interactions (endless) ----------------------------------
+  // --- Exploration & interactions -------------------------------------------
   const vignetteLines=[ 'Aurora hum threads the corridors.', 'Tiles breathe in ultraviolet.', 'Numbers leak from the drains.', 'Your shadow glitches one square late.', 'A dial tone puddles under the floor.' ];
 
   function tryInteract(){
@@ -378,7 +394,6 @@
   }
 
   function updateCamera(){ state.camera.x = state.player.x - Math.floor(GRID.W/2); state.camera.y = state.player.y - Math.floor(GRID.H/2); }
-
   function movePlayer(dx,dy){
     const nx=state.player.x+dx, ny=state.player.y+dy;
     if(isBlocked(nx,ny)) { toast('Blocked by towers.'); return; }
@@ -387,14 +402,13 @@
     state.time=Math.max(0, state.time-0.6);
   }
 
-  // --- Spectral math ---------------------------------------------------------
+  // --- Spectral math & rendering --------------------------------------------
   function spectralAlignment(){ if(!state.transmitter) return 0; const t=state.transmitter; const {sx,sy}=gridToScreen(t.x,t.y); const dx=(state.antenna.x - sx - GRID.TILE/2); const dy=(state.antenna.y - sy - GRID.TILE/2); const dist=Math.hypot(dx,dy); const sigma=t.sigma; const distScore=Math.exp( - (dist*dist) / (2*sigma*sigma) ); const f=state.spectral.freq; const tol=t.tol * ( state.spectral.q>0? (1/state.spectral.q) : 1 ); const buff= state.spectral.buffQ>0 ? 1.35 : 1.0; const fErr=Math.min(Math.abs(f-t.freq), 1-Math.abs(f-t.freq)); const freqScore=Math.exp( - (fErr*fErr) / (2*(tol*buff)*(tol*buff)) ); return clamp(distScore*freqScore,0,1); }
-
-  // --- Rendering -------------------------------------------------------------
   function gridToScreen(wx,wy){ const sx = GRID.MARGIN_X + (wx - state.camera.x)*GRID.TILE; const sy = GRID.MARGIN_Y + (wy - state.camera.y)*GRID.TILE; return {sx,sy}; }
   function tileColor(wx,wy,t){ const ty=getTileType(wx,wy)==='#'? 1:0; const hue=(t*40 + wx*7 + wy*13 + ty*90)%360; const sat=65 + 25*Math.sin((wx*0.21+wy*0.33+t*2)); const lit=10 + 12*Math.sin((wx*0.19 - wy*0.17 + t*1.7)) + (ty? -4:0); return `hsl(${hue.toFixed(1)} ${sat.toFixed(1)}% ${Math.max(6,lit).toFixed(1)}%)`; }
 
-  function drawExplore(t){ const w=canvas.clientWidth, h=canvas.clientHeight; ctx.fillStyle='#05070b'; ctx.fillRect(0,0,w,h);
+  function drawExplore(t){
+    const w=canvas.clientWidth, h=canvas.clientHeight; ctx.fillStyle='#05070b'; ctx.fillRect(0,0,w,h);
     const x0=state.camera.x, y0=state.camera.y;
     for(let vy=0; vy<GRID.H; vy++){
       for(let vx=0; vx<GRID.W; vx++){
@@ -408,30 +422,125 @@
         }
       }
     }
-    // entities visible in viewport
+    // entities in view
     const S=WORLD.CHUNK; const x1=x0+GRID.W-1, y1=y0+GRID.H-1; const cx0=Math.floor(x0/S), cy0=Math.floor(y0/S); const cx1=Math.floor(x1/S), cy1=Math.floor(y1/S);
     for(let cy=cy0; cy<=cy1; cy++){
       for(let cx=cx0; cx<=cx1; cx++){
         const ch=getChunkEntities(cx,cy);
-        for(const it of ch.items){ if(it.x>=x0&&it.x<=x1&&it.y>=y0&&it.y<=y1 && !WORLD.removed.has(it.x+','+it.y)){ const p=gridToScreen(it.x,it.y); const g= it.type==='battery'?'⚡': it.type==='valve'?'◉': it.type==='qcoil'?'∿':'▥'; drawGlyph(p.sx,p.sy,g); } }
-        for(const n of ch.npcs){ if(n.x>=x0&&n.x<=x1&&n.y>=y0&&n.y<=y1){ const p=gridToScreen(n.x,n.y); const l=n.type==='Archivist'?'A': n.type==='Vendor'?'V':'C'; drawNPC(p.sx,p.sy,l); } }
+        for(const it of ch.items){
+          if(it.x>=x0&&it.x<=x1&&it.y>=y0&&it.y<=y1 && !WORLD.removed.has(it.x+','+it.y)){
+            const p=gridToScreen(it.x,it.y); const g= it.type==='battery'?'⚡': it.type==='valve'?'◉': it.type==='qcoil'?'∿':'▥'; drawGlyph(p.sx,p.sy,g);
+          }
+        }
+        for(const n of ch.npcs){
+          if(n.x>=x0&&n.x<=x1&&n.y>=y0&&n.y<=y1){
+            const p=gridToScreen(n.x,n.y); const l=n.type==='Archivist'?'A': n.type==='Vendor'?'V':'C'; drawNPC(p.sx,p.sy,l);
+          }
+        }
       }
     }
     const P=gridToScreen(state.player.x,state.player.y); drawPlayer(P.sx,P.sy);
-    const here=entitiesAt(state.player.x,state.player.y); if(here.itIdx>=0||here.npcIdx>=0){ ctx.font='12px ui-monospace, monospace'; ctx.fillStyle='rgba(230,245,255,.9)'; ctx.textAlign='center'; ctx.fillText('Enter / E', P.sx+GRID.TILE/2, P.sy-6); }
+    const here=entitiesAt(state.player.x,state.player.y);
+    if(here.itIdx>=0||here.npcIdx>=0){ ctx.font='12px ui-monospace, monospace'; ctx.fillStyle='rgba(230,245,255,.9)'; ctx.textAlign='center'; ctx.fillText('Enter / E', P.sx+GRID.TILE/2, P.sy-6); }
   }
-
   function drawPlayer(sx,sy){ ctx.save(); ctx.translate(sx,sy); ctx.fillStyle='rgba(121,255,225,0.95)'; ctx.font='bold 20px ui-monospace, monospace'; ctx.fillText('@', 8, 22); ctx.fillStyle='rgba(255,64,160,0.35)'; ctx.fillText('@', 9, 22); ctx.fillStyle='rgba(64,160,255,0.35)'; ctx.fillText('@', 7, 22); ctx.restore(); }
   function drawNPC(sx,sy,letter){ ctx.save(); ctx.translate(sx,sy); ctx.fillStyle='rgba(12,16,24,0.9)'; ctx.fillRect(4,6, GRID.TILE-8, GRID.TILE-12); ctx.strokeStyle='rgba(140,200,255,0.6)'; ctx.strokeRect(4.5,6.5, GRID.TILE-9, GRID.TILE-13); ctx.font='bold 18px ui-monospace, monospace'; ctx.fillStyle='rgba(200,240,255,0.95)'; ctx.fillText(letter, GRID.TILE/2-5, GRID.TILE/2+6); ctx.restore(); }
   function drawGlyph(sx,sy,char){ ctx.save(); ctx.translate(sx,sy); ctx.font='18px ui-monospace, monospace'; ctx.fillStyle='rgba(124,199,255,0.95)'; ctx.fillText(char, GRID.TILE/2-6, GRID.TILE/2+6); ctx.restore(); }
 
-  function drawSpectral(dt){ const w=canvas.clientWidth, h=canvas.clientHeight; state.spectral.heatPhase += dt*0.25; const ph=state.spectral.heatPhase; const x0=state.camera.x, y0=state.camera.y; for(let vy=0;vy<GRID.H;vy++){ for(let vx=0;vx<GRID.W;vx++){ const wx=x0+vx, wy=y0+vy; const {sx,sy}=gridToScreen(wx,wy); const u=wx*0.05, v=wy*0.05; const n=Math.sin((u+ph)*3)+ Math.sin((v+ph*1.2)*2)+ Math.sin(((u-v)*1.3+ph*0.8)); const t=(n*0.2+0.5); const hue=(t*300 + ph*90)%360; ctx.fillStyle=`hsl(${hue} 75% ${Math.floor(18+40*t)}%)`; ctx.fillRect(sx,sy,GRID.TILE,GRID.TILE); } }
-    if(state.inventory.fcard>0 && state.transmitter){ const b=state.transmitter.band.r; const l=w*b[0]; const r=w*b[1]; ctx.fillStyle='rgba(255,255,255,0.06)'; ctx.fillRect(l,0,r-l,10); ctx.fillStyle='rgba(255,255,255,0.2)'; ctx.fillRect(l,10,r-l,3); }
-    const a=spectralAlignment(); state.spectral.align=a; const T=state.transmitter; if(T){ const {sx,sy}=gridToScreen(T.x,T.y); const cx=sx+GRID.TILE/2, cy=sy+GRID.TILE/2; for(let i=1;i<=6;i++){ const r=(i/6)*Math.max(40,T.sigma*0.6) + (Math.sin(ph*3+i)*1.5); const alpha=0.08 + (a*0.4) * (1-i/6); ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.strokeStyle=`rgba(230,250,255,${alpha.toFixed(3)})`; ctx.lineWidth=2; ctx.stroke(); } }
-    ctx.save(); ctx.translate(state.antenna.x, state.antenna.y); ctx.strokeStyle='rgba(255,255,255,.9)'; ctx.beginPath(); ctx.moveTo(-10,0); ctx.lineTo(10,0); ctx.moveTo(0,-10); ctx.lineTo(0,10); ctx.stroke(); ctx.restore(); }
+  function drawSpectral(dt){
+    const w=canvas.clientWidth, h=canvas.clientHeight;
+    state.spectral.heatPhase += dt*0.25; const ph=state.spectral.heatPhase;
+    const x0=state.camera.x, y0=state.camera.y;
+    for(let vy=0;vy<GRID.H;vy++){
+      for(let vx=0;vx<GRID.W;vx++){
+        const wx=x0+vx, wy=y0+vy; const {sx,sy}=gridToScreen(wx,wy);
+        const u=wx*0.05, v=wy*0.05;
+        const n=Math.sin((u+ph)*3)+ Math.sin((v+ph*1.2)*2)+ Math.sin(((u-v)*1.3+ph*0.8));
+        const t=(n*0.2+0.5);
+        const hue=(t*300 + ph*90)%360;
+        ctx.fillStyle=`hsl(${hue} 75% ${Math.floor(18+40*t)}%)`;
+        ctx.fillRect(sx,sy,GRID.TILE,GRID.TILE);
+      }
+    }
+    if(state.inventory.fcard>0 && state.transmitter){
+      const b=state.transmitter.band.r; const l=w*b[0]; const r=w*b[1];
+      ctx.fillStyle='rgba(255,255,255,0.06)'; ctx.fillRect(l,0,r-l,10);
+      ctx.fillStyle='rgba(255,255,255,0.2)'; ctx.fillRect(l,10,r-l,3);
+    }
+    const a=spectralAlignment(); state.spectral.align=a;
+    const T=state.transmitter;
+    if(T){
+      const {sx,sy}=gridToScreen(T.x,T.y);
+      const cx=sx+GRID.TILE/2, cy=sy+GRID.TILE/2;
+      for(let i=1;i<=6;i++){
+        const r=(i/6)*Math.max(40,T.sigma*0.6) + (Math.sin(ph*3+i)*1.5);
+        const alpha=0.08 + (a*0.4) * (1-i/6);
+        ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2);
+        ctx.strokeStyle=`rgba(230,250,255,${alpha.toFixed(3)})`;
+        ctx.lineWidth=2; ctx.stroke();
+      }
+    }
+    // crosshair
+    ctx.save(); ctx.translate(state.antenna.x, state.antenna.y);
+    ctx.strokeStyle='rgba(255,255,255,.9)'; ctx.beginPath();
+    ctx.moveTo(-10,0); ctx.lineTo(10,0); ctx.moveTo(0,-10); ctx.lineTo(0,10);
+    ctx.stroke(); ctx.restore();
+  }
 
   // heavy post-process --------------------------------------------------------
-  function applyHeavyShader(){ const w=canvas.clientWidth, h=canvas.clientHeight; if(w<=0||h<=0) return; fbc.clearRect(0,0,w,h); fbc.drawImage(canvas,0,0,w,h); ppc.clearRect(0,0,pp.width,pp.height); ppc.drawImage(fb,0,0,w,h,0,0,pp.width,pp.height); const src=ppc.getImageData(0,0,pp.width,pp.height); const out=ppc.createImageData(pp.width,pp.height); const cx=pp.width*0.5, cy=pp.height*0.5; const invCx=1/cx, invCy=1/cy; const kBase=0.22, ca=0.0025; for(let y=0;y<pp.height;y++){ for(let x=0;x<pp.width;x++){ const nx=(x-cx)*invCx, ny=(y-cy)*invCy; const r2=nx*nx+ny*ny; const sample=(kShift)=>{ const k=kBase+kShift; const f=1+k*r2; let sx=cx+(nx/f)*cx, sy=cy+(ny/f)*cy; sx=Math.max(0,Math.min(pp.width-1, sx|0)); sy=Math.max(0,Math.min(pp.height-1, sy|0)); const si=((sy*pp.width+sx)|0)*4; return [src.data[si],src.data[si+1],src.data[si+2]]; }; const R=sample(+ca), G=sample(0), B=sample(-ca); const oi=(y*pp.width+x)*4; out.data[oi]=R[0]; out.data[oi+1]=G[1]; out.data[oi+2]=B[2]; out.data[oi+3]=255; } } ppc.putImageData(out,0,0); bloomc.clearRect(0,0,bloom.width,bloom.height); bloomc.drawImage(fb,0,0,w,h,0,0,bloom.width,bloom.height); let bimg=bloomc.getImageData(0,0,bloom.width,bloom.height); const bd=bimg.data; const len=bd.length; for(let i=0;i<len;i+=4){ const l=(bd[i]+bd[i+1]+bd[i+2])*(1/3); if(l<140){ bd[i]=bd[i+1]=bd[i+2]=0; } } const radius=2, wB=bloom.width, hB=bloom.height; const tmp=new Uint8ClampedArray(len); for(let y=0;y<hB;y++){ let sr=0,sg=0,sb=0,sa=0; for(let x=-radius;x<=radius;x++){ const xi=Math.max(0,Math.min(wB-1,x)); const idx=(y*wB+xi)*4; sr+=bd[idx]; sg+=bd[idx+1]; sb+=bd[idx+2]; sa+=bd[idx+3]; } for(let x=0;x<wB;x++){ const i4=(y*wB+x)*4, div=(radius*2+1); tmp[i4]=sr/div; tmp[i4+1]=sg/div; tmp[i4+2]=sb/div; tmp[i4+3]=sa/div; const xOut=x-radius, xIn=x+radius+1; const idxOut=(y*wB+Math.max(0,Math.min(wB-1,xOut)))*4; const idxIn=(y*wB+Math.max(0,Math.min(wB-1,xIn)))*4; sr+=bd[idxIn]-bd[idxOut]; sg+=bd[idxIn+1]-bd[idxOut+1]; sb+=bd[idxIn+2]-bd[idxOut+2]; sa+=bd[idxIn+3]-bd[idxOut+3]; } } const outB=new Uint8ClampedArray(len); for(let x=0;x<wB;x++){ let sr=0,sg=0,sb=0,sa=0; for(let y=-radius;y<=radius;y++){ const yi=Math.max(0,Math.min(hB-1,y)); const idx=(yi*wB+x)*4; sr+=tmp[idx]; sg+=tmp[idx+1]; sb+=tmp[idx+2]; sa+=tmp[idx+3]; } for(let y=0;y<hB;y++){ const i4=(y*wB+x)*4, div=(radius*2+1); outB[i4]=sr/div; outB[i4+1]=sg/div; outB[i4+2]=sb/div; outB[i4+3]=sa/div; const yOut=y-radius, yIn=y+radius+1; const idxOut=(Math.max(0,Math.min(hB-1,yOut))*wB+x)*4; const idxIn=(Math.max(0,Math.min(hB-1,yIn))*wB+x)*4; sr+=tmp[idxIn]-tmp[idxOut]; sg+=tmp[idxIn+1]-tmp[idxOut+1]; sb+=tmp[idxIn+2]-tmp[idxOut+2]; sa+=tmp[idxIn+3]-tmp[idxOut+3]; } } bimg.data.set(outB); bloomc.putImageData(bimg,0,0); ctx.save(); ctx.clearRect(0,0,w,h); ctx.imageSmoothingEnabled=true; ctx.drawImage(pp,0,0,pp.width,pp.height,0,0,w,h); ctx.globalCompositeOperation='lighter'; ctx.globalAlpha=0.6; ctx.drawImage(bloom,0,0,bloom.width,bloom.height,0,0,w,h); ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over'; ctx.restore(); }
+  function applyHeavyShader(){
+    const w=canvas.clientWidth, h=canvas.clientHeight; if(w<=0||h<=0) return;
+    fbc.clearRect(0,0,w,h); fbc.drawImage(canvas,0,0,w,h);
+    ppc.clearRect(0,0,pp.width,pp.height); ppc.drawImage(fb,0,0,w,h,0,0,pp.width,pp.height);
+    const src=ppc.getImageData(0,0,pp.width,pp.height); const out=ppc.createImageData(pp.width,pp.height);
+    const cx=pp.width*0.5, cy=pp.height*0.5; const invCx=1/cx, invCy=1/cy; const kBase=0.22, ca=0.0025;
+    for(let y=0;y<pp.height;y++){
+      for(let x=0;x<pp.width;x++){
+        const nx=(x-cx)*invCx, ny=(y-cy)*invCy; const r2=nx*nx+ny*ny;
+        const sample=(kShift)=>{ const k=kBase+kShift; const f=1+k*r2; let sx=cx+(nx/f)*cx, sy=cy+(ny/f)*cy; sx=Math.max(0,Math.min(pp.width-1, sx|0)); sy=Math.max(0,Math.min(pp.height-1, sy|0)); const si=((sy*pp.width+sx)|0)*4; return [src.data[si],src.data[si+1],src.data[si+2]]; };
+        const R=sample(+ca), G=sample(0), B=sample(-ca); const oi=(y*pp.width+x)*4;
+        out.data[oi]=R[0]; out.data[oi+1]=G[1]; out.data[oi+2]=B[2]; out.data[oi+3]=255;
+      }
+    }
+    ppc.putImageData(out,0,0);
+    // bloom
+    bloomc.clearRect(0,0,bloom.width,bloom.height); bloomc.drawImage(fb,0,0,w,h,0,0,bloom.width,bloom.height);
+    let bimg=bloomc.getImageData(0,0,bloom.width,bloom.height); const bd=bimg.data; const len=bd.length;
+    for(let i=0;i<len;i+=4){ const l=(bd[i]+bd[i+1]+bd[i+2])*(1/3); if(l<140){ bd[i]=bd[i+1]=bd[i+2]=0; } }
+    const radius=2, wB=bloom.width, hB=bloom.height; const tmp=new Uint8ClampedArray(len);
+    for(let y=0;y<hB;y++){
+      let sr=0,sg=0,sb=0,sa=0;
+      for(let x=-radius;x<=radius;x++){ const xi=Math.max(0,Math.min(wB-1,x)); const idx=(y*wB+xi)*4; sr+=bd[idx]; sg+=bd[idx+1]; sb+=bd[idx+2]; sa+=bd[idx+3]; }
+      for(let x=0;x<wB;x++){
+        const i4=(y*wB+x)*4, div=(radius*2+1);
+        tmp[i4]=sr/div; tmp[i4+1]=sg/div; tmp[i4+2]=sb/div; tmp[i4+3]=sa/div;
+        const xOut=x-radius, xIn=x+radius+1;
+        const idxOut=(y*wB+Math.max(0,Math.min(wB-1,xOut)))*4;
+        const idxIn=(y*wB+Math.max(0,Math.min(wB-1,xIn)))*4;
+        sr+=bd[idxIn]-bd[idxOut]; sg+=bd[idxIn+1]-bd[idxOut+1]; sb+=bd[idxIn+2]-bd[idxOut+2]; sa+=bd[idxIn+3]-bd[idxOut+3];
+      }
+    }
+    const outB=new Uint8ClampedArray(len);
+    for(let x=0;x<wB;x++){
+      let sr=0,sg=0,sb=0,sa=0;
+      for(let y=-radius;y<=radius;y++){ const yi=Math.max(0,Math.min(hB-1,y)); const idx=(yi*wB+x)*4; sr+=tmp[idx]; sg+=tmp[idx+1]; sb+=tmp[idx+2]; sa+=tmp[idx+3]; }
+      for(let y=0;y<hB;y++){
+        const i4=(y*wB+x)*4, div=(radius*2+1);
+        outB[i4]=sr/div; outB[i4+1]=sg/div; outB[i4+2]=sb/div; outB[i4+3]=sa/div;
+        const yOut=y-radius, yIn=y+radius+1;
+        const idxOut=(Math.max(0,Math.min(hB-1,yOut))*wB+x)*4;
+        const idxIn=(Math.max(0,Math.min(hB-1,yIn))*wB+x)*4;
+        sr+=tmp[idxIn]-tmp[idxOut]; sg+=tmp[idxIn+1]-tmp[idxOut+1]; sb+=tmp[idxIn+2]-tmp[idxOut+2]; sa+=tmp[idxIn+3]-tmp[idxOut+3];
+      }
+    }
+    bimg.data.set(outB); bloomc.putImageData(bimg,0,0);
+    // compose
+    ctx.save(); ctx.clearRect(0,0,w,h); ctx.imageSmoothingEnabled=true;
+    ctx.drawImage(pp,0,0,pp.width,pp.height,0,0,w,h);
+    ctx.globalCompositeOperation='lighter'; ctx.globalAlpha=0.6;
+    ctx.drawImage(bloom,0,0,bloom.width,bloom.height,0,0,w,h);
+    ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over'; ctx.restore();
+  }
 
   // --- Archive & Debrief -----------------------------------------------------
   const debriefBase=[ 'Your tape reels clatter. A voice like rain on tin murmurs coordinates that don\'t exist.', 'The signal is a corridor; you walk it backwards. Doors open onto the same room.', 'In the static you hear typewriters. Every key is the same letter: a square.', 'An engineer says, "We built the weather to keep secrets."' ];
@@ -461,7 +570,7 @@
   function updateTimer(dt){ if(!state.flags.running) return; state.time -= dt; if(state.time<=0){ state.time=0; updateHUD(); state.lives -= 1; log('<b>Time collapsed.</b> You lose a life.'); if(state.lives<=0){ endGame('You ran out of time and lives. The grid dims and the receivers go silent.'); return; } state.time=Math.max(50, state.timeMax*0.6); updateHUD(); } }
   function endGame(reason){ state.flags.running=false; elGameOverText.textContent=reason; elGameOver.style.display='flex'; }
 
-  // --- Transmitters (endless) -----------------------------------------------
+  // --- Transmitters ----------------------------------------------------------
   function freqToBand(f){ const bands=[{n:'VLF',r:[0.00,0.08]},{n:'LF',r:[0.08,0.18]},{n:'MF',r:[0.18,0.32]},{n:'HF',r:[0.32,0.58]},{n:'VHF',r:[0.58,0.78]},{n:'UHF',r:[0.78,0.92]},{n:'SHF',r:[0.92,1.00]}]; for(const b of bands){ if(f>=b.r[0] && f<b.r[1]) return b; } return bands[bands.length-1]; }
   function updateBandHint(){ if(!state.transmitter){ elBandHint.textContent='—'; return; } const b=state.transmitter.band.n; elBandHint.textContent = state.inventory.fcard>0? `${b} (range ${state.transmitter.band.r[0].toFixed(2)}–${state.transmitter.band.r[1].toFixed(2)})` : `${b}`; }
   function spawnTransmitter(){
@@ -471,8 +580,7 @@
     const pos={x:state.player.x+dx, y:state.player.y+dy};
     const baseTol=0.12, tol=Math.max(0.03, baseTol - (state.mission-1)*0.02);
     const sigma=Math.max(70, 120 - (state.mission-1)*15);
-    const freq=state.rng();
-    const band=freqToBand(freq);
+    const freq=state.rng(); const band=freqToBand(freq);
     state.transmitter={x:pos.x,y:pos.y,freq,tol,sigma,band, drift:(state.mission>=3? (state.rng()*0.0008+0.0003) : 0)};
     const P=gridToScreen(state.player.x,state.player.y);
     state.antenna.x=P.sx; state.antenna.y=P.sy;
@@ -483,12 +591,28 @@
   function frame(t){ const dt=Math.min(0.05,(t-lastT)/1000); lastT=t;
     if(state.mode===MODE.EXPLORE){
       moveCooldown -= dt*1000;
-      if(moveCooldown <= 0){ let dx=0,dy=0; if(keys.has('ArrowUp')||keys.has('w')||keys.has('W')) dy -= 1; if(keys.has('ArrowDown')||keys.has('s')||keys.has('S')) dy += 1; if(keys.has('ArrowLeft')||keys.has('a')||keys.has('A')) dx -= 1; if(keys.has('ArrowRight')||keys.has('d')||keys.has('D')) dx += 1; dx=Math.sign(dx); dy=Math.sign(dy); if(dx||dy){ movePlayer(dx,dy); moveCooldown=MOVE.delay; } }
+      if(moveCooldown <= 0){
+        let dx=0,dy=0;
+        if(keys.has('ArrowUp')||keys.has('w')||keys.has('W')) dy -= 1;
+        if(keys.has('ArrowDown')||keys.has('s')||keys.has('S')) dy += 1;
+        if(keys.has('ArrowLeft')||keys.has('a')||keys.has('A')) dx -= 1;
+        if(keys.has('ArrowRight')||keys.has('d')||keys.has('D')) dx += 1;
+        dx=Math.sign(dx); dy=Math.sign(dy);
+        if(dx||dy){ movePlayer(dx,dy); moveCooldown=MOVE.delay; }
+      }
       drawExplore(performance.now());
       if(heavyShader) applyHeavyShader();
     } else {
-      const speed=220*dt; if(keys.has('ArrowUp')||keys.has('w')||keys.has('W')) state.antenna.y -= speed; if(keys.has('ArrowDown')||keys.has('s')||keys.has('S')) state.antenna.y += speed; if(keys.has('ArrowLeft')||keys.has('a')||keys.has('A')) state.antenna.x -= speed; if(keys.has('ArrowRight')||keys.has('d')||keys.has('D')) state.antenna.x += speed;
-      if(state.transmitter && state.transmitter.drift){ state.transmitter.freq=(state.transmitter.freq + state.transmitter.drift*dt) % 1; state.transmitter.band=freqToBand(state.transmitter.freq); if(state.inventory.fcard>0) updateBandHint(); }
+      const speed=220*dt;
+      if(keys.has('ArrowUp')||keys.has('w')||keys.has('W')) state.antenna.y -= speed;
+      if(keys.has('ArrowDown')||keys.has('s')||keys.has('S')) state.antenna.y += speed;
+      if(keys.has('ArrowLeft')||keys.has('a')||keys.has('A')) state.antenna.x -= speed;
+      if(keys.has('ArrowRight')||keys.has('d')||keys.has('D')) state.antenna.x += speed;
+      if(state.transmitter && state.transmitter.drift){
+        state.transmitter.freq=(state.transmitter.freq + state.transmitter.drift*dt) % 1;
+        state.transmitter.band=freqToBand(state.transmitter.freq);
+        if(state.inventory.fcard>0) updateBandHint();
+      }
       if(state.spectral.buffQ>0){ state.spectral.buffQ -= dt; if(state.spectral.buffQ<0) state.spectral.buffQ=0; }
       drawSpectral(dt);
       if(heavyShader) applyHeavyShader();
@@ -511,3 +635,4 @@
   </script>
 </body>
 </html>
+
