@@ -276,7 +276,7 @@
         }
       }
     }
-    // add loose corridors
+    // loosen with corridors
     for(let k=0;k<3;k++){
       const row = Math.floor(rng()*WORLD.CHUNK);
       for(let x=0;x<WORLD.CHUNK;x++){ if(rng()<0.85) tiles[row*WORLD.CHUNK+x]='.'; }
@@ -403,7 +403,35 @@
   }
 
   // --- Spectral math & rendering --------------------------------------------
-  function spectralAlignment(){ if(!state.transmitter) return 0; const t=state.transmitter; const {sx,sy}=gridToScreen(t.x,t.y); const dx=(state.antenna.x - sx - GRID.TILE/2); const dy=(state.antenna.y - sy - GRID.TILE/2); const dist=Math.hypot(dx,dy); const sigma=t.sigma; const distScore=Math.exp( - (dist*dist) / (2*sigma*sigma) ); const f=state.spectral.freq; const tol=t.tol * ( state.spectral.q>0? (1/state.spectral.q) : 1 ); const buff= state.spectral.buffQ>0 ? 1.35 : 1.0; const fErr=Math.min(Math.abs(f-t.freq), 1-Math.abs(f-t.freq)); const freqScore=Math.exp( - (fErr*fErr) / (2*(tol*buff)*(tol*buff)) ); return clamp(distScore*freqScore,0,1); }
+  // WORLD-SPACE alignment so it isn't tied to camera
+  function spectralAlignment(){
+    if(!state.transmitter) return 0;
+    const t = state.transmitter;
+
+    // antenna world (tile) coords from screen position
+    const ax = (state.antenna.x - GRID.MARGIN_X) / GRID.TILE + state.camera.x + 0.5;
+    const ay = (state.antenna.y - GRID.MARGIN_Y) / GRID.TILE + state.camera.y + 0.5;
+
+    const tx = t.x + 0.5, ty = t.y + 0.5;
+
+    // distance measured in screen pixels (tile dist * TILE size)
+    const dx = (ax - tx) * GRID.TILE;
+    const dy = (ay - ty) * GRID.TILE;
+    const dist = Math.hypot(dx, dy);
+
+    // gaussian falloff (distance) + frequency match
+    const sigma = t.sigma; // pixels
+    const distScore = Math.exp( - (dist*dist) / (2*sigma*sigma) );
+
+    const f = state.spectral.freq;
+    const tol = t.tol * ( state.spectral.q>0 ? (1/state.spectral.q) : 1 );
+    const buff = state.spectral.buffQ>0 ? 1.35 : 1.0;
+    const fErr = Math.min(Math.abs(f - t.freq), 1 - Math.abs(f - t.freq));
+    const freqScore = Math.exp( - (fErr*fErr) / (2*(tol*buff)*(tol*buff)) );
+
+    return clamp(distScore * freqScore, 0, 1);
+  }
+
   function gridToScreen(wx,wy){ const sx = GRID.MARGIN_X + (wx - state.camera.x)*GRID.TILE; const sy = GRID.MARGIN_Y + (wy - state.camera.y)*GRID.TILE; return {sx,sy}; }
   function tileColor(wx,wy,t){ const ty=getTileType(wx,wy)==='#'? 1:0; const hue=(t*40 + wx*7 + wy*13 + ty*90)%360; const sat=65 + 25*Math.sin((wx*0.21+wy*0.33+t*2)); const lit=10 + 12*Math.sin((wx*0.19 - wy*0.17 + t*1.7)) + (ty? -4:0); return `hsl(${hue.toFixed(1)} ${sat.toFixed(1)}% ${Math.max(6,lit).toFixed(1)}%)`; }
 
@@ -573,17 +601,26 @@
   // --- Transmitters ----------------------------------------------------------
   function freqToBand(f){ const bands=[{n:'VLF',r:[0.00,0.08]},{n:'LF',r:[0.08,0.18]},{n:'MF',r:[0.18,0.32]},{n:'HF',r:[0.32,0.58]},{n:'VHF',r:[0.58,0.78]},{n:'UHF',r:[0.78,0.92]},{n:'SHF',r:[0.92,1.00]}]; for(const b of bands){ if(f>=b.r[0] && f<b.r[1]) return b; } return bands[bands.length-1]; }
   function updateBandHint(){ if(!state.transmitter){ elBandHint.textContent='—'; return; } const b=state.transmitter.band.n; elBandHint.textContent = state.inventory.fcard>0? `${b} (range ${state.transmitter.band.r[0].toFixed(2)}–${state.transmitter.band.r[1].toFixed(2)})` : `${b}`; }
+
+  // On-screen spawn (4–8 tiles from player) so you can lock immediately
   function spawnTransmitter(){
-    const r=30 + Math.floor(state.rng()*40);
-    const ang=state.rng()*Math.PI*2;
-    const dx=Math.round(Math.cos(ang)*r), dy=Math.round(Math.sin(ang)*r);
-    const pos={x:state.player.x+dx, y:state.player.y+dy};
+    const minR=4, maxR=8;
+    const r = minR + Math.floor(state.rng()*(maxR-minR+1));
+    const ang = state.rng()*Math.PI*2;
+    const dx = Math.round(Math.cos(ang)*r);
+    const dy = Math.round(Math.sin(ang)*r);
+    const pos = { x: state.player.x + dx, y: state.player.y + dy };
+
     const baseTol=0.12, tol=Math.max(0.03, baseTol - (state.mission-1)*0.02);
-    const sigma=Math.max(70, 120 - (state.mission-1)*15);
+    const sigma=Math.max(70, 120 - (state.mission-1)*15); // pixels
     const freq=state.rng(); const band=freqToBand(freq);
+
     state.transmitter={x:pos.x,y:pos.y,freq,tol,sigma,band, drift:(state.mission>=3? (state.rng()*0.0008+0.0003) : 0)};
+
+    // place crosshair at player's tile center (screen space)
     const P=gridToScreen(state.player.x,state.player.y);
-    state.antenna.x=P.sx; state.antenna.y=P.sy;
+    state.antenna.x = P.sx + GRID.TILE/2;
+    state.antenna.y = P.sy + GRID.TILE/2;
   }
 
   // --- Main loop -------------------------------------------------------------
@@ -608,12 +645,14 @@
       if(keys.has('ArrowDown')||keys.has('s')||keys.has('S')) state.antenna.y += speed;
       if(keys.has('ArrowLeft')||keys.has('a')||keys.has('A')) state.antenna.x -= speed;
       if(keys.has('ArrowRight')||keys.has('d')||keys.has('D')) state.antenna.x += speed;
+
       if(state.transmitter && state.transmitter.drift){
         state.transmitter.freq=(state.transmitter.freq + state.transmitter.drift*dt) % 1;
         state.transmitter.band=freqToBand(state.transmitter.freq);
         if(state.inventory.fcard>0) updateBandHint();
       }
       if(state.spectral.buffQ>0){ state.spectral.buffQ -= dt; if(state.spectral.buffQ<0) state.spectral.buffQ=0; }
+
       drawSpectral(dt);
       if(heavyShader) applyHeavyShader();
     }
@@ -621,7 +660,7 @@
   }
 
   // --- Buttons & boot --------------------------------------------------------
-  document.getElementById('startBtn').addEventListener('click', ()=>{ document.getElementById('intro').style.display='none'; state.flags.running=true; toast('Run started.'); canvas.focus(); });
+  document.getElementById('startBtn').addEventListener('click', ()=>{ document.getElementById('intro').style.display='none'; state.flags.running=true; toast('Run started.'); updateCamera(); spawnTransmitter(); /* ensure first transmitter */ canvas.focus(); });
   document.getElementById('continueBtn').addEventListener('click', ()=>{ document.getElementById('debrief').style.display='none'; toast('Mission advanced'); });
   document.getElementById('restartBtn').addEventListener('click', ()=>{ location.reload(); });
   document.getElementById('seedBtn').addEventListener('click', ()=>{ newSeed(); resetRun(); });
