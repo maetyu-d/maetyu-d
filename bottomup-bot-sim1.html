@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bots Accessibility Sim — Minimal p5.js</title>
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+  <style>
+    :root { --bg:#0b0c10; --fg:#e5e7eb; --muted:#9aa0a6; --panel:#111317; --accent:#22c55e; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";}
+    header { padding: 10px 14px; display:flex; gap:10px; align-items: center; flex-wrap: wrap; background: var(--panel); border-bottom: 1px solid #1f232b; position: sticky; top:0; z-index:3 }
+    header .spacer { flex:1 1 auto }
+    button, input[type="range"] { background:#171a1f; color: var(--fg); border:1px solid #242833; padding:8px 10px; border-radius:10px; }
+    input[type="range"]{ padding:6px 8px; height:34px }
+    button { cursor:pointer }
+    button:hover { filter:brightness(1.12) }
+    label { display:inline-flex; align-items:center; gap:6px; margin-right:10px }
+    #stats { padding: 6px 14px; color: var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    #canvas-holder { padding: 10px 14px; position: relative; }
+    /* DSL panel */
+    #dslPanel { position:absolute; z-index:5; background:#0f1217; border:1px solid #242833; border-radius:12px; padding:10px; display:flex; flex-direction:column; gap:8px; box-shadow: 0 8px 24px rgba(0,0,0,0.35); }
+    #dslPanel .row { display:flex; gap:8px; align-items:center; }
+    #dslPanel h4 { margin:0; font-size:12px; font-weight:600; color:#9aa0a6; letter-spacing:.02em }
+    #dslBox { width:100%; height:100%; resize:none; background:#0b0e13; color:#e5e7eb; border:1px solid #242833; border-radius:8px; padding:10px; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+  </style>
+</head>
+<body>
+  <header>
+    <button id="runBtn">⏸️ Pause</button>
+    <button id="resetBtn">🔄 Reset</button>
+    <button id="saveBtn">💾 Save Trails PNG</button>
+
+    <label><input id="followChk" type="checkbox" checked> Follow green</label>
+    <label><input id="trailChk" type="checkbox" checked> Trails</label>
+
+    <label style="gap:8px;min-width:260px">
+      Speed× <span id="speedLabel">1.00</span>
+      <input id="speedSlider" type="range" min="0.1" max="10" step="0.1" value="1.0" />
+    </label>
+
+    <label style="gap:8px;min-width:260px">
+      Avoid≤ <span id="avoidLabel">0.30</span>
+      <input id="avoidSlider" type="range" min="0" max="1" step="0.01" value="0.30" />
+    </label>
+
+    <span class="spacer"></span>
+  </header>
+  <div id="stats"></div>
+  <div id="canvas-holder">
+    <div id="dslPanel" aria-label="DSL Commands">
+      <h4>DSL Commands (one per line)</h4>
+      <textarea id="dslBox" placeholder="Examples:
+# Program the green bot
+prog green begin
+  wobble 0.04
+  left_bias 0.006
+  jitter 0.004
+  prefer_left 1.6
+  if access < avoid_threshold steer gradient 1.2
+  if access between 0.30 0.60 steer gradient 0.55
+  if access > 0.75 steer forward 0.30
+  if grad < 0.02 steer wander 0.05
+  if edge < 200 steer away_edge 0.8
+end
+
+# Other examples
+kill green
+teleport green 5000 5000
+camera 2500 7500
+trails.clear
+trails.width 3
+trails.color green #00ff22
+trails.save"></textarea>
+      <div class="row">
+        <button id="runDslBtn">▶ Run DSL</button>
+        <button id="clearDslBtn">🧹 Clear</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    // === World params (mutable) ===
+    let WORLD_SIZE = 10000;        // pixels (world is 10k x 10k)
+    const GRID_TILES = 50;         // 50×50 tiles
+    let TILE_SIZE = WORLD_SIZE / GRID_TILES;
+
+    // === State ===
+    let bots = [];
+    let running = true;
+    let follow = true;
+    let followTarget = 'green'; // or null
+    let camLock = false;
+    let showTrails = true;
+    let showHeatmap = false;
+
+    // Camera
+    let cam = { x: WORLD_SIZE/2, y: WORLD_SIZE/2 };
+    let camSpeed = 0.12; // follow smoothing (0..1)
+
+    // Responsive layout sizes (computed in layout())
+    let LEFT_W = 860;  // zoom view width
+    let RIGHT_W = 420; // minimap width (square)
+    let CAN_H  = 720;  // canvas height
+
+    // Field cache
+    let tileScore = new Float32Array(GRID_TILES * GRID_TILES);
+
+    // === Tunables ===
+    let speedMul = 1.0;      // global timescale 0.1x..10x (slider)
+    let greenBias = 0.18;    // follow-gradient strength (base)
+    let noiseScale = 0.00055;// accessibility field frequency
+    let rngSeed = 1337;
+
+    // Limp/steering (angles are radians-per-frame; NOT scaled by Speed×)
+    let greenLeftBias   = 0.004; // constant left pull (not scaled)
+    let greenTurnCapL   = 0.13;  // max left turn per frame (not scaled)
+    let greenTurnCapR   = 0.08;  // max right turn per frame (not scaled)
+    let greenWobbleAmp  = 0.03;  // wobble added to heading per frame (not scaled)
+
+    // Seek semantics (used when no program is active)
+    // modes: 'attract' | 'repel_low' | 'hybrid'
+    let greenSeekMode = 'hybrid';
+    let greenAttractThresh = 0.60;
+    let greenRepelThresh   = 0.30; // <-- controlled by slider & DSL
+    let greenSeekWeightAttract = 1.0;
+    let greenSeekWeightRepel   = 1.0;
+    let greenSeekHysteresis    = 0.00; // 0..1
+
+    // Base speeds (pixels/frame at 1x; multiplied by speedMul)
+    let baseSpeedGreen  = 1.5;
+    let baseSpeedOrange = 2.2;
+
+    // Tile value shaping: 'identity' | 'pow' | 'ipow' | 'extremes' | 'middle'
+    let tilesDistMode  = 'identity';
+    let tilesDistParam = 2.0;
+    // Palette for tiles
+    let tilesPalette = 'contrast'; // 'contrast' | 'default'
+
+    // View padding (extra tiles drawn beyond viewport to avoid popping)
+    let viewPadTiles = 1; // tiles
+
+    // Edge behaviour
+    let edgeMargin = 250;  // px
+    let edgeForce  = 0.35; // turn push strength
+    let edgeWrap   = true; // if false → bounce
+
+    // Utils
+    const idx = (tx, ty) => ty * GRID_TILES + tx;
+    const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
+    const wrap = (v, size) => (v % size + size) % size;
+
+    // Permanent trails & heatmap buffers (high-res for PNG export)
+    const TRAIL_RES = 5000;
+    let TRAIL_SCALE = TRAIL_RES / WORLD_SIZE;
+    let permanentTrails, heatmapLayer;
+    let trailWidth = 2;
+    let trailColorGreen = '#00ff2288';
+    let trailColorOrange = '#ffaa0088';
+
+    // --- Program for green bots (Option 1: rule-based) ---
+    // Structure: { assigns:{wobble,left_bias,jitter,prefer_left}, rules:[ {cond,op,a,b,act,val} ] }
+    let greenProgram = null;
+    let collectingProgram = false; let progLines = [];
+
+    function parseGreenProgram(lines){
+      const prog = { assigns:{}, rules:[] };
+      for (let raw of lines){
+        const s = raw.trim(); if (!s || s.startsWith('#')) continue;
+        const tok = s.split(/\s+/);
+        if (tok[0]==='wobble'){ prog.assigns.wobble = parseFloat(tok[1]); continue; }
+        if (tok[0]==='left_bias'){ prog.assigns.left_bias = parseFloat(tok[1]); continue; }
+        if (tok[0]==='jitter'){ prog.assigns.jitter = parseFloat(tok[1]); continue; }
+        if (tok[0]==='prefer_left'){ prog.assigns.prefer_left = parseFloat(tok[1]); continue; }
+        if (tok[0]==='if'){
+          // Allow numbers OR 'avoid_threshold' for A and optional B
+          const m = s.match(/^if\s+(access|grad|edge)\s*(<|<=|>|>=|==|!=|between)\s*(\S+)(?:\s+(\S+))?\s+steer\s+(gradient|forward|wander|away_edge)\s+([0-9\.]+)/i);
+          if (m){
+            const parseVal = v => (String(v).toLowerCase()==='avoid_threshold') ? 'avoid_threshold' : parseFloat(v);
+            prog.rules.push({cond:m[1], op:m[2], a:parseVal(m[3]), b:(m[4]?parseVal(m[4]):null), act:m[5], val:parseFloat(m[6])});
+          }
+        }
+      }
+      return prog;
+    }
+
+    function condPass(bot, r){
+      const resolve = v => (v==='avoid_threshold') ? greenRepelThresh : v;
+      if (r.cond==='access'){
+        const here = accessAt(bot.x, bot.y);
+        const A = resolve(r.a), B = resolve(r.b);
+        if (r.op==='<' ) return here <  A;
+        if (r.op==='<=') return here <= A;
+        if (r.op==='>' ) return here >  A;
+        if (r.op==='>=') return here >= A;
+        if (r.op==='==') return Math.abs(here - A) < 1e-6;
+        if (r.op==='!=') return Math.abs(here - A) >= 1e-6;
+        if (r.op==='between') return here >= Math.min(A,B) && here <= Math.max(A,B);
+      }
+      if (r.cond==='grad'){
+        const eps = 8;
+        const gx = accessAt(bot.x+eps, bot.y) - accessAt(bot.x-eps, bot.y);
+        const gy = accessAt(bot.x, bot.y+eps) - accessAt(bot.x, bot.y-eps);
+        const g  = Math.hypot(gx, gy);
+        const A = resolve(r.a), B = resolve(r.b);
+        if (r.op==='<' ) return g <  A;
+        if (r.op==='<=') return g <= A;
+        if (r.op==='>' ) return g >  A;
+        if (r.op==='>=') return g >= A;
+        if (r.op==='between') return g >= Math.min(A,B) && g <= Math.max(A,B);
+      }
+      if (r.cond==='edge'){
+        const d = Math.min(bot.x, WORLD_SIZE-bot.x, bot.y, WORLD_SIZE-bot.y);
+        const A = resolve(r.a), B = resolve(r.b);
+        if (r.op==='<' ) return d <  A;
+        if (r.op==='<=') return d <= A;
+        if (r.op==='>' ) return d >  A;
+        if (r.op==='>=') return d >= A;
+        if (r.op==='between') return d >= Math.min(A,B) && d <= Math.max(A,B);
+      }
+      return false;
+    }
+
+    // Apply program: returns true if a program is active (used), false otherwise
+    function applyGreenProgram(bot){
+      if (!greenProgram) return false;
+      // Assign constants if provided (override while program runs)
+      if (Number.isFinite(greenProgram.assigns.wobble)) greenWobbleAmp = greenProgram.assigns.wobble;
+      if (Number.isFinite(greenProgram.assigns.left_bias)) greenLeftBias = greenProgram.assigns.left_bias;
+      const progJitter = Number.isFinite(greenProgram.assigns.jitter) ? greenProgram.assigns.jitter : 0;
+      const preferLeft  = Number.isFinite(greenProgram.assigns.prefer_left) ? greenProgram.assigns.prefer_left : 1.0;
+
+      // Accumulate heading deltas from all matching rules
+      let dH = 0;
+      let weight = 0;
+      const eps = 8;
+      const gx = accessAt(bot.x+eps, bot.y) - accessAt(bot.x-eps, bot.y);
+      const gy = accessAt(bot.x, bot.y+eps) - accessAt(bot.x, bot.y-eps);
+      const gradDir = Math.atan2(gy, gx);
+
+      for (const r of greenProgram.rules){
+        if (!condPass(bot, r)) continue;
+        if (r.act==='gradient'){
+          // turn toward gradient
+          let d = ((gradDir - bot.h + Math.PI*3) % (Math.PI*2)) - Math.PI;
+          dH += d * 0.3 * r.val; weight += 0.3 * r.val;
+        } else if (r.act==='forward'){
+          // damping: reduce net turn
+          weight += r.val * 0.2;
+        } else if (r.act==='wander'){
+          dH += (Math.random()-0.5) * r.val; weight += r.val*0.5;
+        } else if (r.act==='away_edge'){
+          // push heading away from nearest edge (approx: from center outward)
+          const cx = WORLD_SIZE/2, cy = WORLD_SIZE/2;
+          const dir = Math.atan2(bot.y-cy, bot.x-cx);
+          let d = ((dir - bot.h + Math.PI*3) % (Math.PI*2)) - Math.PI;
+          dH += d * 0.5 * r.val; weight += 0.5 * r.val;
+        }
+      }
+
+      // Add jitter from program
+      if (progJitter) dH += (Math.random()-0.5) * progJitter;
+
+      // Normalize and apply asymmetric turn caps w/ prefer_left
+      if (weight>0) dH /= weight;
+      const leftCap  = greenTurnCapL * preferLeft;
+      const rightCap = greenTurnCapR;
+      if (dH >  leftCap)  dH =  leftCap;
+      if (dH < -rightCap) dH = -rightCap;
+      bot.h += dH;
+
+      // constant left pull still applies (keeps the limp flavor)
+      bot.h += greenLeftBias;
+      return true;
+    }
+
+    // === Accessibility field ===
+    function accessAt(x, y) { return noise(x * noiseScale, y * noiseScale); }
+
+    // Shape raw noise distribution
+    function shapeAccess(v){
+      v = clamp(v, 0, 1);
+      const k = tilesDistParam;
+      switch(tilesDistMode){
+        case 'pow':      return Math.pow(v, Math.max(0.0001, k));
+        case 'ipow':     return 1 - Math.pow(1-v, Math.max(0.0001, k));
+        case 'extremes': {
+          const kk = Math.max(1, k);
+          if (v < 0.5) return 0.5 * Math.pow(v*2, kk);
+          else         return 1 - 0.5 * Math.pow((1-v)*2, kk);
+        }
+        case 'middle': {
+          const kk = Math.max(0.0001, k);
+          const t = Math.tanh((v-0.5)*kk) / Math.tanh(0.5*kk);
+          return 0.5 + 0.5 * t;
+        }
+        default: return v;
+      }
+    }
+
+    function rebuildTileScores() {
+      noiseSeed(rngSeed);
+      for (let ty=0; ty<GRID_TILES; ty++){
+        for (let tx=0; tx<GRID_TILES; tx++){
+          const cx = (tx + 0.5) * TILE_SIZE, cy = (ty + 0.5) * TILE_SIZE;
+          tileScore[idx(tx,ty)] = shapeAccess(accessAt(cx, cy));
+        }
+      }
+    }
+
+    function reinitWorldSize(newSize){
+      WORLD_SIZE = Math.max(1000, Math.floor(newSize));
+      TILE_SIZE = WORLD_SIZE / GRID_TILES;
+      TRAIL_SCALE = TRAIL_RES / WORLD_SIZE;
+      // Wrap/scale existing bots into new world
+      for (let b of bots){ b.x = wrap(b.x, WORLD_SIZE); b.y = wrap(b.y, WORLD_SIZE); }
+      cam.x = wrap(cam.x, WORLD_SIZE); cam.y = wrap(cam.y, WORLD_SIZE);
+      // Rebuild tiles & buffers
+      tileScore = new Float32Array(GRID_TILES * GRID_TILES);
+      rebuildTileScores();
+      permanentTrails = createGraphics(TRAIL_RES, TRAIL_RES);
+      permanentTrails.noSmooth(); permanentTrails.clear();
+      heatmapLayer = createGraphics(TRAIL_RES, TRAIL_RES);
+      heatmapLayer.noSmooth(); heatmapLayer.clear();
+    }
+
+    function resetSim() {
+      rngSeed = Math.floor(Math.random()*1e9);
+      rebuildTileScores();
+      bots.length = 0;
+      permanentTrails = createGraphics(TRAIL_RES, TRAIL_RES);
+      permanentTrails.noSmooth();
+      permanentTrails.clear();
+      heatmapLayer = createGraphics(TRAIL_RES, TRAIL_RES);
+      heatmapLayer.noSmooth(); heatmapLayer.clear();
+      // Default: 1 green + 1 orange, camera follows green
+      spawnBots('green', 1);
+      spawnBots('orange', 1);
+      const g0 = bots.find(b=>b.type==='green');
+      cam.x = g0 ? g0.x : WORLD_SIZE/2; cam.y = g0 ? g0.y : WORLD_SIZE/2;
+    }
+
+    function spawnBots(type, n) {
+      for (let i=0;i<n;i++){
+        const b = new Bot(type);
+        b.baseSpeed = (type==='green') ? baseSpeedGreen : baseSpeedOrange;
+        bots.push(b);
+      }
+    }
+
+    class Bot {
+      constructor(type) {
+        this.type = type;
+        this.x = Math.random() * WORLD_SIZE;
+        this.y = Math.random() * WORLD_SIZE;
+        this.h = Math.random() * Math.PI * 2;
+        this.baseSpeed = (type === 'green') ? baseSpeedGreen : baseSpeedOrange;
+        this.phase = Math.random() * Math.PI * 2;
+        this.prevX = this.x;
+        this.prevY = this.y;
+        this.zone = 'mid';
+      }
+      step() {
+        this.prevX = this.x; this.prevY = this.y;
+
+        // --- Steering -- either program or built-in ---
+        let usedProgram = false;
+        if (this.type === 'green') usedProgram = applyGreenProgram(this);
+
+        if (!usedProgram){
+          if (this.type === 'green') {
+            // Local gradient of accessibility
+            const eps = 8;
+            const ax1 = accessAt(this.x+eps, this.y), ax0 = accessAt(this.x-eps, this.y);
+            const ay1 = accessAt(this.x, this.y+eps), ay0 = accessAt(this.x, this.y-eps);
+            const gx = ax1 - ax0, gy = ay1 - ay0;
+            const gradMag = Math.hypot(gx, gy);
+
+            // Zone with hysteresis
+            const here = accessAt(this.x, this.y);
+            const lowT  = greenRepelThresh;
+            const highT = greenAttractThresh;
+            if      (here < lowT - greenSeekHysteresis) this.zone = 'low';
+            else if (here > highT + greenSeekHysteresis) this.zone = 'high';
+
+            const gradDir = Math.atan2(gy, gx);
+            let goal = this.h; let desire = 0.0;
+            if (greenSeekMode === 'attract') {
+              goal = gradDir; desire = (here < highT) ? 1.0*greenSeekWeightAttract : 0.4*greenSeekWeightAttract;
+            } else if (greenSeekMode === 'repel_low') {
+              if (here < lowT) { goal = gradDir; desire = 1.0*greenSeekWeightRepel; } else { goal = this.h; desire = 0.25; }
+            } else { // hybrid
+              if (here < lowT) { goal = gradDir; desire = 1.0 * greenSeekWeightRepel; }
+              else if (here < highT) { goal = gradDir; desire = 0.65 * greenSeekWeightAttract; }
+              else { goal = this.h; desire = 0.3; }
+            }
+
+            let d = ((goal - this.h + Math.PI*3) % (Math.PI*2)) - Math.PI;
+            const strength = Math.min(1, gradMag * 6.0);
+            const leftCap  = greenTurnCapL;
+            const rightCap = greenTurnCapR;
+            if (d > leftCap) d = leftCap; else if (d < -rightCap) d = -rightCap;
+            this.h += d * (0.3 + 0.7*strength) * greenBias * desire;
+            this.h += greenLeftBias;                // constant left pull
+            this.h += (Math.random()-0.5) * 0.005;  // tiny jitter
+          } else {
+            // Orange: correlated random walk
+            this.h += (Math.random()-0.5) * 0.06;
+          }
+        }
+
+        // --- Edge repulsion (smooth within margin) ---
+        const margin = edgeMargin;
+        const distLeft   = this.x;
+        const distRight  = WORLD_SIZE - this.x;
+        const distTop    = this.y;
+        const distBottom = WORLD_SIZE - this.y;
+        const ramp = (d) => { const t = clamp((margin - d) / margin, 0, 1); return t * t * (1.5 - 0.5 * t); };
+        if (distLeft < margin)   this.h += edgeForce * ramp(distLeft);
+        if (distRight < margin)  this.h -= edgeForce * ramp(distRight);
+        if (distTop < margin)    this.h -= edgeForce * ramp(distTop);
+        if (distBottom < margin) this.h += edgeForce * ramp(distBottom);
+
+        // --- Limp & speed (linear speed scales with Speed×; angles do NOT) ---
+        let speed = this.baseSpeed * speedMul;
+        if (this.type === 'green') {
+          this.phase += 0.18;            // fixed wobble cadence
+          const limp = Math.sin(this.phase);
+          this.h += limp * greenWobbleAmp; // wobble affects heading per-frame (not scaled)
+          speed *= 0.90 + 0.08 * (0.5 + 0.5 * limp);
+        }
+
+        // Move
+        let nx = this.x + Math.cos(this.h) * speed;
+        let ny = this.y + Math.sin(this.h) * speed;
+        if (edgeWrap) {
+          this.x = wrap(nx, WORLD_SIZE);
+          this.y = wrap(ny, WORLD_SIZE);
+        } else {
+          if (nx < 0) { nx = -nx; this.h = Math.PI - this.h; }
+          if (nx > WORLD_SIZE) { nx = 2*WORLD_SIZE - nx; this.h = Math.PI - this.h; }
+          if (ny < 0) { ny = -ny; this.h = -this.h; }
+          if (ny > WORLD_SIZE) { ny = 2*WORLD_SIZE - ny; this.h = -this.h; }
+          this.x = clamp(nx, 0, WORLD_SIZE);
+          this.y = clamp(ny, 0, WORLD_SIZE);
+        }
+
+        // --- Permanent trails & heatmap (avoid wrap seams) ---
+        const dx = Math.abs(this.x - this.prevX);
+        const dy = Math.abs(this.y - this.prevY);
+        const wrapped = (dx > WORLD_SIZE * 0.5) || (dy > WORLD_SIZE * 0.5);
+        if (!wrapped) {
+          if (permanentTrails) {
+            permanentTrails.stroke(this.type==='green' ? trailColorGreen : trailColorOrange);
+            permanentTrails.strokeWeight(trailWidth);
+            permanentTrails.line(this.prevX * TRAIL_SCALE, this.prevY * TRAIL_SCALE,
+                                 this.x     * TRAIL_SCALE, this.y     * TRAIL_SCALE);
+          }
+          if (showHeatmap && heatmapLayer) {
+            heatmapLayer.noStroke();
+            heatmapLayer.fill(0, 160, 255, 12);
+            heatmapLayer.circle(this.x * TRAIL_SCALE, this.y * TRAIL_SCALE, 3);
+          }
+        }
+      }
+    }
+
+    // === p5 lifecycle ===
+    let statsDiv;
+    let stepFramesToRun = 0;
+    function setup() {
+      const c = createCanvas(1, 1); // real size set in layout()
+      pixelDensity(1);
+      c.parent(document.getElementById('canvas-holder'));
+      statsDiv = document.getElementById('stats');
+      setupUI();
+      layout();
+      resetSim();
+      frameRate(60);
+      window.addEventListener('resize', layout);
+    }
+
+    function draw() {
+      const shouldStep = running || stepFramesToRun>0;
+      if (shouldStep) {
+        for (let b of bots) b.step();
+        if (stepFramesToRun>0) stepFramesToRun--;
+        // follow camera
+        if (!camLock && follow) {
+          let target = (followTarget==='green') ? bots.find(b=>b.type==='green') : null;
+          if (target) {
+            let dx = target.x - cam.x; if (Math.abs(dx) > WORLD_SIZE/2) dx -= Math.sign(dx)*WORLD_SIZE;
+            let dy = target.y - cam.y; if (Math.abs(dy) > WORLD_SIZE/2) dy -= Math.sign(dy)*WORLD_SIZE;
+            const k = clamp(camSpeed, 0.01, 0.9);
+            cam.x = wrap(cam.x + dx * k, WORLD_SIZE);
+            cam.y = wrap(cam.y + dy * k, WORLD_SIZE);
+          }
+        }
+      }
+      renderScene();
+      renderStats();
+    }
+
+    // --- Layout helpers ---
+    function layout(){
+      const header = document.querySelector('header');
+      const stats  = document.getElementById('stats');
+      const padX = 14, padY = 10; // from CSS
+      const availW = window.innerWidth - padX*2;
+      const availH = window.innerHeight - (header?.offsetHeight||0) - (stats?.offsetHeight||0) - padY*2;
+
+      RIGHT_W = clamp(Math.floor(availW * 0.32), 300, 560);
+      LEFT_W  = Math.max(420, availW - RIGHT_W);
+      CAN_H   = Math.max(420, Math.floor(availH));
+
+      resizeCanvas(LEFT_W + RIGHT_W, CAN_H);
+
+      const dsl = document.getElementById('dslPanel');
+      if (dsl){
+        dsl.style.left = (padX + LEFT_W) + 'px';
+        dsl.style.top  = (padY + RIGHT_W + 8) + 'px';
+        dsl.style.width  = RIGHT_W + 'px';
+        const h = CAN_H - (RIGHT_W + 24);
+        dsl.style.height = Math.max(120, h) + 'px';
+      }
+    }
+
+    // === Rendering ===
+    function renderScene(){
+      background(14);
+      const ctx = drawingContext;
+      ctx.save(); ctx.beginPath(); ctx.rect(0,0,LEFT_W,CAN_H); ctx.clip();
+      drawZoomed(); ctx.restore();
+      drawMinimap(LEFT_W, 0, RIGHT_W, RIGHT_W);
+    }
+
+    function drawZoomed(){
+      const EARLY_PAD = viewPadTiles * TILE_SIZE;
+      const minX = cam.x - LEFT_W/2 - EARLY_PAD, minY = cam.y - CAN_H/2 - EARLY_PAD;
+      const t0x = Math.floor(wrap(minX, WORLD_SIZE) / TILE_SIZE);
+      const t0y = Math.floor(wrap(minY, WORLD_SIZE) / TILE_SIZE);
+      const tilesX = Math.ceil((LEFT_W + 2*EARLY_PAD) / TILE_SIZE) + 2;
+      const tilesY = Math.ceil((CAN_H  + 2*EARLY_PAD) / TILE_SIZE) + 2;
+      for (let yy=0; yy<tilesY; yy++){
+        for (let xx=0; xx<tilesX; xx++){
+          const tx = (t0x + xx) % GRID_TILES;
+          const ty = (t0y + yy) % GRID_TILES;
+          const wx = tx * TILE_SIZE, wy = ty * TILE_SIZE;
+          for (let ox of [0, -WORLD_SIZE, WORLD_SIZE]){
+            for (let oy of [0, -WORLD_SIZE, WORLD_SIZE]){
+              const sx = wx + ox - cam.x + LEFT_W/2;
+              const sy = wy + oy - cam.y + CAN_H/2;
+              if (sx > -TILE_SIZE - EARLY_PAD && sy > -TILE_SIZE - EARLY_PAD && sx < LEFT_W + EARLY_PAD && sy < CAN_H + EARLY_PAD){
+                drawTileAtScreen(tx, ty, sx, sy, TILE_SIZE);
+              }
+            }
+          }
+        }
+      }
+
+      if (showHeatmap && heatmapLayer) {
+        noSmooth(); image(heatmapLayer, -cam.x + LEFT_W/2, -cam.y + CAN_H/2, WORLD_SIZE, WORLD_SIZE);
+      }
+      if (showTrails && permanentTrails) {
+        noSmooth(); image(permanentTrails, -cam.x + LEFT_W/2, -cam.y + CAN_H/2, WORLD_SIZE, WORLD_SIZE);
+      }
+
+      // Bots
+      noStroke();
+      for (let b of bots){
+        const sx = (b.x - cam.x) + LEFT_W/2;
+        const sy = (b.y - cam.y) + CAN_H/2;
+        push(); translate(sx, sy); rotate(b.h);
+        fill(b.type==='green' ? '#00ff22' : '#ffaa00');
+        circle(0,0,10); fill(0,120); rect(3,-1,6,2);
+        pop();
+      }
+
+      noFill(); stroke(35); strokeWeight(1); rect(0,0,LEFT_W, CAN_H);
+    }
+
+    function drawTileAtScreen(tx, ty, sx, sy, size){
+      const s = tileScore[idx(tx,ty)];
+      const score10 = Math.round(s * 10);
+
+      // Contrast palette tied to accessibility (low=reddish, mid=steel, high=teal)
+      let base;
+      if (tilesPalette==='contrast'){
+        const cRed = color('#7f1d1d'), cOrg = color('#475569'), cGrn = color('#0d9488');
+        base = (s < 0.5) ? lerpColor(cRed, cOrg, s / 0.5) : lerpColor(cOrg, cGrn, (s - 0.5) / 0.5);
+      } else {
+        const cRed = color('#8b0000'), cOrg = color('#ff8c00'), cGrn = color('#228b22');
+        base = (s < 0.5) ? lerpColor(cRed, cOrg, s / 0.5) : lerpColor(cOrg, cGrn, (s - 0.5) / 0.5);
+      }
+      noStroke(); fill(base); rect(sx, sy, size, size);
+
+      // Lightweight texture that varies with accessibility (rougher for low access)
+      const seed = (tx*73856093 ^ ty*19349663) >>> 0;
+      const pat = seed % 4;
+      const rough = 1 - (score10 / 10);
+      const alpha = 40 + Math.floor(rough * 120);
+
+      if (pat === 0) {
+        stroke(20, alpha); strokeWeight(2);
+        const step = Math.floor(8 + 14 * (1 - rough));
+        for (let i= -size; i<size*2; i+= step){ line(sx+i, sy, sx, sy+i); }
+      } else if (pat === 1) {
+        noStroke(); fill(255, alpha);
+        const spacing = Math.floor(12 + 10 * (1 - rough));
+        const rad = 1 + Math.floor(2 * rough);
+        for (let y=spacing/2; y<size; y+=spacing){
+          for (let x=spacing/2; x<size; x+=spacing){ circle(sx+x, sy+y, rad); }
+        }
+      } else if (pat === 2) {
+        stroke(30, alpha); strokeWeight(1 + Math.floor(1.5 * rough));
+        const step = Math.floor(14 + 10 * (1 - rough));
+        for (let x=0; x<size; x+=step){ line(sx+x, sy, sx+x, sy+size); }
+        for (let y=0; y<size; y+=step){ line(sx, sy+y, sx+size, sy+y); }
+      } else {
+        const wx = tx * TILE_SIZE, wy = ty * TILE_SIZE;
+        noStroke(); fill(0, alpha);
+        const spacing = Math.floor(10 + 10 * (1 - rough));
+        for (let y=4; y<size; y+=spacing){
+          for (let x=4; x<size; x+=spacing){
+            const n = noise((wx+x)*0.02, (wy+y)*0.02);
+            if (n < 0.45 + rough*0.25) rect(sx+x, sy+y, 1, 1);
+          }
+        }
+      }
+    }
+
+    function drawMinimap(x, y, w, h){
+      noStroke();
+      const tw = w / GRID_TILES, th = h / GRID_TILES;
+      for (let ty=0; ty<GRID_TILES; ty++){
+        for (let tx=0; tx<GRID_TILES; tx++){
+          const s = tileScore[idx(tx,ty)];
+          let base;
+          if (tilesPalette==='contrast'){
+            const cRed = color('#7f1d1d'), cOrg = color('#475569'), cGrn = color('#0d9488');
+            base = (s < 0.5) ? lerpColor(cRed, cOrg, s / 0.5) : lerpColor(cOrg, cGrn, (s - 0.5) / 0.5);
+          } else {
+            const cRed = color('#8b0000'), cOrg = color('#ff8c00'), cGrn = color('#228b22');
+            base = (s < 0.5) ? lerpColor(cRed, cOrg, s / 0.5) : lerpColor(cOrg, cGrn, (s - 0.5) / 0.5);
+          }
+          fill(base);
+          rect(x + tx*tw, y + ty*th, tw+0.5, th+0.5);
+        }
+      }
+      if (showHeatmap && heatmapLayer) image(heatmapLayer, x, y, w, h);
+      if (showTrails && permanentTrails) image(permanentTrails, x, y, w, h);
+
+      noStroke();
+      for (let b of bots){
+        fill(b.type==='green' ? '#00ff22' : '#ffaa00');
+        const bx = x + (b.x / WORLD_SIZE) * w;
+        const by = y + (b.y / WORLD_SIZE) * h;
+        rect(bx-2, by-2, 4, 4);
+      }
+      noFill(); stroke('#e5e7ebaa'); strokeWeight(1.5);
+      const vw = LEFT_W / WORLD_SIZE * w, vh = CAN_H / WORLD_SIZE * h;
+      const vx = x + (cam.x / WORLD_SIZE) * w - vw/2;
+      const vy = y + (cam.y / WORLD_SIZE) * h - vh/2;
+      rect(vx, vy, vw, vh);
+
+      noFill(); stroke(35); rect(x,y,w,h);
+    }
+
+    function renderStats(){
+      let g=0,o=0, ga=0, oa=0, gs=0, os=0;
+      for (let b of bots){
+        const a = accessAt(b.x,b.y);
+        const s = b.baseSpeed * speedMul;
+        if (b.type==='green'){ g++; ga+=a; gs+=s; } else { o++; oa+=a; os+=s; }
+      }
+      ga = g? (ga/g):0; oa = o? (oa/o):0; gs=g?(gs/g):0; os=o?(os/o):0;
+      const distTxt = `${tilesDistMode}${tilesDistMode==='identity'?'':('('+tilesDistParam.toFixed(2)+')')}`;
+      const seekTxt = (greenProgram? 'prog' : (greenSeekMode==='hybrid' ? `hybrid(${greenRepelThresh.toFixed(2)},${greenAttractThresh.toFixed(2)})` : (greenSeekMode==='repel_low' ? `repel_low(${greenRepelThresh.toFixed(2)})` : `attract(${greenAttractThresh.toFixed(2)})`)));
+      const spx = speedMul.toFixed(2);
+      statsDiv.innerHTML = `Bots: <b>${bots.length}</b> — Green: <b>${g}</b>, Orange: <b>${o}</b> &nbsp; | &nbsp; Avg access (G/O): <b>${ga.toFixed(3)}</b>/<b>${oa.toFixed(3)}</b> &nbsp; | &nbsp; Speed×: <b>${spx}</b> &nbsp; | &nbsp; Seek: <b>${seekTxt}</b> &nbsp; | &nbsp; Tiles: <b>${distTxt}</b>`;
+      const lbl = document.getElementById('speedLabel'); if (lbl) lbl.textContent = spx;
+      const aLbl = document.getElementById('avoidLabel'); if (aLbl) aLbl.textContent = greenRepelThresh.toFixed(2);
+      const aSl = document.getElementById('avoidSlider'); if (aSl) aSl.value = String(greenRepelThresh);
+    }
+
+    // === UI wiring ===
+    function setupUI(){
+      const runBtn = document.getElementById('runBtn');
+      const resetBtn = document.getElementById('resetBtn');
+      const saveBtn = document.getElementById('saveBtn');
+      const followChk = document.getElementById('followChk');
+      const trailChk = document.getElementById('trailChk');
+      const speedSlider = document.getElementById('speedSlider');
+      const avoidSlider = document.getElementById('avoidSlider');
+      const runDslBtn = document.getElementById('runDslBtn');
+      const clearDslBtn = document.getElementById('clearDslBtn');
+      const dslBox = document.getElementById('dslBox');
+
+      runBtn.onclick = () => { running = !running; runBtn.textContent = running ? '⏸️ Pause' : '▶ Resume'; };
+      resetBtn.onclick = () => resetSim();
+      saveBtn.onclick = () => saveTrails();
+      followChk.oninput = (e) => follow = e.target.checked;
+      trailChk.oninput = (e) => showTrails = e.target.checked;
+
+      runDslBtn.onclick = () => {
+        const lines = (dslBox.value||'').split(/\n/);
+        for (const line of lines){ const s=line.trim(); if (s) runCommand(s); }
+      };
+      clearDslBtn.onclick = () => { dslBox.value=''; };
+
+      speedSlider.addEventListener('input', (e)=>{
+        const v = parseFloat(e.target.value);
+        speedMul = clamp(v, 0.1, 10);
+      });
+
+      // Avoid-threshold slider directly controls greenRepelThresh; also ensure mode consults it
+      if (avoidSlider){
+        avoidSlider.value = String(greenRepelThresh);
+        avoidSlider.addEventListener('input', (e)=>{
+          const v = parseFloat(e.target.value);
+          greenRepelThresh = clamp(isNaN(v)? greenRepelThresh : v, 0, 1);
+          const lab = document.getElementById('avoidLabel');
+          if (lab) lab.textContent = greenRepelThresh.toFixed(2);
+          if (greenSeekMode === 'attract') greenSeekMode = 'hybrid';
+        });
+      }
+
+      window.addEventListener('keydown', (e)=>{
+        if (e.key===' '){ e.preventDefault(); runBtn.click(); }
+        const step=60;
+        if (!follow){
+          if (e.key==='ArrowLeft') cam.x = wrap(cam.x - step, WORLD_SIZE);
+          if (e.key==='ArrowRight') cam.x = wrap(cam.x + step, WORLD_SIZE);
+          if (e.key==='ArrowUp') cam.y = wrap(cam.y - step, WORLD_SIZE);
+          if (e.key==='ArrowDown') cam.y = wrap(cam.y + step, WORLD_SIZE);
+        }
+      });
+    }
+
+    // === DSL ===
+    function parseColorHex(s){ if (!s) return null; s=s.trim(); if (!/^#([0-9a-f]{6}|[0-9a-f]{8})$/i.test(s)) return null; return s; }
+
+    function runCommand(s){
+      if (!s) return; const raw = s; s = s.trim(); const t = s.split(/\s+/);
+
+      // --- Program capture ---
+      if (t[0]==='prog' && t[1]==='green'){
+        if (t[2]==='begin'){ collectingProgram=true; progLines=[]; return; }
+        if (t[2]==='clear'){ greenProgram=null; return; }
+        if (t[2]==='show'){ console.log(greenProgram); return; }
+      }
+      if (s==='end' && collectingProgram){ greenProgram=parseGreenProgram(progLines); collectingProgram=false; console.log('Program loaded:', greenProgram); return; }
+      if (collectingProgram){ progLines.push(raw); return; }
+
+      // ===== Bot management =====
+      if (t[0]==='kill'){
+        if (t[1]==='all'){ bots.length=0; return; }
+        if (t[1]==='green'){ bots = bots.filter(b=>b.type!=='green'); return; }
+        if (t[1]==='orange'){ bots = bots.filter(b=>b.type!=='orange'); return; }
+      }
+      if (t[0]==='teleport' && (t[1]==='green' || t[1]==='orange')){
+        const x=parseFloat(t[2]), y=parseFloat(t[3]); if(Number.isFinite(x)&&Number.isFinite(y)){
+          for (let b of bots) if (b.type===t[1]){ b.x=wrap(x,WORLD_SIZE); b.y=wrap(y,WORLD_SIZE); }
+        } return; }
+      if (t[0]==='heading' && (t[1]==='green' || t[1]==='orange')){
+        const ang=parseFloat(t[2]); if(Number.isFinite(ang)) for (let b of bots) if (b.type===t[1]) b.h=ang; return; }
+      if (t[0]==='randomize' && t[1]==='heading' && (t[2]==='green' || t[2]==='orange')){
+        for (let b of bots) if (b.type===t[2]) b.h=Math.random()*Math.PI*2; return; }
+      if (t[0]==='set' && (t[1]==='bots.green' || t[1]==='bots.orange')){
+        const want=parseInt(t[2]||'0',10); if (!Number.isFinite(want)) return; const type=t[1].split('.')[1];
+        const current=bots.filter(b=>b.type===type).length;
+        if (want>current) spawnBots(type, want-current); else if (want<current){
+          let remove= current-want; bots = bots.filter(b=> b.type!==type || (remove--, false));
+        } return;
+      }
+
+      // spawn
+      if (t[0]==='spawn' && (t[1]==='green' || t[1]==='orange')){
+        const n = parseInt(t[2]||'1',10); if (Number.isFinite(n)) spawnBots(t[1], Math.max(1,n));
+        return;
+      }
+
+      // ===== Trails & export =====
+      if (t[0]==='trails'){
+        if (t[1]==='clear'){ if(permanentTrails) permanentTrails.clear(); return; }
+        if (t[1]==='width'){ const w=parseFloat(t[2]); if(Number.isFinite(w)&&w>0) trailWidth=w; return; }
+        if (t[1]==='color'){ const who=t[2]; const col=parseColorHex(t[3]); if((who==='green'||who==='orange')&&col){ if(who==='green') trailColorGreen=col; else trailColorOrange=col; } return; }
+        if (t[1]==='save'){ saveTrails(); return; }
+        if (t[1]==='on'){ showTrails=true; return; }
+        if (t[1]==='off'){ showTrails=false; return; }
+      }
+
+      // ===== Camera =====
+      if (t[0]==='camera'){
+        if (t.length===3 && Number.isFinite(parseFloat(t[1])) && Number.isFinite(parseFloat(t[2]))){ cam.x=wrap(parseFloat(t[1]),WORLD_SIZE); cam.y=wrap(parseFloat(t[2]),WORLD_SIZE); return; }
+        if (t[1]==='lock'){ if (t[2]==='on') camLock=true; else if (t[2]==='off') camLock=false; return; }
+        if (t[1]==='follow'){ follow=true; followTarget=t[2]||'green'; return; }
+        if (t[1]==='speed'){ const v=parseFloat(t[2]); if(Number.isFinite(v)) camSpeed=clamp(v,0.01,0.9); return; }
+      }
+      if (t[0]==='view.pad_tiles'){ const v=parseInt(t[1]||'1',10); if(Number.isFinite(v)&&v>=0) viewPadTiles=v; return; }
+
+      // ===== World generation =====
+      if (t[0]==='set' && t[1]==='world.size'){ const v=parseInt(t[2]||'0',10); if(Number.isFinite(v)&&v>0) reinitWorldSize(v); return; }
+      if (t[0]==='regen' && t[1]==='tiles'){ rngSeed=Math.floor(Math.random()*1e9); rebuildTileScores(); return; }
+      if (t[0]==='set' && t[1]==='seed'){ const v=parseInt(t[2]||'0',10); if(Number.isFinite(v)){ rngSeed=v; rebuildTileScores(); } return; }
+      if (t[0]==='tiles.bias'){
+        if (t[1]==='high'){ tilesDistMode='ipow'; tilesDistParam=2.2; rebuildTileScores(); return; }
+        if (t[1]==='low'){ tilesDistMode='pow'; tilesDistParam=2.2; rebuildTileScores(); return; }
+        if (t[1]==='uniform'){ tilesDistMode='identity'; rebuildTileScores(); return; }
+      }
+
+      // ===== Edge behaviour =====
+      if (t[0]==='set' && t[1]==='edge.margin'){ const v=parseFloat(t[2]); if(Number.isFinite(v)) edgeMargin=Math.max(0,v); return; }
+      if (t[0]==='set' && t[1]==='edge.force'){ const v=parseFloat(t[2]); if(Number.isFinite(v)) edgeForce=Math.max(0,v); return; }
+      if (t[0]==='edge' && t[1]==='wrap'){ if (t[2]==='on') edgeWrap=true; else if (t[2]==='off') edgeWrap=false; return; }
+
+      // ===== Time control =====
+      if (t[0]==='pause'){ running=false; return; }
+      if (t[0]==='resume'){ running=true; return; }
+      if (t[0]==='step'){ const n=parseInt(t[1]||'1',10); if(Number.isFinite(n)&&n>0){ stepFramesToRun += n; running=false; } return; }
+
+      // ===== Debug & logging =====
+      if (t[0]==='log' && t[1]==='bots'){ console.log(bots.map(b=>({type:b.type,x:+b.x.toFixed(1),y:+b.y.toFixed(1),h:+b.h.toFixed(2)}))); return; }
+      if (t[0]==='log' && t[1]==='access'){ const x=parseFloat(t[2]), y=parseFloat(t[3]); if(Number.isFinite(x)&&Number.isFinite(y)) console.log('access', x,y, accessAt(x,y)); return; }
+      if (t[0]==='heatmap'){ if (t[1]==='on') showHeatmap=true; else if (t[1]==='off') showHeatmap=false; return; }
+
+      // ===== Existing settings =====
+      if (t[0]==='set' && t[1]==='speed' && t.length===3){ const v=parseFloat(t[2]); if(Number.isFinite(v)&&v>0){ speedMul=clamp(v,0.1,10); const slider=document.getElementById('speedSlider'); if(slider) slider.value=String(speedMul); } return; }
+      if (t[0]==='set' && t[1]==='speed.green'){ const v=parseFloat(t[2]); if(Number.isFinite(v)) baseSpeedGreen=v; return; }
+      if (t[0]==='set' && t[1]==='speed.orange'){ const v=parseFloat(t[2]); if(Number.isFinite(v)) baseSpeedOrange=v; return; }
+
+      if (t[0]==='set' && t[1]==='green.bias'){ const v=parseFloat(t[2]); if(Number.isFinite(v)) greenBias=clamp(v,0,1); return; }
+      if (t[0]==='set' && t[1]==='green.left_bias'){ const v=parseFloat(t[2]); if(Number.isFinite(v)) greenLeftBias=v; return; }
+      if (t[0]==='set' && t[1]==='green.turn_left_cap'){ const v=parseFloat(t[2]); if(Number.isFinite(v)) greenTurnCapL=Math.max(0,v); return; }
+      if (t[0]==='set' && t[1]==='green.turn_right_cap'){ const v=parseFloat(t[2]); if(Number.isFinite(v)) greenTurnCapR=Math.max(0,v); return; }
+      if (t[0]==='set' && t[1]==='green.wobble'){ const v=parseFloat(t[2]); if(Number.isFinite(v)) greenWobbleAmp=Math.max(0,v); return; }
+
+      if (t[0]==='set' && t[1]==='green.seek'){
+        const mode = t[2]||'attract';
+        if (mode==='attract'){ greenSeekMode='attract'; if (!isNaN(parseFloat(t[3]))) greenAttractThresh=clamp(parseFloat(t[3]),0,1); return; }
+        if (mode==='repel_low'){ greenSeekMode='repel_low'; if (!isNaN(parseFloat(t[3]))) greenRepelThresh=clamp(parseFloat(t[3]),0,1); return; }
+        if (mode==='hybrid'){ greenSeekMode='hybrid';
+          if (!isNaN(parseFloat(t[3]))) greenRepelThresh=clamp(parseFloat(t[3]),0,1);
+          if (!isNaN(parseFloat(t[4]))) greenAttractThresh=clamp(parseFloat(t[4]),0,1);
+          return; }
+        return;
+      }
+      if (t[0]==='set' && t[1]==='green.seek_weight.attract'){ const v=parseFloat(t[2]); if(Number.isFinite(v)) greenSeekWeightAttract=Math.max(0,v); return; }
+      if (t[0]==='set' && t[1]==='green.seek_weight.repel'){ const v=parseFloat(t[2]); if(Number.isFinite(v)) greenSeekWeightRepel=Math.max(0,v); return; }
+      if (t[0]==='set' && t[1]==='green.seek.thresholds'){ const a=parseFloat(t[2]), b=parseFloat(t[3]); if(Number.isFinite(a)&&Number.isFinite(b)){ greenRepelThresh=clamp(a,0,1); greenAttractThresh=clamp(b,0,1); } return; }
+      if (t[0]==='set' && t[1]==='green.seek.hysteresis'){ const v=parseFloat(t[2]); if(Number.isFinite(v)) greenSeekHysteresis=clamp(v,0,0.2); return; }
+
+      if (t[0]==='set' && (t[1]==='noise.scale' || t[1]==='tiles.noise_scale')){ const v=parseFloat(t[2]); if(Number.isFinite(v)&&v>0){ noiseScale=v; rebuildTileScores(); } return; }
+      if (t[0]==='set' && t[1]==='tiles.dist'){
+        const mode = (t[2]||'identity');
+        const param = parseFloat(t[3]||tilesDistParam);
+        if ([ 'identity','pow','ipow','extremes','middle' ].includes(mode)){
+          tilesDistMode = mode; tilesDistParam = Number.isFinite(param)? param : tilesDistParam; rebuildTileScores();
+        }
+        return;
+      }
+      if (t[0]==='set' && t[1]==='tiles.palette'){
+        if (t[2]==='contrast' || t[2]==='default') tilesPalette = t[2];
+        return;
+      }
+
+      if (t[0]==='follow'){ if (t[1]==='on') follow=true; else if (t[1]==='off') follow=false; return; }
+
+      console.log('Unknown command:', s);
+    }
+
+    // Save 5000x5000 PNG of trails buffer
+    function saveTrails(){ if (!permanentTrails) return; save(permanentTrails, `trails_${Date.now()}.png`); }
+
+  </script>
+</body>
+</html>
