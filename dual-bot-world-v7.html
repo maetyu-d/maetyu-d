@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dual Bot World — Deep DSL + Per‑Bot Programs (v7)</title>
+  <style>
+    :root{
+      --bg:#0b0f12; --panel:#0f1419; --muted:#15202b; --text:#e6f1ff; --sub:#9fb3c8;
+      --teal:#00e5ff; --green:#00ff6a; --orange:#ff9f1a; --pink:#ff4db3; --blue:#58a6ff; --ring:#7dd3fc;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial}
+    header{position:sticky;top:0;z-index:10;background:linear-gradient(180deg,rgba(15,20,25,.95),rgba(15,20,25,.85));backdrop-filter:blur(6px);border-bottom:1px solid var(--muted)}
+    .bar{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;padding:.6rem .9rem}
+    .title{font-weight:700;letter-spacing:.2px;margin-right:8px}
+    .spacer{flex:1}
+    .group{display:flex;align-items:center;gap:.5rem;background:#0d1318;padding:.4rem .6rem;border:1px solid #141c24;border-radius:10px}
+    label{font-size:.85rem;color:var(--sub)}
+    select,input[type=range]{background:#0b1217;color:var(--text);border:1px solid #1a2632;border-radius:8px;padding:.3rem .5rem;accent-color:var(--teal)}
+    input[type=checkbox]{accent-color:var(--teal)}
+    button{background:#0b1217;border:1px solid #173042;color:var(--text);padding:.45rem .7rem;border-radius:10px;cursor:pointer}
+    button:hover{border-color:#245e79;box-shadow:0 0 0 3px rgba(0,229,255,.08) inset}
+    .danger{border-color:#40222a}.danger:hover{border-color:#7f3443}
+    .accent{border-color:#1f4858}.accent:hover{border-color:#2a6b86}
+    #stats{font-variant-numeric:tabular-nums;font-size:.9rem;color:var(--sub)}
+
+    .wrap{display:flex;gap:12px;padding:12px}
+    #canvas-holder{flex:1;display:flex;gap:12px;min-height:calc(100vh - 82px)}
+    .left{flex:1;position:relative;background:#090d10;border:1px solid var(--muted);border-radius:14px;overflow:hidden}
+    .right{width:360px;display:flex;flex-direction:column;gap:12px}
+    .panel{background:var(--panel);border:1px solid var(--muted);border-radius:14px;padding:10px}
+    .panel h3{margin:0 0 .5rem 0;font-size:.95rem;color:var(--sub);letter-spacing:.3px}
+    canvas{display:block}
+    #main{width:100%;height:100%}
+    #minimap{width:100%;height:260px;background:#0a0f14;border-radius:10px}
+    textarea{width:100%;min-height:220px;max-height:360px;background:#0a0f14;color:var(--text);border:1px solid #13202c;border-radius:10px;padding:10px;resize:vertical;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.88rem;line-height:1.4}
+    .row{display:flex;gap:8px}.row>*{flex:1}
+    .legend{display:flex;gap:8px;flex-wrap:wrap;font-size:.8rem;color:var(--sub)}
+    .chip{display:inline-flex;align-items:center;gap:6px;padding:.2rem .5rem;border-radius:999px;border:1px solid var(--muted);background:#0b1217}
+    .dot{width:10px;height:10px;border-radius:50%}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="bar">
+      <div class="title">Dual Bot World</div>
+      <div class="group" title="Simulation speed">
+        <label for="speed">Speed</label>
+        <select id="speed"><option value="1">1×</option><option value="5">5×</option></select>
+      </div>
+      <div class="group">
+        <label for="followSel">Follow</label>
+        <select id="followSel"><option value="NONE">None</option><option value="GREEN" selected>Green</option><option value="ORANGE">Orange</option></select>
+        <label><input type="checkbox" id="showTrails" checked/> Trails</label>
+        <label><input type="checkbox" id="showAccess"/> Accessibility overlay</label>
+      </div>
+      <div class="group" style="min-width:300px" title="Below this, green bots hard-repel from tiles">
+        <label for="avoid">Avoid-threshold</label>
+        <input id="avoid" type="range" min="0" max="1" step="0.01" value="0.25"/>
+        <span id="avoidVal" style="min-width:2.4rem;text-align:right">0.25</span>
+      </div>
+      <div class="group">
+        <button id="pause" class="accent">⏸ Pause</button>
+        <button id="reset" class="danger">⟲ Reset</button>
+        <button id="saveTrails" class="accent">💾 Save Trails PNG</button>
+      </div>
+      <div class="spacer"></div>
+      <div id="stats">t=0.0s · 1× · G(avg) 0% · O(avg) 0% · access 0.00 · mode MOVE</div>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div id="canvas-holder" class="panel left">
+      <canvas id="main"></canvas>
+      <div class="right">
+        <div class="panel">
+          <h3>Minimap</h3>
+          <canvas id="minimap" width="340" height="260"></canvas>
+          <div class="legend" style="margin-top:.4rem">
+            <span class="chip"><span class="dot" style="background:var(--green)"></span> Green bots</span>
+            <span class="chip"><span class="dot" style="background:var(--orange)"></span> Orange bots</span>
+            <span class="chip"><span class="dot" style="background:var(--ring)"></span> Goal</span>
+            <span class="chip"><span class="dot" style="background:var(--blue)"></span> Bench</span>
+            <span class="chip"><span class="dot" style="background:var(--pink)"></span> Obstacle</span>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>DSL — World & Programs</h3>
+          <textarea id="dsl" placeholder="Deep DSL + Programs (one per line)
+# WORLD & CAMERA
+WORLD SIZE=10000 TILES=50 EDGE=250 WRAP=OFF SEED=42
+CAMERA X=5000 Y=5000 ZOOM=0.35 FOLLOW=GREEN
+
+# BOTS (counts & defaults)
+BOTS GREEN 6
+BOTS ORANGE 6
+SET GREEN avoid=0.30 wobbleAmp=0.7 wobbleFreq=1.5 leftBias=0.03 hardRepel=2.0 turnLeft=2.2 turnRight=1.3 speed=85 fatigueRate=0.01 goalWeight=1.1
+SET ORANGE jitter=1.0 turn=2.0 speed=95 fatigueRate=0.005 goalWeight=0.4
+BOT 3 TYPE=GREEN speed=120 leftBias=0.05 restSeconds=10
+
+# PROGRAM PER TYPE
+PROGRAM GREEN
+  SET restSeconds=12 wobbleAmp=0.8
+  RULE IF ACCESS<0.25 THEN HARD_REPEL=2.5
+  RULE IF FATIGUE>=1.0 THEN TO_BENCH
+  RULE IF NEARGOAL<400 THEN ATTRACT_GOAL=0.8
+  RULE IF RANDOM<0.2 THEN NUDGE_LEFT=0.3
+END
+
+PROGRAM ORANGE
+  SET jitter=1.2 turn=2.1
+  RULE IF EDGE<200 THEN TURN_LEFT=1.0
+  RULE IF RANDOM<0.05 THEN TURN_RIGHT=0.6
+END
+
+# PROGRAM A SINGLE BOT (index)
+PROGRAM BOT 0
+  SET speed=140
+  RULE IF GOAL_COUNT<1 THEN SPAWN_GOAL
+  RULE IF NEAROBSTACLE>0 THEN TURN_RIGHT=1.4
+END
+
+# OBJECTS
+CLEAR BENCHES
+BENCH RANDOM 6
+GOAL RANDOM 3 TTL=60 R=90
+OBSTACLE 2000 2000 2600 2100 2500 2600 1900 2550 END
+
+# EXPORT / PNG
+EXPORT SIZE=10000
+TRAIL_LINEWIDTH=4
+SAVE TRAILS NAME=trails.png
+
+# TOGGLES
+TRAILS ON
+ACCESS OVERLAY OFF
+SPEED 5X
+"></textarea>
+          <div class="row" style="margin-top:.5rem">
+            <button id="runDSL" class="accent">▶ Run DSL</button>
+            <button id="clearDSL">Clear</button>
+          </div>
+          <div id="dslStatus" class="note" style="margin-top:.4rem">Ready.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  // ====== Core & Config ======
+  let WORLD_SIZE = 10000; let TILE_N = 50; let TILE_SIZE = WORLD_SIZE / TILE_N; let EDGE_REPEL_DIST = 250; let WRAP = false; const TWO_PI = Math.PI * 2;
+  // Export config (DSL tunable)
+  let EXPORT_SIZE = 10000;
+  let EXPORT_LINEWIDTH = 4;
+
+  // ====== Random (seeded) ======
+  function mulberry32(a){ return function(){ var t=a+=0x6D2B79F5; t=Math.imul(t^t>>>15,t|1); t^=t+Math.imul(t^t>>>7,t|61); return ((t^t>>>14)>>>0)/4294967296; } }
+  let seed=Math.floor(Math.random()*1e9); let rand=mulberry32(seed);
+
+  // ====== Utility ======
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)); const lerp=(a,b,t)=>a+(b-a)*t;
+  const mixColor=(c1,c2,t)=>{ const a=parseInt(c1.slice(1),16), b=parseInt(c2.slice(1),16); const r=(a>>16)&255, g=(a>>8)&255, bl=a&255; const r2=(b>>16)&255, g2=(b>>8)&255, bl2=b&255; const rr=Math.round(lerp(r,r2,t)), gg=Math.round(lerp(g,g2,t)), bb=Math.round(lerp(bl,bl2,t)); return `rgb(${rr},${gg},${bb})`; }
+  function pointInPoly(pt, poly){ const x=pt.x, y=pt.y; let inside=false; for(let i=0,j=poly.length-1;i<poly.length;j=i++){ const xi=poly[i].x, yi=poly[i].y, xj=poly[j].x, yj=poly[j].y; const inter=((yi>y)!=(yj>y)) && (x < (xj-xi)*(y-yi)/(yj-yi+1e-9)+xi); if(inter) inside=!inside; } return inside; }
+  function dist(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return Math.hypot(dx,dy) }
+  function edgeDistance(p){ return Math.min(p.x, p.y, WORLD_SIZE-p.x, WORLD_SIZE-p.y); }
+  function nearestObstacleDistance(p){ let best=Infinity; for(const ob of obstacles){ for(const q of ob.points){ const d=dist(p,q); if(d<best) best=d; } if(pointInPoly(p, ob.points)) return 0; } return best; }
+
+  // ====== World grid ======
+  let grid = Array.from({length:TILE_N},()=>Array(TILE_N).fill(0));
+  function regenGrid(){ grid = Array.from({length:TILE_N},()=>Array(TILE_N).fill(0)); for(let y=0;y<TILE_N;y++){ for(let x=0;x<TILE_N;x++){ const nx=x/TILE_N, ny=y/TILE_N; const n1=(rand()*2-1)*0.3 + Math.sin(nx*8+seed%10)*0.1 + Math.cos(ny*7+seed%7)*0.1; const n2=(rand()*2-1)*0.15 + Math.sin((nx+ny)*10)*0.05; grid[y][x]=clamp(0.55 + n1 + n2, 0, 1); } } }
+  function accessColor(v){ if(v<0.35){ const t=v/0.35; return mixColor('#3b0a0a','#8b2b2b',t);} else if(v<0.65){ const t=(v-0.35)/0.30; return mixColor('#8b2b2b','#7a7365',t);} else { const t=(v-0.65)/0.35; return mixColor('#7a7365','#2fd0a3',t);} }
+  function makeStipple(alpha=0.08, density=0.25){ const c=document.createElement('canvas'); c.width=c.height=32; const ctx=c.getContext('2d'); ctx.fillStyle='rgba(255,255,255,'+alpha+')'; for(let i=0;i<32*32*density;i++) ctx.fillRect((rand()*32)|0,(rand()*32)|0,1,1); return ctx.createPattern(c,'repeat'); }
+  let stippleLo,stippleHi; function regenStipple(){ stippleLo=makeStipple(0.08,0.12); stippleHi=makeStipple(0.07,0.35); }
+
+  // ====== Entities ======
+  const benches=[]; const obstacles=[]; const goals=[];
+  function randomPoint(margin=0){ return {x: margin + rand()*(WORLD_SIZE-2*margin), y: margin + rand()*(WORLD_SIZE-2*margin)} }
+
+  // ====== Bots base ======
+  class Bot{ constructor(x,y,color){ this.pos={x,y}; this.heading=rand()*TWO_PI; this.speed=90; this.color=color; this.fatigue=0; this.state='MOVE'; this.restLeft=0; this.restSeconds=15; this.trail=[{x,y}]; this.trailEvery=3; this._trailAcc=0; this.targetBench=null; }
+    tileAccess(){ const gx=clamp(Math.floor(this.pos.x/TILE_SIZE),0,TILE_N-1); const gy=clamp(Math.floor(this.pos.y/TILE_SIZE),0,TILE_N-1); return grid[gy][gx]; }
+    nearestBench(){ if(benches.length===0) return null; let best=null, bd=1e9; for(const b of benches){ const d=dist(this.pos,b); if(d<bd){bd=d; best=b} } return {bench:best, d:bd}; }
+    addTrail(p){ const last=this.trail[this.trail.length-1]; this._trailAcc+=dist(p,last); if(this._trailAcc>=this.trailEvery){ this.trail.push({x:p.x,y:p.y}); this._trailAcc=0; } }
+    drawTrail(ctx,a=0.5){ if(this.trail.length<2) return; ctx.save(); ctx.globalAlpha=a; ctx.lineWidth=2.2; ctx.strokeStyle=this.color; ctx.beginPath(); ctx.moveTo(this.trail[0].x,this.trail[0].y); for(let i=1;i<this.trail.length;i++) ctx.lineTo(this.trail[i].x,this.trail[i].y); ctx.stroke(); ctx.restore(); }
+    stepCommon(dt){ const {x,y}=this.pos; if(!WRAP){ let rx=0,ry=0; if(x<EDGE_REPEL_DIST) rx += (EDGE_REPEL_DIST-x)/EDGE_REPEL_DIST; if(y<EDGE_REPEL_DIST) ry += (EDGE_REPEL_DIST-y)/EDGE_REPEL_DIST; if(x>WORLD_SIZE-EDGE_REPEL_DIST) rx -= (x-(WORLD_SIZE-EDGE_REPEL_DIST))/EDGE_REPEL_DIST; if(y>WORLD_SIZE-EDGE_REPEL_DIST) ry -= (y-(WORLD_SIZE-EDGE_REPEL_DIST))/EDGE_REPEL_DIST; if(rx||ry){ const ang=Math.atan2(ry,rx); this.heading = angleLerp(this.heading, ang, 0.12); } this.pos.x=clamp(this.pos.x,0,WORLD_SIZE); this.pos.y=clamp(this.pos.y,0,WORLD_SIZE); if(this.pos.x<=0||this.pos.x>=WORLD_SIZE) this.heading=Math.PI - this.heading; if(this.pos.y<=0||this.pos.y>=WORLD_SIZE) this.heading=-this.heading; } else { if(this.pos.x<0) this.pos.x+=WORLD_SIZE; if(this.pos.x>WORLD_SIZE) this.pos.x-=WORLD_SIZE; if(this.pos.y<0) this.pos.y+=WORLD_SIZE; if(this.pos.y>WORLD_SIZE) this.pos.y-=WORLD_SIZE; } }
+  }
+  const angleWrap=a=>{ while(a<=-Math.PI) a+=TWO_PI; while(a>Math.PI) a-=TWO_PI; return a; };
+  const angleLerp=(a,b,t)=>{ let d=angleWrap(b-a); return a + d*t; };
+
+  class GreenBot extends Bot{ constructor(x,y){ super(x,y,getComputedStyle(document.documentElement).getPropertyValue('--green').trim()); this.speed=85; this.wobbleAmp=0.6; this.wobbleFreq=1.2; this.leftBias=0.025; this.turnLeft=2.2; this.turnRight=1.3; this.avoid=0.25; this.hardRepel=2.0; this.goalWeight=1.0; this.fatigueRate=0.010; this.asymmetry=0.4; this.time=0; }
+    update(dt){ this.time+=dt;
+      // RESTING
+      if(this.state==='REST'){ this.restLeft-=dt; if(this.restLeft<=0){ this.state='MOVE'; this.fatigue=0; this.targetBench=null; } return; }
+      // MOVE TO BENCH with wobble/quirks preserved (half speed, double wobble)
+      if(this.state==='TO_BENCH' && this.targetBench){
+        const leftBiasStep = this.leftBias;
+        const wobble = Math.sin(this.time*this.wobbleFreq*TWO_PI)*this.wobbleAmp*2; // double wobble en route
+        const angBench = Math.atan2(this.targetBench.y-this.pos.y, this.targetBench.x-this.pos.x);
+        let desiredHeading = angleLerp(this.heading, angBench, 0.6);
+        desiredHeading += wobble*dt - leftBiasStep*dt;
+        const nextPos={x:this.pos.x+Math.cos(this.heading)*this.speed*dt*0.5, y:this.pos.y+Math.sin(this.heading)*this.speed*dt*0.5};
+        if(wouldHitObstacle(nextPos)) desiredHeading = this.heading - 1.2*dt;
+        this.applyTurnToward(desiredHeading, dt, 1.0);
+        this.advance(dt*0.5); // half speed to bench
+        if(dist(this.pos,this.targetBench)<20){
+          this.state='REST'; this.restLeft=this.restSeconds; this.targetBench=null;
+        }
+        this.stepCommon(dt); this.addTrail(this.pos); return;
+      }
+
+      // Program & motion (normal movement)
+      const adj=applyBehavior(this,'GREEN',this._index??0,dt);
+      const leftBiasStep=(this.leftBias + (adj.leftBias||0));
+      let desiredHeading=this.heading;
+      const wobble=Math.sin(this.time*this.wobbleFreq*TWO_PI)*this.wobbleAmp; desiredHeading += wobble*dt - leftBiasStep*dt;
+      const s=150; const left=sampleAccess(this.pos.x+Math.cos(this.heading-Math.PI/2)*s*0.9, this.pos.y+Math.sin(this.heading-Math.PI/2)*s*0.9); const right=sampleAccess(this.pos.x+Math.cos(this.heading+Math.PI/2)*s*0.9, this.pos.y+Math.sin(this.heading+Math.PI/2)*s*0.9); desiredHeading += ((left>right?-1:1) * Math.abs(left-right) * 0.8) * dt;
+      const here=this.tileAccess(); if(here < this.avoid){ let bestAng=this.heading, bestVal=-1; for(let k=0;k<8;k++){ const ang=this.heading + k*(TWO_PI/8); const v=sampleAccess(this.pos.x+Math.cos(ang)*s, this.pos.y+Math.sin(ang)*s); if(v>bestVal){bestVal=v; bestAng=ang} } const repelBoost=(adj.hardRepel||0); desiredHeading = angleLerp(this.heading,bestAng,clamp((this.avoid-here)*(this.hardRepel+repelBoost),0.5,1.0)); }
+      const g=nearestGoal(this.pos); if(g){ const ang=Math.atan2(g.y-this.pos.y,g.x-this.pos.x); const gw = clamp(0.25*(this.goalWeight + (adj.goalWeight||0)),0,0.8); desiredHeading = angleLerp(desiredHeading, ang, gw); if(dist(this.pos,g)<(g.r||80)) g._reached=true; }
+      if(adj.turn){ desiredHeading = angleLerp(desiredHeading, desiredHeading + adj.turn, 1.0); }
+      const nextPos={x:this.pos.x+Math.cos(this.heading)*this.speed*dt, y:this.pos.y+Math.sin(this.heading)*this.speed*dt}; if(wouldHitObstacle(nextPos)) desiredHeading=this.heading - 1.2*dt;
+      this.applyTurnToward(desiredHeading, dt, 1.0); this.advance(dt);
+      const turnCost=Math.abs(angleWrap(desiredHeading-this.heading)); this.fatigue=Math.min(1.2, this.fatigue + (this.fatigueRate*(1+this.asymmetry) + turnCost*0.02)*dt);
+
+      // ENFORCE: fatigue rule (>=100%)
+      if(this.fatigue>=1 && this.state!=='TO_BENCH'){ if(benches.length>0){ const nb=this.nearestBench(); if(nb){ this.state='TO_BENCH'; this.targetBench=nb.bench; } } else { this.state='REST'; this.restLeft=this.restSeconds; } }
+
+      this.stepCommon(dt); this.addTrail(this.pos); }
+    applyTurnToward(targetAngle, dt, strength=1){ let d=angleWrap(targetAngle-this.heading); const maxLeft=this.turnLeft*dt*strength, maxRight=this.turnRight*dt*strength; if(d<0) d=Math.max(d,-maxLeft); else d=Math.min(d,maxRight); this.heading=angleWrap(this.heading+d); }
+    advance(dt){ this.pos.x+=Math.cos(this.heading)*this.speed*dt; this.pos.y+=Math.sin(this.heading)*this.speed*dt; }
+  }
+
+  class OrangeBot extends Bot{ constructor(x,y){ super(x,y,getComputedStyle(document.documentElement).getPropertyValue('--orange').trim()); this.speed=95; this.jitter=0.9; this.turn=1.8; this.goalWeight=0.35; this.fatigueRate=0.005; this.time=0; }
+    update(dt){ this.time+=dt;
+      if(this.state==='REST'){ this.restLeft-=dt; if(this.restLeft<=0){ this.state='MOVE'; this.fatigue=0; } return; }
+      if(this.state==='TO_BENCH' && this.targetBench){
+        const ang=Math.atan2(this.targetBench.y-this.pos.y,this.targetBench.x-this.pos.x);
+        this.heading = angleLerp(this.heading, ang, 0.25);
+        this.advance(dt*0.5); // half speed to bench
+        if(dist(this.pos,this.targetBench)<20){ this.state='REST'; this.restLeft=this.restSeconds; this.targetBench=null; }
+        this.stepCommon(dt); this.addTrail(this.pos); return;
+      }
+
+      const adj=applyBehavior(this,'ORANGE',this._index??0,dt);
+      const noise=(rand()*2-1) * (this.jitter) * dt; this.heading=angleWrap(this.heading + clamp(noise, -this.turn*dt, this.turn*dt));
+      const g=nearestGoal(this.pos); if(g){ const ang=Math.atan2(g.y-this.pos.y,g.x-this.pos.x); const gw=clamp(0.15*(this.goalWeight+(adj.goalWeight||0)),0,0.6); this.heading=angleLerp(this.heading, ang, gw); if(dist(this.pos,g)<(g.r||80)) g._reached=true; }
+      if(adj.turn){ this.heading = angleWrap(this.heading + adj.turn*dt); }
+      this.advance(dt); this.fatigue=Math.min(1.2,this.fatigue + this.fatigueRate*dt);
+
+      // ENFORCE: fatigue rule (>=100%)
+      if(this.fatigue>=1 && this.state!=='TO_BENCH'){ if(benches.length>0){ const nb=this.nearestBench(); if(nb){ this.state='TO_BENCH'; this.targetBench=nb.bench; } } else { this.state='REST'; this.restLeft=this.restSeconds; } }
+
+      this.stepCommon(dt); this.addTrail(this.pos); }
+    advance(dt){ this.pos.x+=Math.cos(this.heading)*this.speed*dt; this.pos.y+=Math.sin(this.heading)*this.speed*dt; }
+  }
+
+  function sampleAccess(x,y){ x=clamp(x,0,WORLD_SIZE-1); y=clamp(y,0,WORLD_SIZE-1); const gx=clamp(Math.floor(x/TILE_SIZE),0,TILE_N-1); const gy=clamp(Math.floor(y/TILE_SIZE),0,TILE_N-1); return grid[gy][gx]; }
+  function wouldHitObstacle(nextPos){ for(const ob of obstacles){ if(pointInPoly(nextPos, ob.points)) return true; } return false; }
+  function nearestGoal(p){ if(goals.length===0) return null; let best=null,bd=1e9; for(const g of goals){ const d=dist(p,g); if(d<bd){bd=d; best=g} } return best; }
+
+  // ====== Camera & canvases ======
+  const main=document.getElementById('main'); const mainCtx=main.getContext('2d'); const minimap=document.getElementById('minimap'); const miniCtx=minimap.getContext('2d'); const holder=document.getElementById('canvas-holder');
+  const camera={x: WORLD_SIZE/2, y: WORLD_SIZE/2, zoom: 0.35, follow:'GREEN'};
+  function resize(){ main.width = holder.clientWidth - 372; main.height = holder.clientHeight - 20; }
+  window.addEventListener('resize', resize); resize();
+  let dragging=false; let lastMouse=null;
+  main.addEventListener('mousedown',(e)=>{ if(camera.follow!=='NONE') return; dragging=true; lastMouse={x:e.clientX,y:e.clientY}; });
+  window.addEventListener('mouseup',()=>dragging=false);
+  window.addEventListener('mousemove',(e)=>{ if(dragging && lastMouse){ const dx=e.clientX-lastMouse.x, dy=e.clientY-lastMouse.y; camera.x -= dx/camera.zoom; camera.y -= dy/camera.zoom; camera.x=clamp(camera.x,0,WORLD_SIZE); camera.y=clamp(camera.y,0,WORLD_SIZE); lastMouse={x:e.clientX,y=e.clientY}; } });
+  main.addEventListener('wheel',(e)=>{ e.preventDefault(); const factor=Math.exp(-e.deltaY*0.001); camera.zoom=clamp(camera.zoom*factor, 0.1, 1.5); }, {passive:false});
+  minimap.addEventListener('click',(e)=>{ const rect=minimap.getBoundingClientRect(); const sx=(e.clientX-rect.left)/rect.width; const sy=(e.clientY-rect.top)/rect.height; camera.x=sx*WORLD_SIZE; camera.y=sy*WORLD_SIZE; });
+
+  // ====== UI elements ======
+  const speedSel=document.getElementById('speed'); const followSel=document.getElementById('followSel'); const showTrails=document.getElementById('showTrails'); const showAccess=document.getElementById('showAccess'); const avoidSlider=document.getElementById('avoid'); const avoidVal=document.getElementById('avoidVal'); const pauseBtn=document.getElementById('pause'); const resetBtn=document.getElementById('reset'); const saveBtn=document.getElementById('saveTrails'); const statsEl=document.getElementById('stats'); const dslTA=document.getElementById('dsl'); const runDSLBtn=document.getElementById('runDSL'); const clearDSLBtn=document.getElementById('clearDSL'); const dslStatus=document.getElementById('dslStatus');
+  followSel.addEventListener('change',()=>{ camera.follow=followSel.value; });
+  avoidSlider.addEventListener('input',()=>{ avoidVal.textContent=(+avoidSlider.value).toFixed(2); greens.forEach(g=>g.avoid=+avoidSlider.value); });
+  let paused=false; pauseBtn.addEventListener('click',()=>{ paused=!paused; pauseBtn.textContent=paused?'▶ Resume':'⏸ Pause'; });
+  resetBtn.addEventListener('click',()=>{ resetWorld(true); });
+  clearDSLBtn.addEventListener('click',()=>{ dslTA.value=''; dslStatus.textContent='Cleared.'; });
+  saveBtn.addEventListener('click',()=>{ saveTrailsPNG(EXPORT_SIZE, undefined, EXPORT_LINEWIDTH); }); // use config
+
+  // ====== Save trails (configurable via DSL) ======
+  function saveTrailsPNG(size=10000, filename='dual-bot-trails.png', lineWidth=4){
+    const EXPORT = size|0;
+    const scale = EXPORT / WORLD_SIZE;
+    const c = document.createElement('canvas');
+    c.width = c.height = EXPORT;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, EXPORT, EXPORT);
+
+    ctx.lineWidth = lineWidth;
+    ctx.globalAlpha = 0.7;
+
+    // Green trails
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--green').trim();
+    ctx.beginPath();
+    for(const bot of greens){
+      for(let i=1;i<bot.trail.length;i++){
+        const a=bot.trail[i-1], b=bot.trail[i];
+        ctx.moveTo(a.x*scale, a.y*scale);
+        ctx.lineTo(b.x*scale, b.y*scale);
+      }
+    }
+    ctx.stroke();
+
+    // Orange trails
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--orange').trim();
+    ctx.beginPath();
+    for(const bot of oranges){
+      for(let i=1;i<bot.trail.length;i++){
+        const a=bot.trail[i-1], b=bot.trail[i];
+        ctx.moveTo(a.x*scale, a.y*scale);
+        ctx.lineTo(b.x*scale, b.y*scale);
+      }
+    }
+    ctx.stroke();
+
+    const url = c.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename || 'dual-bot-trails.png';
+    a.click();
+  }
+
+  document.addEventListener('keydown',(e)=>{ if(e.key===' '){ e.preventDefault(); paused=!paused; pauseBtn.textContent=paused?'▶ Resume':'⏸ Pause'; } });
+  runDSLBtn.addEventListener('click',()=>{ runDSL(dslTA.value); });
+
+  // ====== World state ======
+  let greens=[], oranges=[];
+  function spawnGreens(n){ greens=[]; for(let i=0;i<n;i++){ const p=randomPoint(800); const g=new GreenBot(p.x,p.y); g._index=i; greens.push(g); } }
+  function spawnOranges(n){ oranges=[]; for(let i=0;i<n;i++){ const p=randomPoint(800); const o=new OrangeBot(p.x,p.y); o._index=i; oranges.push(o); } }
+  function resetWorld(full=false){ benches.length=0; obstacles.length=0; goals.length=0; if(full){ seed=Math.floor(Math.random()*1e9); rand=mulberry32(seed);} regenGrid(); regenStipple(); TILE_SIZE=WORLD_SIZE/TILE_N; spawnGreens(1); spawnOranges(1); if(greens.length){ camera.x=greens[0].pos.x; camera.y=greens[0].pos.y; } avoidSlider.value=greens[0].avoid; avoidVal.textContent=greens[0].avoid.toFixed(2); }
+  regenGrid(); regenStipple(); spawnGreens(1); spawnOranges(1);
+
+  // ====== Rendering ======
+  function worldToView(ctx,cam){ const w=main.width,h=main.height; ctx.translate(w/2,h/2); ctx.scale(cam.zoom,cam.zoom); ctx.translate(-cam.x,-cam.y); }
+  function drawTiles(ctx,cam){ const w=main.width,h=main.height; ctx.save(); worldToView(ctx,cam); const x0=clamp(Math.floor((cam.x-w/(2*cam.zoom))/TILE_SIZE),0,TILE_N-1); const y0=clamp(Math.floor((cam.y-h/(2*cam.zoom))/TILE_SIZE),0,TILE_N-1); const x1=clamp(Math.floor((cam.x+w/(2*cam.zoom))/TILE_SIZE)+1,0,TILE_N-1); const y1=clamp(Math.floor((cam.y+h/(2*cam.zoom))/TILE_SIZE)+1,0,TILE_N-1); for(let gy=y0;gy<=y1;gy++){ for(let gx=x0;gx<=x1;gx++){ const v=grid[gy][gx]; ctx.fillStyle=accessColor(v); const x=gx*TILE_SIZE,y=gy*TILE_SIZE; ctx.fillRect(x,y,TILE_SIZE,TILE_SIZE); ctx.save(); ctx.fillStyle = v>0.6?stippleHi:stippleLo; ctx.fillRect(x,y,TILE_SIZE,TILE_SIZE); ctx.restore(); if(showAccess.checked){ ctx.save(); ctx.strokeStyle='rgba(255,255,255,0.08)'; ctx.lineWidth=1; ctx.strokeRect(x+0.5,y+0.5,TILE_SIZE-1,TILE_SIZE-1); ctx.fillStyle='rgba(255,255,255,0.5)'; ctx.font=`${Math.max(16,Math.min(48,TILE_SIZE*0.2))}px ui-monospace`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(v.toFixed(2), x+TILE_SIZE/2, y+TILE_SIZE/2); ctx.restore(); } } } ctx.restore(); }
+  function drawEntities(ctx,cam){ ctx.save(); worldToView(ctx,cam); if(showTrails.checked){ for(const g of greens) g.drawTrail(ctx,0.55); for(const o of oranges) o.drawTrail(ctx,0.55); } for(const ob of obstacles){ ctx.save(); ctx.fillStyle='rgba(255,77,179,0.12)'; ctx.strokeStyle='rgba(255,77,179,0.7)'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(ob.points[0].x,ob.points[0].y); for(let i=1;i<ob.points.length;i++) ctx.lineTo(ob.points[i].x,ob.points[i].y); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore(); } for(const b of benches){ ctx.save(); ctx.fillStyle='rgba(88,166,255,0.8)'; ctx.strokeStyle='rgba(22,46,76,0.9)'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(b.x,b.y,10,0,TWO_PI); ctx.fill(); ctx.stroke(); ctx.restore(); } const t=performance.now()/1000; for(const g of goals){ const ring=0.5+0.5*Math.sin(t*2+g.x*0.001+g.y*0.001); const r=(g.r||80)+ring*6; ctx.save(); ctx.strokeStyle='rgba(125,211,252,0.9)'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(g.x,g.y,r,0,TWO_PI); ctx.stroke(); ctx.beginPath(); ctx.arc(g.x,g.y,r*0.55,0,TWO_PI); ctx.stroke(); ctx.restore(); } for(const g of greens) drawBot(ctx,g,true); for(const o of oranges) drawBot(ctx,o,false); ctx.restore(); }
+  function drawBot(ctx,bot,limping){ ctx.save(); ctx.translate(bot.pos.x,bot.pos.y); ctx.rotate(bot.heading); if(limping){ const sway=Math.sin(performance.now()/1000*6)*4; ctx.translate(0,sway); } ctx.fillStyle=bot.color; ctx.globalAlpha=0.95; ctx.beginPath(); ctx.arc(0,0,10,0,TWO_PI); ctx.fill(); ctx.globalAlpha=1; ctx.strokeStyle='#ffffff88'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(16,0); ctx.stroke(); ctx.restore(); }
+  function drawMinimap(){ const w=minimap.width,h=minimap.height; miniCtx.clearRect(0,0,w,h); for(let gy=0;gy<TILE_N;gy++){ for(let gx=0;gx<TILE_N;gx++){ miniCtx.fillStyle=accessColor(grid[gy][gx]); const x=Math.floor(gx*(w/TILE_N)); const y=Math.floor(gy*(h/TILE_N)); miniCtx.fillRect(x,y,Math.ceil(w/TILE_N),Math.ceil(h/TILE_N)); } } miniCtx.save(); miniCtx.strokeStyle='rgba(255,77,179,0.8)'; miniCtx.fillStyle='rgba(255,77,179,0.15)'; miniCtx.lineWidth=1; for(const ob of obstacles){ miniCtx.beginPath(); miniCtx.moveTo(ob.points[0].x/WORLD_SIZE*w,ob.points[0].y/WORLD_SIZE*h); for(let i=1;i<ob.points.length;i++) miniCtx.lineTo(ob.points[i].x/WORLD_SIZE*w,ob.points[i].y/WORLD_SIZE*h); miniCtx.closePath(); miniCtx.fill(); miniCtx.stroke(); } miniCtx.restore(); miniCtx.fillStyle='rgba(88,166,255,0.95)'; for(const b of benches){ miniCtx.fillRect(b.x/WORLD_SIZE*w-2,b.y/WORLD_SIZE*h-2,4,4); } miniCtx.strokeStyle='rgba(125,211,252,0.95)'; for(const g of goals){ const x=g.x/WORLD_SIZE*w, y=g.y/WORLD_SIZE*h; miniCtx.beginPath(); miniCtx.arc(x,y,4,0,TWO_PI); miniCtx.stroke(); } if(showTrails.checked){ miniCtx.globalAlpha=0.75; miniCtx.lineWidth=1; miniCtx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--green').trim(); miniCtx.beginPath(); for(const bot of greens){ for(let i=1;i<bot.trail.length;i++){ const a=bot.trail[i-1], b=bot.trail[i]; miniCtx.moveTo(a.x/WORLD_SIZE*w,a.y/WORLD_SIZE*h); miniCtx.lineTo(b.x/WORLD_SIZE*w,b.y/WORLD_SIZE*h);} } miniCtx.stroke(); miniCtx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--orange').trim(); miniCtx.beginPath(); for(const bot of oranges){ for(let i=1;i<bot.trail.length;i++){ const a=bot.trail[i-1], b=bot.trail[i]; miniCtx.moveTo(a.x/WORLD_SIZE*w,a.y/WORLD_SIZE*h); miniCtx.lineTo(b.x/WORLD_SIZE*w,b.y/WORLD_SIZE*h);} } miniCtx.stroke(); miniCtx.globalAlpha=1; } miniCtx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--green').trim(); for(const g of greens){ const x=g.pos.x/WORLD_SIZE*w, y=g.pos.y/WORLD_SIZE*h; miniCtx.fillRect(x-2,y-2,4,4);} miniCtx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--orange').trim(); for(const o of oranges){ const x=o.pos.x/WORLD_SIZE*w, y=o.pos.y/WORLD_SIZE*h; miniCtx.fillRect(x-2,y-2,4-0,4);} const vw=main.width/camera.zoom/WORLD_SIZE*w; const vh=main.height/camera.zoom/WORLD_SIZE*h; const vx=(camera.x - (main.width/2)/camera.zoom)/WORLD_SIZE*w; const vy=(camera.y - (main.height/2)/camera.zoom)/WORLD_SIZE*h; miniCtx.strokeStyle='rgba(255,255,255,0.8)'; miniCtx.lineWidth=1; miniCtx.strokeRect(vx,vy,vw,vh); }
+
+  // ====== Simulation loop ======
+  let lastTime=performance.now(); let simTime=0;
+  function loop(){
+    const now=performance.now(); let dt=(now-lastTime)/1000; lastTime=now; if(dt>0.1) dt=0.1;
+    const speed=+speedSel.value; const dtSim=dt*speed;
+    if(!paused){
+      let acc=dtSim; const step=0.02;
+      while(acc>1e-6){ const d=Math.min(step,acc); updateSim(d); acc-=d; simTime+=d; }
+      if(camera.follow==='GREEN' && greens.length){ camera.x=greens[0].pos.x; camera.y=greens[0].pos.y; }
+      if(camera.follow==='ORANGE' && oranges.length){ camera.x=oranges[0].pos.x; camera.y=oranges[0].pos.y; }
+      for(let i=goals.length-1;i>=0;i--){ const g=goals[i]; if(g.ttl!=null){ g.ttl-=dtSim; if(g.ttl<=0) goals.splice(i,1);} if(g._reached) goals.splice(i,1); }
+    }
+    mainCtx.clearRect(0,0,main.width,main.height);
+    drawTiles(mainCtx,camera); drawEntities(mainCtx,camera); drawMinimap();
+    const avg=arr=>arr.length? (arr.reduce((a,b)=>a+b.fatigue,0)/arr.length):0;
+    const ga=avg(greens), oa=avg(oranges);
+    const gPct=Math.min(100, Math.round(ga*100));
+    const oPct=Math.min(100, Math.round(oa*100));
+    const aHere=greens.length? greens[0].tileAccess():0;
+    const mode=greens.length? greens[0].state:'MOVE';
+    statsEl.textContent=`t=${simTime.toFixed(1)}s · ${speed}× · G(avg) ${gPct}% · O(avg) ${oPct}% · access ${aHere.toFixed(2)} · mode ${mode}`;
+    requestAnimationFrame(loop);
+  }
+  function updateSim(dt){ for(let i=0;i<greens.length;i++){ greens[i]._index=i; greens[i].update(dt); } for(let i=0;i<oranges.length;i++){ oranges[i]._index=i; oranges[i].update(dt); } }
+  requestAnimationFrame(loop);
+
+  // ====== Behavior Programs ======
+  const behaviorPrograms={ GREEN:{params:{}, rules:[]}, ORANGE:{params:{}, rules:[]}, BOT:{} };
+  function applyBehavior(bot, type, idx, dt){
+    const prog = behaviorPrograms.BOT[idx] || behaviorPrograms[type];
+    if(!prog) return {};
+    for(const [k,v] of Object.entries(prog.params)){ if(k in bot) bot[k]=v; }
+    const adj={};
+    const here=bot.tileAccess?bot.tileAccess():0; const ng=nearestGoal(bot.pos); const dGoal = ng? dist(bot.pos, ng) : 1e9; const ed=edgeDistance(bot.pos); const nearObsDist=nearestObstacleDistance(bot.pos); const nearObs = nearObsDist < 150 || nearObsDist===0; const goalCount=goals.length;
+    function check(lhs,op,rhs){ let val=0; if(lhs==='ACCESS') val=here; else if(lhs==='FATIGUE') val=bot.fatigue; else if(lhs==='NEARGOAL') val=dGoal; else if(lhs==='EDGE') val=ed; else if(lhs==='RANDOM'){ val=Math.random(); rhs=rhs*dt; } else if(lhs==='NEAROBSTACLE') val=nearObs?1:0; else if(lhs==='GOAL_COUNT') val=goalCount; if(op==='<' ) return val<rhs; if(op==='>') return val>rhs; if(op==='<=') return val<=rhs; if(op==='>=') return val>=rhs; if(op==='==') return Math.abs(val-rhs)<1e-6; return false; }
+    for(const r of prog.rules){
+      if(!check(r.lhs,r.op,r.rhs)) continue;
+      for(const a of r.actions){
+        const k=a.kind; const v=a.value;
+        if(k==='REST'){ bot.state='REST'; bot.restLeft=bot.restSeconds; }
+        else if(k==='TO_BENCH'){ const nb=bot.nearestBench&&bot.nearestBench(); if(nb){ bot.state='TO_BENCH'; bot.targetBench=nb.bench; } }
+        else if(k==='ATTRACT_GOAL'){ adj.goalWeight=(adj.goalWeight||0)+v; }
+        else if(k==='TURN_LEFT'){ adj.turn=(adj.turn||0)-v; }
+        else if(k==='TURN_RIGHT'){ adj.turn=(adj.turn||0)+v; }
+        else if(k==='NUDGE_LEFT'){ adj.leftBias=(adj.leftBias||0)+v; }
+        else if(k==='HARD_REPEL'){ adj.hardRepel=(adj.hardRepel||0)+v; }
+        else if(k==='SPAWN_GOAL'){ const p=randomPoint(800); goals.push({x:p.x,y:p.y,r:80,ttl:90}); }
+        else if(k==='SPAWN_BENCH'){ benches.push(randomPoint(800)); }
+        else if(k==='SPAWN_OBSTACLE'){ const p1=randomPoint(800), p2=randomPoint(800), p3=randomPoint(800); obstacles.push({points:[p1,p2,p3]}); }
+        else if(k==='SET' && Array.isArray(v)){ bot[v[0]] = v[1]; }
+      }
+    }
+    return adj;
+  }
+
+  // ====== DSL Parser ======
+  function runDSL(text){
+    const lines=text.split(/\n/); let i=0; let ok=0, err=0, msgs=[];
+    function execLine(line){ try{ parseLine(line); ok++; }catch(e){ err++; msgs.push(`Error: ${e.message} ← [${line}]`);} }
+    while(i<lines.length){
+      let raw=lines[i++]; if(!raw) continue;
+      let s=raw.trim(); if(!s || s.startsWith('#')) continue;
+      if(/^PROGRAM\s+/i.test(s)){
+        try{ i = parseProgram(lines,i-1); ok++; }catch(e){ err++; msgs.push(`Error: ${e.message}`); }
+        continue;
+      }
+      execLine(s);
+    }
+    dslStatus.textContent=`Executed ${ok} statements` + (err?`, ${err} errors`:'') + (msgs.length?` — ${msgs[0]}`:'') + '.';
+  }
+
+  function parseProgram(lines,i){
+    const head=lines[i].trim(); const parts=head.split(/\s+/);
+    let scope=parts[1]?.toUpperCase(); let idx=null;
+    if(scope==='BOT'){ idx=parseInt(parts[2]); if(isNaN(idx)) throw new Error('PROGRAM BOT <index>'); }
+    const prog={params:{}, rules:[]}; i++;
+    while(i<lines.length){
+      const L=(lines[i]||'').trim();
+      if(!L || L.startsWith('#')){ i++; continue; }
+      if(/^END\s*$/i.test(L)){ i++; break; }
+      if(/^SET\b/i.test(L)){
+        const pairs=L.replace(/^SET\s+/i,'').match(/[a-zA-Z]+\s*=\s*[-+]?\d+(\.\d+)?/g)||[];
+        for(const kv of pairs){ const m=kv.match(/([a-zA-Z]+)\s*=\s*([-+]?\d+(\.\d+)?)/); if(m) prog.params[m[1]] = +m[2]; }
+        i++; continue;
+      }
+      if(/^RULE\b/i.test(L)){
+        const m=L.match(/^RULE\s+IF\s+(ACCESS|FATIGUE|NEARGOAL|EDGE|RANDOM|NEAROBSTACLE|GOAL_COUNT)\s*(<=|>=|==|<|>)\s*([-+]?\d+(\.\d+)?)\s+THEN\s+(.+)$/i);
+        if(!m){ i++; continue; }
+        const [,lhs,op,rhs,_r,actionsStr]=m;
+        const actions=[]; const partsA=actionsStr.split(/\s+/);
+        for(let pi=0; pi<partsA.length; pi++){
+          const token=partsA[pi];
+          if(token.toUpperCase()==='SET'){
+            const kv=partsA[++pi];
+            const mm=kv&&kv.match(/^([a-zA-Z]+)=([-+]?\d+(\.\d+)?)$/);
+            if(mm) actions.push({kind:'SET', value:[mm[1], +mm[2]]});
+            continue;
+          }
+          const mm=token.match(/^([A-Z_]+)(?:=([-+]?\d+(\.\d+)?))?$/i);
+          if(mm) actions.push({kind:mm[1].toUpperCase(), value: mm[2]? +mm[2] : 0});
+        }
+        prog.rules.push({lhs:lhs.toUpperCase(), op, rhs:+rhs, actions}); i++; continue;
+      }
+      i++;
+    }
+    if(scope==='BOT' && idx!=null) behaviorPrograms.BOT[idx]=prog; else behaviorPrograms[scope]=prog; return i;
+  }
+
+  function parseLine(s){
+    const toks=s.replace(/\s+/g,' ').trim().split(' '); const cmd=toks[0].toUpperCase();
+    if(cmd==='WORLD'){
+      const size=(s.match(/SIZE\s*=\s*(\d+)/i)||[])[1]; const tiles=(s.match(/TILES\s*=\s*(\d+)/i)||[])[1];
+      const edge=(s.match(/EDGE\s*=\s*(\d+)/i)||[])[1]; const wrap=(s.match(/WRAP\s*=\s*(ON|OFF)/i)||[])[1];
+      const sd=(s.match(/SEED\s*=\s*(\d+)/i)||[])[1];
+      if(size){ WORLD_SIZE=+size; } if(tiles){ TILE_N=+tiles; } if(edge){ EDGE_REPEL_DIST=+edge; }
+      if(wrap){ WRAP=(wrap.toUpperCase()==='ON'); } if(sd){ seed=+sd; rand=mulberry32(seed); }
+      TILE_SIZE=WORLD_SIZE/TILE_N; regenGrid(); regenStipple(); return;
+    }
+    if(cmd==='CAMERA'){
+      const x=(s.match(/X\s*=\s*([\d.]+)/i)||[])[1]; const y=(s.match(/Y\s*=\s*([\d.]+)/i)||[])[1];
+      const zoom=(s.match(/ZOOM\s*=\s*([\d.]+)/i)||[])[1]; const follow=(s.match(/FOLLOW\s*=\s*(GREEN|ORANGE|NONE)/i)||[])[1];
+      if(x) camera.x=+x; if(y) camera.y=+y; if(zoom) camera.zoom=clamp(+zoom,0.1,1.5); if(follow){ camera.follow=follow.toUpperCase(); followSel.value=camera.follow; } return;
+    }
+    if(cmd==='BOTS'){
+      const type=toks[1].toUpperCase(); const n=parseInt(toks[2]||'1');
+      if(type==='GREEN'){ spawnGreens(n); if(n>0 && greens[0]){ camera.x=greens[0].pos.x; camera.y=greens[0].pos.y; } }
+      else if(type==='ORANGE'){ spawnOranges(n); }
+      else { throw new Error('BOTS GREEN n | BOTS ORANGE n'); }
+      return;
+    }
+    if(cmd==='BOT'){
+      const idx=parseInt(toks[1]); if(isNaN(idx)) throw new Error('BOT index ...'); let target=null;
+      const mType=(s.match(/TYPE\s*=\s*(GREEN|ORANGE)/i)||[])[1];
+      if(mType){
+        if(mType.toUpperCase()==='GREEN'){ if(idx>=greens.length) greens.length=idx+1; if(!greens[idx]) { const p=randomPoint(800); greens[idx]=new GreenBot(p.x,p.y);} target=greens[idx]; }
+        else { if(idx>=oranges.length) oranges.length=idx+1; if(!oranges[idx]) { const p=randomPoint(800); oranges[idx]=new OrangeBot(p.x,p.y);} target=oranges[idx]; }
+      }
+      if(!target){ target=greens[idx]||oranges[idx]; if(!target) throw new Error('No bot at index; set TYPE= to create'); }
+      const pairs=s.match(/[a-zA-Z]+\s*=\s*[-+]?\d+(\.\d+)?/g)||[];
+      for(const kv of pairs){ const m=kv.match(/([a-zA-Z]+)\s*=\s*([-+]?\d+(\.\d+)?)/); if(m) target[m[1]]=+m[2]; }
+      return;
+    }
+    if(cmd==='SET'){
+      const which=toks[1]?.toUpperCase();
+      if(which==='GREEN'){
+        const pairs=s.match(/[a-zA-Z]+\s*=\s*[-+]?\d+(\.\d+)?/g)||[];
+        for(const g of greens){ for(const kv of pairs){ const m=kv.match(/([a-zA-Z]+)\s*=\s*([-+]?\d+(\.\d+)?)/); if(m) g[m[1]]=+m[2]; } }
+        avoidSlider.value=greens[0]?.avoid??avoidSlider.value; avoidVal.textContent=(greens[0]?.avoid??+avoidSlider.value).toFixed(2);
+        return;
+      }
+      if(which==='ORANGE'){
+        const pairs=s.match(/[a-zA-Z]+\s*=\s*[-+]?\d+(\.\d+)?/g)||[];
+        for(const o of oranges){ for(const kv of pairs){ const m=kv.match(/([a-zA-Z]+)\s*=\s*([-+]?\d+(\.\d+)?)/); if(m) o[m[1]]=+m[2]; } }
+        return;
+      }
+      throw new Error('SET GREEN ... | SET ORANGE ...');
+    }
+    if(cmd==='BENCH'){
+      if(toks[1].toUpperCase()==='RANDOM'){
+        const n=parseInt(toks[2]||'1'); for(let i=0;i<n;i++){ const p=randomPoint(300); benches.push({x:p.x,y:p.y}); }
+      } else {
+        const x=parseFloat(toks[1]), y=parseFloat(toks[2]); if(isNaN(x)||isNaN(y)) throw new Error('BENCH x y'); benches.push({x,y});
+      }
+      return;
+    }
+    if(cmd==='CLEAR'){
+      const what=toks[1]?.toUpperCase();
+      if(what==='BENCHES'){ benches.length=0; return; }
+      if(what==='GOALS'){ goals.length=0; return; }
+      if(what==='OBSTACLES'){ obstacles.length=0; return; }
+      if(what==='TRAILS'){ for(const g of greens) g.trail=[{x:g.pos.x,y:g.pos.y}]; for(const o of oranges) o.trail=[{x:o.pos.x,y:o.pos.y}]; return; }
+      if(what==='PROGRAMS'){ behaviorPrograms.GREEN={params:{},rules:[]}; behaviorPrograms.ORANGE={params:{},rules:[]}; behaviorPrograms.BOT={}; return; }
+      throw new Error('CLEAR BENCHES|GOALS|OBSTACLES|TRAILS|PROGRAMS');
+    }
+    if(cmd==='GOAL'){
+      if(toks[1].toUpperCase()==='RANDOM'){
+        const n=parseInt(toks[2]||'1'); const ttlTok=(s.match(/TTL\s*=\s*([\d.]+)/i)||[])[1]; const rTok=(s.match(/R\s*=\s*([\d.]+)/i)||[])[1];
+        for(let i=0;i<n;i++){ const p=randomPoint(800); goals.push({x:p.x,y:p.y,r:rTok?+rTok:80, ttl: ttlTok?+ttlTok:null}); }
+      } else {
+        const x=parseFloat(toks[1]), y=parseFloat(toks[2]); if(isNaN(x)||isNaN(y)) throw new Error('GOAL x y');
+        const rTok=(s.match(/R\s*=\s*([\d.]+)/i)||[])[1]; const ttlTok=(s.match(/TTL\s*=\s*([\d.]+)/i)||[])[1];
+        goals.push({x,y,r:rTok?+rTok:80, ttl: ttlTok?+ttlTok:null});
+      }
+      return;
+    }
+    if(cmd==='WEIGHT' && toks[1].toUpperCase()==='GOAL'){
+      const gg=(s.match(/green\s*=\s*([\d.]+)/i)||[])[1]; const oo=(s.match(/orange\s*=\s*([\d.]+)/i)||[])[1];
+      if(gg!=null){ greens.forEach(g=>g.goalWeight=+gg); } if(oo!=null){ oranges.forEach(o=>o.goalWeight=+oo); }
+      return;
+    }
+    if(cmd==='OBSTACLE'){
+      const nums=s.replace(/OBSTACLE\s*/i,'').replace(/END/i,'').trim().split(/\s+/).map(Number);
+      if(nums.length<6||nums.some(n=>isNaN(n))) throw new Error('OBSTACLE x1 y1 x2 y2 x3 y3 ... END');
+      const pts=[]; for(let i=0;i<nums.length;i+=2){ pts.push({x:nums[i], y:nums[i+1]}); }
+      obstacles.push({points:pts}); return;
+    }
+    if(cmd==='TRAILS'){ const v=(toks[1]||'ON').toUpperCase(); showTrails.checked=(v!=='OFF'); return; }
+    if(cmd==='ACCESS' && toks[1].toUpperCase()==='OVERLAY'){ const v=(toks[2]||'ON').toUpperCase(); showAccess.checked=(v!=='OFF'); return; }
+    if(cmd==='SPEED'){ const v=toks[1].toUpperCase(); speedSel.value=(v==='5X')?'5':'1'; return; }
+    if(cmd==='FOLLOW'){ const v=(toks[1]||'GREEN').toUpperCase(); camera.follow=v; followSel.value=v; return; }
+
+    // New DSL commands for export
+    if(cmd==='EXPORT'){
+      const size=(s.match(/SIZE\s*=\s*(\d+)/i)||[])[1];
+      if(size){ EXPORT_SIZE = Math.max(256, Math.min(20000, +size|0)); }
+      return;
+    }
+    if(/^TRAIL_LINEWIDTH\s*=/i.test(s)){
+      const lw=(s.match(/TRAIL_LINEWIDTH\s*=\s*([\d.]+)/i)||[])[1];
+      if(lw){ EXPORT_LINEWIDTH = Math.max(0.5, Math.min(50, +lw)); }
+      return;
+    }
+
+    if(cmd==='SAVE' && toks[1].toUpperCase()==='TRAILS'){
+      const sizeTok=(s.match(/SIZE\s*=\s*(\d+)/i)||[])[1];
+      const file=(s.match(/NAME\s*=\s*([\w\-.]+)/i)||[])[1];
+      const lwTok=(s.match(/LINEWIDTH\s*=\s*([\d.]+)/i)||[])[1];
+      const size = sizeTok? +sizeTok : EXPORT_SIZE;
+      const lw = lwTok? +lwTok : EXPORT_LINEWIDTH;
+      saveTrailsPNG(size, file||'dual-bot-trails.png', lw);
+      return;
+    }
+    if(cmd==='RESET'){ resetWorld(true); return; }
+    throw new Error('Unknown command');
+  }
+
+  // ====== Seed world ======
+  for(let i=0;i<4;i++){ const p=randomPoint(600); benches.push({x:p.x,y:p.y}); }
+  for(let i=0;i<3;i++){ const p=randomPoint(1000); goals.push({x:p.x,y:p.y,r:80,ttl:90+rand()*60}); }
+  obstacles.push({points:[{x:5200,y:5200},{x:5800,y:5300},{x:5700,y:5900},{x:5100,y:5850}]});
+
+  </script>
+</body>
+</html>
