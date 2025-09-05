@@ -113,7 +113,7 @@
     let viewPadTiles=1;
 
     // Edge behaviour
-    let edgeMargin=250, edgeForce=0.35, edgeWrap=false; // << default NO WRAP
+    let edgeMargin=250, edgeForce=0.35, edgeWrap=false;  // CHANGED: default no wrapping
 
     // Programs
     let greenProgram=null, collectingProgram=false, progLines=[];
@@ -196,7 +196,7 @@
         let nx=this.x + Math.cos(this.h)*speed; let ny=this.y + Math.sin(this.h)*speed;
 
         // Green-only obstacle collisions (escape if spawned inside)
-        if (this.type==='green' && obstacles.length){ let insideAny=false; let outVX=0,outVY=0; for(const ob of obstacles){ const bb=ob.bbox; if(this.x>=bb.minx&&this.x<=bb.maxx&&this.y>=bb.miny&&this.y<=bb.maxy){ if(pointInPoly(this.x,this.y,ob.pts)){ insideAny=true; let cx=0,cy=0; for(const p of ob.pts){ cx+=p.x; cy+=p.y; } cx/=ob.pts.length; cy/=ob.pts.length; outVX += (this.x-cx); outVY += (this.y-cy); } } } if(insideAny){ const aim=Math.atan2(outVY,outVX); this.h = angLerp(this.h, aim, 0.35) + (Math.random()-0.5)*0.02; } else { let collided=false; let newH=this.h; for(const ob of obstacles){ const bb=ob.bbox; if(Math.max(this.x,nx)<bb.minx || Math.min(this.x,nx)>bb.maxx || Math.max(this.y,ny)<bb.miny || Math.min(this.y,ny)>bb.maxy){} else { const P=ob.pts; const L=P.length; for(let i=0;i<L;i++){ const a=P[i], b=P[(i+1)%L]; if(segIntersects(this.x,this.y,nx,ny,a.x,a.y,b.x,b.y)){ newH=reflectHeading(this.h,a.x,a.y,b.x,b.y); collided=true; break; } } if(!collided && pointInPoly(nx,ny,P)){ let cx=0,cy=0; for(const p of P){ cx+=p.x; cy+=p.y; } cx/=P.length; cy/=P.length; const edgeAng=Math.atan2(ny-cy,nx-cx); newH=2*edgeAng+Math.PI-this.h; collided=true; } } if(collided) break; } if(collided){ this.h=newH+(Math.random()-0.5)*0.06; nx=this.x; ny=this.y; } }
+        if (this.type==='green' && obstacles.length){ let insideAny=false; let outVX=0,outVY=0; for(const ob of obstacles){ const bb=ob.bbox; if(this.x>=bb.minx&&this.x<=bb.maxx&&this.y>=bb.miny&&this.y<=bb.maxy){ if(pointInPoly(this.x,this.y,ob.pts)){ insideAny=true; let cx=0,cy=0; for(const p of ob.pts){ cx+=p.x; cy+=p.y; } cx/=ob.pts.length; cy/=ob.pts.length; outVX += (this.x-cx); outVY += (this.y-cx); } } } if(insideAny){ const aim=Math.atan2(outVY,outVX); this.h = angLerp(this.h, aim, 0.35) + (Math.random()-0.5)*0.02; } else { let collided=false; let newH=this.h; for(const ob of obstacles){ const bb=ob.bbox; if(Math.max(this.x,nx)<bb.minx || Math.min(this.x,nx)>bb.maxx || Math.max(this.y,ny)<bb.miny || Math.min(this.y,ny)>bb.maxy){} else { const P=ob.pts; const L=P.length; for(let i=0;i<L;i++){ const a=P[i], b=P[(i+1)%L]; if(segIntersects(this.x,this.y,nx,ny,a.x,a.y,b.x,b.y)){ newH=reflectHeading(this.h,a.x,a.y,b.x,b.y); collided=true; break; } } if(!collided && pointInPoly(nx,ny,P)){ let cx=0,cy=0; for(const p of P){ cx+=p.x; cy+=p.y; } cx/=P.length; cy/=P.length; const edgeAng=Math.atan2(ny-cy,nx-cx); newH=2*edgeAng+Math.PI-this.h; collided=true; } } if(collided) break; } if(collided){ this.h=newH+(Math.random()-0.5)*0.06; nx=this.x; ny=this.y; } }
         }
 
         // Fatigue accumulation (distance-based, independent of Speed×)
@@ -366,10 +366,7 @@
     }
 
     function saveTrails(){ if(!permanentTrails) return; save(permanentTrails, `trails_${Date.now()}.png`); }
-
-    // Goal helpers
-    function spawnGoalRandom(){ const m=goalMargin; const x=m+Math.random()*(WORLD_SIZE-2*m); const y=m+Math.random()*(WORLD_SIZE-2*m); setGoal(x,y); goalLastSpawnMs=(typeof millis==='function')?millis():0; }
-    function setGoal(x,y){ goal={x:clamp(x,0,WORLD_SIZE),y:clamp(y,0,WORLD_SIZE), r:(goalReachRadius>0?goalReachRadius:40)}; }
   </script>
 </body>
 </html>
+
