@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LLD — Bots Accessibility Simulation (Full, Speed-locked)</title>
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+  <style>
+    :root { --bg:#0b0c10; --fg:#e5e7eb; --muted:#9aa0a6; --panel:#111317; }
+    * { box-sizing:border-box }
+    body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Arial; overflow:hidden; }
+    header { padding:10px 14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; background:var(--panel); border-bottom:1px solid #1f232b; position:sticky; top:0; z-index:5 }
+    button, select, input[type=range], input[type=checkbox] {
+      background:#171a1f; color:var(--fg); border:1px solid #242833; padding:8px 10px; border-radius:10px; cursor:pointer;
+    }
+    button:hover{ filter:brightness(1.12) }
+    label{ display:inline-flex; align-items:center; gap:8px; white-space:nowrap }
+    #stats{ padding:6px 14px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+    #canvas-holder{ padding:10px 14px; position:relative }
+    #dslPanel{
+      position:absolute; right:14px; top:14px; width:420px; height:min(60vh,560px);
+      background:#0f1217; border:1px solid #242833; border-radius:12px; padding:10px;
+      display:flex; flex-direction:column; gap:8px; box-shadow:0 10px 30px rgba(0,0,0,.4); z-index:4;
+    }
+    #dslPanel h4{ margin:0; font-size:12px; font-weight:600; color:#9aa0a6 }
+    #dslBox{
+      flex:1 1 auto; width:100%; resize:none; background:#0b0e13; color:#e5e7eb;
+      border:1px solid #242833; border-radius:8px; padding:10px; font:12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <label>Sim Speed
+      <select id="speedSelect">
+        <option value="1">1×</option>
+        <option value="10">10×</option>
+      </select>
+    </label>
+
+    <label><input id="followChk" type="checkbox" checked> Follow green</label>
+    <label><input id="trailChk" type="checkbox" checked> Trails</label>
+    <label><input id="scoresChk" type="checkbox"> Scores</label>
+
+    <label style="gap:8px;min-width:260px">
+      Avoid≤ <span id="avoidLabel">0.30</span>
+      <input id="avoidSlider" type="range" min="0" max="1" step="0.01" value="0.30" />
+    </label>
+
+    <button id="pauseBtn">⏸️ Pause</button>
+    <button id="resetBtn">🔄 Reset</button>
+    <button id="saveBtn">💾 Save Trails PNG</button>
+
+    <span id="stats"></span>
+  </header>
+
+  <div id="canvas-holder">
+    <!-- canvas gets mounted here -->
+    <div id="dslPanel" aria-label="DSL Commands">
+      <h4>DSL Commands</h4>
+      <textarea id="dslBox" placeholder="# Copy/paste commands, one per line
+# Example:
+tiles.bias high
+set tiles.dist ipow 2.2
+obstacle begin
+  4800 4800
+  5200 4800
+  5200 5200
+  4800 5200
+end
+goals on
+goal interval 20
+benches random 2
+prog green begin
+  wobble 0.03
+  left_bias 0.006
+  prefer_left 1.6
+  if access < avoid_threshold steer gradient 1.2
+  if grad < 0.02 steer wander 0.05
+end
+"></textarea>
+      <div style="display:flex; gap:8px">
+        <button id="runDslBtn">▶ Run DSL</button>
+        <button id="clearDslBtn">🧹 Clear</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+// =========================
+// Fixed speed via sub-steps
+// =========================
+let speedMul = 1; // 1 or 10 only
+const stepsPerFrame = () => (speedMul===10 ? 10 : 1);
+
+// =========================
+// World & view
+// =========================
+let WORLD_SIZE = 10000;          // px
+const GRID_TILES = 50;           // 50x50 tile grid across world
+let TILE_SIZE = WORLD_SIZE / GRID_TILES;
+
+let LEFT_W = 900, RIGHT_W = 420, CAN_H = 720;
+
+let follow = true, followTarget='green', camLock=false;
+let cam = {x:WORLD_SIZE/2, y:WORLD_SIZE/2};
+let camSpeed = 0.12;
+
+let showTrails = true, showScores=false, showHeatmap=false;
+
+// Accessibility field
+let tileScore = new Float32Array(GRID_TILES*GRID_TILES);
+let noiseScale = 0.00055;
+let rngSeed = 424242;
+
+// Tile palette & shaping
+let tilesPalette='contrast';     // 'contrast' or 'default'
+let tilesDistMode='identity';    // identity|pow|ipow|extremes|middle
+let tilesDistParam=2.0;
+
+// Pre-render padding (to avoid pop-in)
+let viewPadTiles=1;
+
+// Edge behaviour
+let edgeMargin=250, edgeForce=0.35, edgeWrap=false; // no wrapping default
+
+// Trails & heatmap layers
+const TRAIL_RES = 5000;
+let TRAIL_SCALE = TRAIL_RES / WORLD_SIZE;
+let permanentTrails, heatmapLayer;
+let trailWidth=2;
+let trailColorGreen='#00ff22cc', trailColorOrange='#ffaa00cc';
+
+// Goals
+let goalsEnabled=false; let goal=null; let goalMargin=250; let goalIntervalMs=30000; let goalLastSpawnMs=0; let goalShow=true; let goalWeight={green:0.6, orange:0.8}; let goalExpireOnReach=false; let goalReachRadius=40;
+
+// Benches & fatigue
+let benches=[]; let benchesShow=true; let benchRadius=26; let benchMargin=250;
+let fatigueRate={green:0.06, orange:0.04}; // % per 1000px base (green gets asymmetry coupling)
+let restBenchMs=10000, restFieldMs=15000;
+
+// =========================
+// Bots
+// =========================
+let bots=[];
+
+let greenLeftBias = 0.006;
+let greenTurnCapL = 0.13; // easier left
+let greenTurnCapR = 0.08; // harder right
+let greenWobbleAmp = 0.03;
+
+let baseSpeedGreen=1.5, baseSpeedOrange=2.2;
+
+// Seek semantics
+let greenSeekMode='hybrid'; // attract | repel_low | hybrid
+let greenAttractThresh=0.60, greenRepelThresh=0.30, greenSeekHysteresis=0.00;
+let greenSeekWeightAttract=1.0, greenSeekWeightRepel=1.0;
+let greenHardRepelBoost=1.0;
+
+// Programs (green)
+let greenProgram=null, collectingProgram=false, progLines=[];
+
+// Obstacles
+let obstacles=[]; let collectingObstacle=false, obstaclePts=[]; let obstacleAffectsAccess=false;
+
+// Utils
+const idx=(tx,ty)=>ty*GRID_TILES+tx;
+const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
+const wrap=(v,size)=> (v%size+size)%size;
+const angNorm=a => ((a+Math.PI*3)%(Math.PI*2))-Math.PI;
+const angLerp=(a,b,t)=> a + angNorm(b-a)*t;
+
+function polyBBox(pts){ let minx=1e9,miny=1e9,maxx=-1e9,maxy=-1e9; for(const p of pts){ if(p.x<minx)minx=p.x; if(p.y<miny)miny=p.y; if(p.x>maxx)maxx=p.x; if(p.y>maxy)maxy=p.y; } return {minx,miny,maxx,maxy}; }
+function pointInPoly(x,y,pts){ let inside=false; for(let i=0,j=pts.length-1;i<pts.length;j=i++){ const xi=pts[i].x, yi=pts[i].y, xj=pts[j].x, yj=pts[j].y; const inter=((yi>y)!=(yj>y))&&(x < (xj-xi)*(y-yi)/(yj-yi+1e-9)+xi); if(inter) inside=!inside; } return inside; }
+
+// Access shaping
+function shapeAccess(v){ v=clamp(v,0,1); const k=tilesDistParam; switch(tilesDistMode){
+  case 'pow': return Math.pow(v, Math.max(0.0001,k));
+  case 'ipow': return 1-Math.pow(1-v, Math.max(0.0001,k));
+  case 'extremes': { const kk=Math.max(1,k); if(v<0.5) return 0.5*Math.pow(v*2,kk); else return 1-0.5*Math.pow((1-v)*2,kk); }
+  case 'middle': { const kk=Math.max(0.0001,k); const t=Math.tanh((v-0.5)*kk)/Math.tanh(0.5*kk); return 0.5+0.5*t; }
+  default: return v;
+}}
+function accessAtRaw(x,y){ return noise(x*noiseScale, y*noiseScale); }
+function accessAt(x,y){
+  if (obstacleAffectsAccess && obstacles.length){
+    for (const ob of obstacles){ const bb=ob.bbox;
+      if (x>=bb.minx&&x<=bb.maxx&&y>=bb.miny&&y<=bb.maxy){ if(pointInPoly(x,y,ob.pts)) return 0; }
+    }
+  }
+  return clamp(accessAtRaw(x,y),0,1);
+}
+function rebuildTileScores(){ noiseSeed(rngSeed); for(let ty=0;ty<GRID_TILES;ty++){ for(let tx=0;tx<GRID_TILES;tx++){ const cx=(tx+0.5)*TILE_SIZE, cy=(ty+0.5)*TILE_SIZE; tileScore[idx(tx,ty)]=shapeAccess(accessAt(cx,cy)); } } }
+function reinitWorldSize(newSize){
+  WORLD_SIZE=Math.max(1000,Math.floor(newSize)); TILE_SIZE=WORLD_SIZE/GRID_TILES;
+  TRAIL_SCALE=TRAIL_RES/WORLD_SIZE;
+  tileScore=new Float32Array(GRID_TILES*GRID_TILES); rebuildTileScores();
+  permanentTrails=createGraphics(TRAIL_RES,TRAIL_RES); permanentTrails.noSmooth(); permanentTrails.clear();
+  heatmapLayer=createGraphics(TRAIL_RES,TRAIL_RES); heatmapLayer.noSmooth(); heatmapLayer.clear();
+  // keep bots within new bounds
+  for (const b of bots){ b.x=clamp(b.x,0,WORLD_SIZE); b.y=clamp(b.y,0,WORLD_SIZE); }
+  cam.x=clamp(cam.x,0,WORLD_SIZE); cam.y=clamp(cam.y,0,WORLD_SIZE);
+}
+
+// Steering asymmetry → (0..1)
+function greenAsymmetry(){ const L=Math.max(1e-6,greenTurnCapL), R=Math.max(1e-6,greenTurnCapR); return Math.max(0,(L-R)/(L+R)); }
+
+// Bot
+class Bot{
+  constructor(type){
+    this.type=type;
+    this.x=Math.random()*WORLD_SIZE; this.y=Math.random()*WORLD_SIZE;
+    this.h=Math.random()*Math.PI*2;
+    this.baseSpeed=(type==='green')?baseSpeedGreen:baseSpeedOrange;
+    this.phase=Math.random()*Math.PI*2;
+    this.prevX=this.x; this.prevY=this.y;
+    this.fatigue=0; this.state='normal'; this.restUntilMs=0; this.targetBench=null;
+  }
+
+  substep(){
+    this.prevX=this.x; this.prevY=this.y;
+    const now=(typeof millis==='function')?millis():0;
+
+    // Resting timers independent of Speed× (wall-clock)
+    if (this.state==='resting'){ if(now>=this.restUntilMs){ this.state='normal'; this.fatigue=0; this.targetBench=null; } }
+
+    // Hit 100% fatigue → go rest
+    if (this.state!=='resting' && this.fatigue>=100){
+      if (benches.length){
+        // nearest bench
+        let bi=0, bd=Infinity;
+        for(let i=0;i<benches.length;i++){ const d=Math.hypot(benches[i].x-this.x, benches[i].y-this.y); if(d<bd){bd=d; bi=i;} }
+        this.targetBench=bi; this.state='to_bench';
+      } else {
+        this.state='resting'; this.restUntilMs=now+restFieldMs; return;
+      }
+    }
+
+    // Built-in steering (or program)
+    const usedProg = (this.type==='green') ? applyGreenProgram(this) : false;
+    if (!usedProg){
+      if (this.type==='green'){
+        // gradient sampling
+        const eps=8;
+        const ax1=accessAt(this.x+eps,this.y), ax0=accessAt(this.x-eps,this.y);
+        const ay1=accessAt(this.x,this.y+eps), ay0=accessAt(this.x,this.y-eps);
+        const gx=ax1-ax0, gy=ay1-ay0;
+        const gradMag=Math.hypot(gx,gy), gradDir=Math.atan2(gy,gx);
+        const here=accessAt(this.x,this.y);
+        // zone classification (hysteresis)
+        if(here<greenRepelThresh-greenSeekHysteresis) this.zone='low';
+        else if(here>greenAttractThresh+greenSeekHysteresis) this.zone='high';
+
+        let aim=gradDir, desire=0.0;
+        if(greenSeekMode==='attract'){
+          aim=gradDir; desire=(here<greenAttractThresh)?1.0*greenSeekWeightAttract:0.4*greenSeekWeightAttract;
+        } else if(greenSeekMode==='repel_low'){
+          if(here<greenRepelThresh){ aim=gradDir; desire=1.0*greenSeekWeightRepel; } else { aim=this.h; desire=0.25; }
+        } else { // hybrid
+          if(here<greenRepelThresh){ aim=gradDir; desire=1.0*greenSeekWeightRepel; }
+          else if(here<greenAttractThresh){ aim=gradDir; desire=0.65*greenSeekWeightAttract; }
+          else { aim=this.h; desire=0.3; }
+        }
+        let d=((aim-this.h+Math.PI*3)%(Math.PI*2))-Math.PI;
+        const strength=Math.min(1,gradMag*6.0);
+        let leftCap=greenTurnCapL, rightCap=greenTurnCapR;
+
+        if(here<greenRepelThresh){
+          // hard repel boost + search direction if flat gradient
+          const deficit=clamp((greenRepelThresh-here)/Math.max(1e-6,greenRepelThresh),0,1);
+          const boost=(1.5+3.0*deficit)*greenHardRepelBoost;
+          if(gradMag<0.02){
+            let bestDir=this.h, bestVal=-1; const R=28;
+            for(let i=0;i<12;i++){ const ang=i*(Math.PI*2/12); const val=accessAt(this.x+Math.cos(ang)*R, this.y+Math.sin(ang)*R); if(val>bestVal){ bestVal=val; bestDir=ang; } }
+            d=((bestDir-this.h+Math.PI*3)%(Math.PI*2))-Math.PI;
+          }
+          d*=boost;
+          leftCap*=(1+1.4*deficit); rightCap*=(1+1.4*deficit);
+          this.h+=greenLeftBias*(1-0.7*deficit);
+        } else {
+          this.h+=greenLeftBias;
+        }
+
+        if(d>leftCap) d=leftCap; else if(d<-rightCap) d=-rightCap;
+        this.h += d * (0.3+0.7*strength) * Math.max(desire, (here<greenRepelThresh?1.0:desire));
+        this.h += (Math.random()-0.5)*0.005;
+      } else {
+        // orange: carefree
+        this.h += (Math.random()-0.5)*0.06;
+      }
+    }
+
+    // Goal attraction (normal only)
+    if (this.state==='normal' && goalsEnabled && goal){
+      const gh=Math.atan2(goal.y-this.y, goal.x-this.x);
+      let d=angNorm(gh-this.h);
+      const w=(this.type==='green')?goalWeight.green:goalWeight.orange;
+      const capL=(this.type==='green')?greenTurnCapL:0.12;
+      const capR=(this.type==='green')?greenTurnCapR:0.12;
+      if(d>capL) d=capL; if(d<-capR) d=-capR; this.h += d * w;
+    }
+
+    // Bench seeking
+    if (this.state==='to_bench' && this.targetBench!=null && benches[this.targetBench]){
+      const bx=benches[this.targetBench].x, by=benches[this.targetBench].y;
+      let d=angNorm(Math.atan2(by-this.y,bx-this.x)-this.h);
+      const capL=(this.type==='green')?greenTurnCapL:0.12;
+      const capR=(this.type==='green')?greenTurnCapR:0.12;
+      if(d>capL) d=capL; if(d<-capR) d=-capR; this.h += d * 0.9;
+      if(Math.hypot(bx-this.x,by-this.y)<=benchRadius){ this.state='resting'; this.restUntilMs=now+restBenchMs; return; }
+    }
+
+    // Edge repulsion
+    const margin=edgeMargin; const dL=this.x, dR=WORLD_SIZE-this.x, dT=this.y, dB=WORLD_SIZE-this.y;
+    const ramp=(d)=>{ const t=clamp((margin-d)/margin,0,1); return t*t*(1.5-0.5*t); };
+    if(dL<margin) this.h += edgeForce * ramp(dL);
+    if(dR<margin) this.h -= edgeForce * ramp(dR);
+    if(dT<margin) this.h -= edgeForce * ramp(dT);
+    if(dB<margin) this.h += edgeForce * ramp(dB);
+
+    // Speed per sub-step (not scaling turn caps)
+    let speed=this.baseSpeed; // sub-step movement
+    if(this.state==='resting') speed=0;
+
+    // Green wobble tempo speeds with Speed× via sub-steps (phase increments once per sub-step)
+    if(this.type==='green'){
+      this.phase += 0.18; // (tempo naturally 10× when stepsPerFrame=10)
+      const limp=Math.sin(this.phase);
+      this.h += limp*greenWobbleAmp;        // amplitude independent of Speed×
+      speed *= (0.90 + 0.08*(0.5+0.5*limp)); // slight stride modulation
+      const here2=accessAt(this.x,this.y);
+      if(here2<greenRepelThresh){ const deficit=clamp((greenRepelThresh-here2)/Math.max(1e-6,greenRepelThresh),0,1); speed*=1+0.35*deficit; }
+    }
+
+    // Proposed move
+    let nx=this.x + Math.cos(this.h)*speed;
+    let ny=this.y + Math.sin(this.h)*speed;
+
+    // Obstacle collisions (green only). If spawned inside, steer out.
+    if (this.type==='green' && obstacles.length){
+      let insideAny=false; let outVX=0,outVY=0;
+      for(const ob of obstacles){ const bb=ob.bbox;
+        if(this.x>=bb.minx&&this.x<=bb.maxx&&this.y>=bb.miny&&this.y<=bb.maxy){
+          if(pointInPoly(this.x,this.y,ob.pts)){ insideAny=true; let cx=0,cy=0; for(const p of ob.pts){ cx+=p.x; cy+=p.y; } cx/=ob.pts.length; cy/=ob.pts.length; outVX+=(this.x-cx); outVY+=(this.y-cx); }
+        }
+      }
+      if(insideAny){ const aim=Math.atan2(outVY,outVX); this.h=angLerp(this.h,aim,0.35)+(Math.random()-0.5)*0.02; }
+    }
+
+    // Bounce reflect at boundaries (no wrapping)
+    if(nx<0){ nx=-nx; this.h=Math.PI-this.h; }
+    if(nx>WORLD_SIZE){ nx=2*WORLD_SIZE-nx; this.h=Math.PI-this.h; }
+    if(ny<0){ ny=-ny; this.h=-this.h; }
+    if(ny>WORLD_SIZE){ ny=2*WORLD_SIZE-ny; this.h=-this.h; }
+    this.x=clamp(nx,0,WORLD_SIZE); this.y=clamp(ny,0,WORLD_SIZE);
+
+    // Trails per sub-step
+    if(permanentTrails){
+      permanentTrails.stroke(this.type==='green'?trailColorGreen:trailColorOrange);
+      permanentTrails.strokeWeight(trailWidth);
+      permanentTrails.line(this.prevX*TRAIL_SCALE,this.prevY*TRAIL_SCALE, this.x*TRAIL_SCALE,this.y*TRAIL_SCALE);
+    }
+    if(showHeatmap&&heatmapLayer){
+      heatmapLayer.noStroke(); heatmapLayer.fill(0,160,255,12);
+      heatmapLayer.circle(this.x*TRAIL_SCALE,this.y*TRAIL_SCALE,3);
+    }
+
+    // Fatigue grows with real distance; green rate auto-coupled to orange by asymmetry
+    const stepDist=Math.hypot(this.x-this.prevX, this.y-this.prevY);
+    if(this.state!=='resting'){
+      const asym=greenAsymmetry();
+      const coupled = fatigueRate.orange * (1 + asym);
+      const rate = (this.type==='green') ? Math.max(fatigueRate.green, coupled) : fatigueRate.orange;
+      this.fatigue = clamp(this.fatigue + (stepDist/1000)*rate*100, 0, 100);
+    }
+  }
+
+  stepFrame(){
+    const n=stepsPerFrame();
+    for (let i=0;i<n;i++) this.substep();
+  }
+}
+
+// Programs
+function parseGreenProgram(lines){
+  const prog={assigns:{}, rules:[]};
+  for(const raw of lines){
+    const s=raw.trim(); if(!s||s.startsWith('#')) continue;
+    const tok=s.split(/\s+/);
+    if(tok[0]==='wobble'){ prog.assigns.wobble=parseFloat(tok[1]); continue; }
+    if(tok[0]==='left_bias'){ prog.assigns.left_bias=parseFloat(tok[1]); continue; }
+    if(tok[0]==='jitter'){ prog.assigns.jitter=parseFloat(tok[1]); continue; }
+    if(tok[0]==='prefer_left'){ prog.assigns.prefer_left=parseFloat(tok[1]); continue; }
+    if(tok[0]==='hard_repel'){
+      const v=(tok[1]||'').toLowerCase();
+      prog.assigns.hard_repel=(v==='on'||v==='1'||v==='true'||v==='enable');
+      if(tok.length>1 && !isNaN(parseFloat(tok[1]))) prog.assigns.hard_repel_boost=clamp(parseFloat(tok[1]),0,1);
+      if(tok.length>2 && !isNaN(parseFloat(tok[2]))) prog.assigns.hard_repel_boost=clamp(parseFloat(tok[2]),0,1);
+      continue;
+    }
+    if(tok[0]==='if'){
+      const m=s.match(/^if\s+(access|grad|edge)\s*(<|<=|>|>=|==|!=|between)\s*(\S+)(?:\s+(\S+))?\s+steer\s+(gradient|forward|wander|away_edge)\s+([0-9\.]+)/i);
+      if(m){
+        const parseVal=v=>(String(v).toLowerCase()==='avoid_threshold')?'avoid_threshold':parseFloat(v);
+        prog.rules.push({cond:m[1],op:m[2],a:parseVal(m[3]),b:(m[4]?parseVal(m[4]):null),act:m[5],val:parseFloat(m[6])});
+      }
+    }
+  }
+  return prog;
+}
+function condPass(bot,r){
+  const resolve=v=>(v==='avoid_threshold')?greenRepelThresh:v;
+  if(r.cond==='access'){ const here=accessAt(bot.x,bot.y); const A=resolve(r.a), B=resolve(r.b);
+    if(r.op=='<') return here<A; if(r.op=='<=') return here<=A; if(r.op=='>') return here>A; if(r.op=='>=') return here>=A; if(r.op=='==') return Math.abs(here-A)<1e-6; if(r.op=='!=') return Math.abs(here-A)>=1e-6; if(r.op=='between') return here>=Math.min(A,B) && here<=Math.max(A,B);
+  }
+  if(r.cond==='grad'){ const eps=8; const gx=accessAt(bot.x+eps,bot.y)-accessAt(bot.x-eps,bot.y); const gy=accessAt(bot.x,bot.y+eps)-accessAt(bot.x,bot.y-eps); const g=Math.hypot(gx,gy); const A=resolve(r.a), B=resolve(r.b);
+    if(r.op=='<') return g<A; if(r.op=='<=') return g<=A; if(r.op=='>') return g>A; if(r.op=='>=') return g>=A; if(r.op=='between') return g>=Math.min(A,B) && g<=Math.max(A,B);
+  }
+  if(r.cond==='edge'){ const d=Math.min(bot.x,WORLD_SIZE-bot.x,bot.y,WORLD_SIZE-bot.y); const A=resolve(r.a), B=resolve(r.b);
+    if(r.op=='<') return d<A; if(r.op=='<=') return d<=A; if(r.op=='>') return d>A; if(r.op=='>=') return d>=A; if(r.op=='between') return d>=Math.min(A,B) && d<=Math.max(A,B);
+  }
+  return false;
+}
+function applyGreenProgram(bot){
+  if(!greenProgram) return false;
+  if(Number.isFinite(greenProgram.assigns.wobble)) greenWobbleAmp=greenProgram.assigns.wobble;
+  if(Number.isFinite(greenProgram.assigns.left_bias)) greenLeftBias=greenProgram.assigns.left_bias;
+  const progJitter=Number.isFinite(greenProgram.assigns.jitter)?greenProgram.assigns.jitter:0;
+  const preferLeft=Number.isFinite(greenProgram.assigns.prefer_left)?greenProgram.assigns.prefer_left:1.0;
+  const wantHardRepel=!!greenProgram.assigns.hard_repel;
+  const hrBoost=Number.isFinite(greenProgram.assigns.hard_repel_boost)?greenProgram.assigns.hard_repel_boost:greenHardRepelBoost;
+
+  let dH=0, weight=0;
+  const eps=8;
+  const gx=accessAt(bot.x+eps,bot.y)-accessAt(bot.x-eps,bot.y);
+  const gy=accessAt(bot.x,bot.y+eps)-accessAt(bot.x,bot.y-eps);
+  const gradMag=Math.hypot(gx,gy), gradDir=Math.atan2(gy,gx);
+  const here=accessAt(bot.x,bot.y);
+
+  for(const r of greenProgram.rules){
+    if(!condPass(bot,r)) continue;
+    if(r.act==='gradient'){ let d=((gradDir-bot.h+Math.PI*3)%(Math.PI*2))-Math.PI; dH += d*0.3*r.val; weight+=0.3*r.val; }
+    else if(r.act==='forward'){ weight+=r.val*0.2; }
+    else if(r.act==='wander'){ dH += (Math.random()-0.5)*r.val; weight+=r.val*0.5; }
+    else if(r.act==='away_edge'){ const cx=WORLD_SIZE/2, cy=WORLD_SIZE/2; let d=((Math.atan2(bot.y-cy,bot.x-cx)-bot.h+Math.PI*3)%(Math.PI*2))-Math.PI; dH += d*0.5*r.val; weight+=0.5*r.val; }
+  }
+
+  if(progJitter) dH += (Math.random()-0.5)*progJitter;
+  if(weight>0) dH/=weight;
+
+  let leftCap=greenTurnCapL*preferLeft, rightCap=greenTurnCapR;
+  if(wantHardRepel && here<greenRepelThresh){
+    const deficit=clamp((greenRepelThresh-here)/Math.max(1e-6,greenRepelThresh),0,1);
+    let bestDir=gradDir; if(gradMag<0.02){ let bestVal=-1; const R=28; bestDir=bot.h; for(let i=0;i<12;i++){ const ang=i*(Math.PI*2/12); const val=accessAt(bot.x+Math.cos(ang)*R, bot.y+Math.sin(ang)*R); if(val>bestVal){ bestVal=val; bestDir=ang; } } }
+    const dEsc=((bestDir-bot.h+Math.PI*3)%(Math.PI*2))-Math.PI;
+    const boost=(1.5+3.0*deficit)*hrBoost;
+    dH = dH + dEsc*boost;
+    leftCap*=(1+1.4*deficit); rightCap*=(1+1.4*deficit);
+  }
+  if(dH>leftCap) dH=leftCap; if(dH<-rightCap) dH=-rightCap;
+  bot.h += dH;
+  if(wantHardRepel && here<greenRepelThresh){ const deficit=clamp((greenRepelThresh-here)/Math.max(1e-6,greenRepelThresh),0,1); bot.h += greenLeftBias*(1-0.7*deficit); } else { bot.h += greenLeftBias; }
+  return true;
+}
+
+// =========================
+// p5 lifecycle & layout
+// =========================
+let statsDiv, stepFramesToRun=0;
+function setup(){
+  const c=createCanvas(1,1); pixelDensity(1);
+  c.parent(document.getElementById('canvas-holder'));
+  setupUI(); layout();
+  // world & layers
+  rebuildTileScores();
+  permanentTrails=createGraphics(TRAIL_RES,TRAIL_RES); permanentTrails.noSmooth(); permanentTrails.clear();
+  heatmapLayer=createGraphics(TRAIL_RES,TRAIL_RES); heatmapLayer.noSmooth(); heatmapLayer.clear();
+  // spawn bots (default 1 green, 1 orange)
+  bots.length=0;
+  bots.push(new Bot('green')); bots.push(new Bot('orange'));
+  const g0=bots.find(b=>b.type==='green'); if(g0){ cam.x=g0.x; cam.y=g0.y; }
+  frameRate(60);
+  goalLastSpawnMs=(typeof millis==='function')?millis():0;
+}
+
+function draw(){
+  const shouldStep = running || stepFramesToRun>0;
+
+  if(shouldStep){
+    // goal spawning cadence
+    if(goalsEnabled){ const now=(typeof millis==='function')?millis():0; if(!goal){ spawnGoalRandom(); } else if(now-goalLastSpawnMs>=goalIntervalMs){ spawnGoalRandom(); } }
+
+    // physics sub-steps
+    const sub=stepsPerFrame();
+    for(let s=0;s<sub;s++){
+      for(const b of bots) b.stepFrame();
+    }
+
+    // goal expire on reach
+    if(goal && goalExpireOnReach){ const rr=(goalReachRadius>0?goalReachRadius:goal.r); for(const b of bots){ if(Math.hypot(b.x-goal.x,b.y-goal.y)<=rr){ spawnGoalRandom(); break; } } }
+
+    if(stepFramesToRun>0) stepFramesToRun--;
+
+    // camera follow green
+    if(!camLock && follow){ const target=bots.find(b=>b.type==='green'); if(target){ const k=clamp(camSpeed,0.01,0.9); cam.x += (target.x-cam.x)*k; cam.y += (target.y-cam.y)*k; } }
+  }
+
+  renderScene();
+  renderStats();
+}
+
+function layout(){
+  const header=document.querySelector('header'); const padX=14,padY=10;
+  const availW=window.innerWidth-padX*2;
+  const availH=window.innerHeight-(header?.offsetHeight||0)-padY*2;
+
+  RIGHT_W=clamp(Math.floor(availW*0.32),340,560);
+  LEFT_W=Math.max(600, availW-RIGHT_W-20);
+  CAN_H=Math.max(480, Math.floor(availH));
+
+  resizeCanvas(LEFT_W+RIGHT_W, CAN_H);
+
+  // position DSL panel near minimap column
+  const dsl=document.getElementById('dslPanel');
+  if(dsl){
+    dsl.style.right='14px';
+    dsl.style.top='14px';
+    dsl.style.width=Math.min(RIGHT_W, 460)+'px';
+    dsl.style.height=Math.min(560, Math.max(280, CAN_H-24))+'px';
+  }
+}
+window.addEventListener('resize', layout);
+
+// =========================
+// Rendering
+// =========================
+function renderScene(){
+  background(14);
+  const ctx=drawingContext;
+  ctx.save(); ctx.beginPath(); ctx.rect(0,0,LEFT_W,CAN_H); ctx.clip(); drawZoomed(); ctx.restore();
+  drawMinimap(LEFT_W,0,RIGHT_W,RIGHT_W);
+}
+
+function drawObstaclesAt(offsetX,offsetY,scaleX=1,scaleY=1){
+  noFill(); stroke('#f472b6aa'); strokeWeight(2);
+  for(const ob of obstacles){ beginShape(); for(const p of ob.pts){ vertex((p.x+offsetX)*scaleX,(p.y+offsetY)*scaleY);} endShape(CLOSE); fill(244,114,182,30); noStroke(); beginShape(); for(const p of ob.pts){ vertex((p.x+offsetX)*scaleX,(p.y+offsetY)*scaleY);} endShape(CLOSE); }
+}
+
+function drawZoomed(){
+  const EARLY_PAD=viewPadTiles*TILE_SIZE;
+  const minX=cam.x-LEFT_W/2-EARLY_PAD, minY=cam.y-CAN_H/2-EARLY_PAD;
+  const t0x=Math.floor(clamp(minX,0,WORLD_SIZE-1)/TILE_SIZE);
+  const t0y=Math.floor(clamp(minY,0,WORLD_SIZE-1)/TILE_SIZE);
+  const tilesX=Math.ceil((LEFT_W+2*EARLY_PAD)/TILE_SIZE)+2;
+  const tilesY=Math.ceil((CAN_H+2*EARLY_PAD)/TILE_SIZE)+2;
+
+  for(let yy=0; yy<tilesY; yy++){
+    for(let xx=0; xx<tilesX; xx++){
+      const tx=(t0x+xx); if(tx<0||tx>=GRID_TILES) continue;
+      const ty=(t0y+yy); if(ty<0||ty>=GRID_TILES) continue;
+      const wx=tx*TILE_SIZE, wy=ty*TILE_SIZE;
+      const sx=wx-cam.x+LEFT_W/2;
+      const sy=wy-cam.y+CAN_H/2;
+      if(sx>-TILE_SIZE-EARLY_PAD && sy>-TILE_SIZE-EARLY_PAD && sx<LEFT_W+EARLY_PAD && sy<CAN_H+EARLY_PAD){
+        drawTileAtScreen(tx,ty,sx,sy,TILE_SIZE);
+      }
+    }
+  }
+
+  // overlays: heatmap, trails, obstacles, benches, goal, bots
+  if(showHeatmap&&heatmapLayer){ noSmooth(); image(heatmapLayer, -cam.x+LEFT_W/2, -cam.y+CAN_H/2, WORLD_SIZE, WORLD_SIZE); }
+  if(showTrails&&permanentTrails){ noSmooth(); image(permanentTrails, -cam.x+LEFT_W/2, -cam.y+CAN_H/2, WORLD_SIZE, WORLD_SIZE); }
+
+  push(); translate(-cam.x+LEFT_W/2, -cam.y+CAN_H/2);
+  drawObstaclesAt(0,0,1,1);
+  // benches
+  if(benchesShow){ noStroke(); fill('#93c5fd'); for(const b of benches){ circle(b.x,b.y,benchRadius*1.2);} stroke('#1d4ed8'); noFill(); for(const b of benches){ circle(b.x,b.y,benchRadius*2);} }
+  pop();
+
+  // goal
+  if(goalShow && goal){
+    const sx=(goal.x-cam.x)+LEFT_W/2, sy=(goal.y-cam.y)+CAN_H/2;
+    noFill(); stroke('#60a5fa'); strokeWeight(3);
+    const pulse=1+0.15*Math.sin(((typeof millis==='function')?millis():0)/500);
+    circle(sx,sy,(goal.r*2)*pulse); stroke('#1d4ed8'); strokeWeight(1.5); circle(sx,sy,goal.r*1.2);
+  }
+
+  // bots
+  noStroke();
+  for(const b of bots){
+    const sx=(b.x-cam.x)+LEFT_W/2, sy=(b.y-cam.y)+CAN_H/2;
+    push(); translate(sx,sy); rotate(b.h);
+    fill(b.type==='green'?'#00ff22':'#ffaa00'); circle(0,0,12);
+    fill(0,120); rect(4,-1.5,7,3);
+    pop();
+  }
+
+  // frame
+  noFill(); stroke(35); strokeWeight(1); rect(0,0,LEFT_W,CAN_H);
+}
+
+function drawTileAtScreen(tx,ty,sx,sy,size){
+  const s=tileScore[idx(tx,ty)];
+  let base;
+  if(tilesPalette==='contrast'){ // dark teal/grey/red palette for contrast vs green/orange bots
+    const cRed=color('#7f1d1d'), cOrg=color('#475569'), cGrn=color('#0d9488');
+    base=(s<0.5)?lerpColor(cRed,cOrg,s/0.5):lerpColor(cOrg,cGrn,(s-0.5)/0.5);
+  } else {
+    const cRed=color('#8b0000'), cOrg=color('#ff8c00'), cGrn=color('#228b22');
+    base=(s<0.5)?lerpColor(cRed,cOrg,s/0.5):lerpColor(cOrg,cGrn,(s-0.5)/0.5);
+  }
+  noStroke(); fill(base); rect(sx,sy,size,size);
+
+  // texture pattern tied to accessibility (varied; not clashing with trails/bots)
+  const score10=Math.round(s*10); const seed=(tx*73856093 ^ ty*19349663)>>>0; const pat=seed%4;
+  const rough=1-(score10/10); const alpha=40+Math.floor(rough*120);
+  if(pat===0){ stroke(20,alpha); strokeWeight(2); const step=Math.floor(8+14*(1-rough)); for(let i=-size;i<size*2;i+=step){ line(sx+i,sy,sx,sy+i); } }
+  else if(pat===1){ noStroke(); fill(255,alpha); const spacing=Math.floor(12+10*(1-rough)); const rad=1+Math.floor(2*rough); for(let y=spacing/2;y<size;y+=spacing){ for(let x=spacing/2;x<size;x+=spacing){ circle(sx+x,sy+y,rad); } } }
+  else if(pat===2){ stroke(30,alpha); strokeWeight(1+Math.floor(1.5*rough)); const step=Math.floor(14+10*(1-rough)); for(let x=0;x<size;x+=step){ line(sx+x,sy,sx+x,sy+size);} for(let y=0;y<size;y+=step){ line(sx,sy+y,sx+size,sy+y);} }
+  else { noStroke(); fill(0,alpha); const spacing=Math.floor(10+10*(1-rough)); const wx=tx*TILE_SIZE, wy=ty*TILE_SIZE; for(let y=4;y<size;y+=spacing){ for(let x=4;x<size;x+=spacing){ const n=noise((wx+x)*0.02,(wy+y)*0.02); if(n<0.45+rough*0.25) rect(sx+x,sy+y,1,1); } } }
+
+  if(showScores && size>=18){
+    const label=s.toFixed(2);
+    textAlign(CENTER,CENTER); noStroke(); fill(0,180); textSize(Math.min(16,size*0.35)); text(label,sx+size/2+1,sy+size/2+1);
+    fill(255); text(label,sx+size/2,sy+size/2);
+  }
+}
+
+function drawMinimap(x,y,w,h){
+  noStroke(); const tw=w/GRID_TILES, th=h/GRID_TILES;
+  for(let ty=0;ty<GRID_TILES;ty++){
+    for(let tx=0;tx<GRID_TILES;tx++){
+      const s=tileScore[idx(tx,ty)];
+      let base;
+      if(tilesPalette==='contrast'){ const cRed=color('#7f1d1d'), cOrg=color('#475569'), cGrn=color('#0d9488'); base=(s<0.5)?lerpColor(cRed,cOrg,s/0.5):lerpColor(cOrg,cGrn,(s-0.5)/0.5); }
+      else { const cRed=color('#8b0000'), cOrg=color('#ff8c00'), cGrn=color('#228b22'); base=(s<0.5)?lerpColor(cRed,cOrg,s/0.5):lerpColor(cOrg,cGrn,(s-0.5)/0.5); }
+      fill(base); rect(x+tx*tw,y+ty*th,tw+0.5,th+0.5);
+      if(showScores && tw>=14 && th>=14){ const label=s.toFixed(2);
+        textAlign(CENTER,CENTER); noStroke(); fill(0,180); textSize(Math.min(12, Math.min(tw,th)*0.42));
+        text(label, x+tx*tw+tw/2+1, y+ty*th+th/2+1); fill(255); text(label, x+tx*tw+tw/2, y+ty*th+th/2);
+      }
+    }
+  }
+  if(showHeatmap&&heatmapLayer) image(heatmapLayer,x,y,w,h);
+  if(showTrails&&permanentTrails) image(permanentTrails,x,y,w,h);
+
+  // obstacles & benches & goal
+  push(); translate(x,y); scale(w/WORLD_SIZE, h/WORLD_SIZE);
+  drawObstaclesAt(0,0,1,1);
+  if(benchesShow){ noStroke(); fill('#93c5fd'); for(const b of benches){ circle(b.x,b.y,benchRadius*1.2*(w/WORLD_SIZE)); } }
+  if(goalShow&&goal){ noFill(); stroke('#60a5fa'); strokeWeight(2*(w/WORLD_SIZE)); circle(goal.x,goal.y,goal.r*2); }
+  pop();
+
+  // camera rect
+  noFill(); stroke('#e5e7ebaa'); strokeWeight(1.5);
+  const vw=LEFT_W/WORLD_SIZE*w, vh=CAN_H/WORLD_SIZE*h; const vx=x+(cam.x/WORLD_SIZE)*w - vw/2; const vy=y+(cam.y/WORLD_SIZE)*h - vh/2;
+  rect(vx,vy,vw,vh);
+
+  noFill(); stroke(35); rect(x,y,w,h);
+}
+
+function renderStats(){
+  let g=0,o=0, ga=0,oa=0, gs=0,os=0, gf=0,of=0;
+  for(const b of bots){ const a=accessAt(b.x,b.y); const s=b.baseSpeed;
+    if(b.type==='green'){ g++; ga+=a; gs+=s; gf+=b.fatigue; } else { o++; oa+=a; os+=s; of+=b.fatigue; }
+  }
+  ga=g?(ga/g):0; oa=o?(oa/o):0; gs=g?(gs/g):0; os=o?(os/o):0; gf=g?(gf/g):0; of=o?(of/o):0;
+  const distTxt=`${tilesDistMode}${tilesDistMode==='identity'?'':('('+tilesDistParam.toFixed(2)+')')}`;
+  const seekTxt=(greenProgram?'prog':(greenSeekMode==='hybrid'?`hybrid(${greenRepelThresh.toFixed(2)},${greenAttractThresh.toFixed(2)})`:(greenSeekMode==='repel_low'?`repel_low(${greenRepelThresh.toFixed(2)})`:`attract(${greenAttractThresh.toFixed(2)})`)));
+  const spx=speedMul.toFixed(0); const goalTxt=goalsEnabled?(goal?'ON':'ON (spawning)'):'off';
+  const stats=`Bots: ${bots.length} — G:${g} O:${o} | Avg access G/O: ${ga.toFixed(3)}/${oa.toFixed(3)} | Speed×: ${spx} | Seek: ${seekTxt} | Goal: ${goalTxt} | Fatigue G/O: ${gf.toFixed(1)}%/${of.toFixed(1)}%`;
+  document.getElementById('stats').textContent=stats;
+  const aLbl=document.getElementById('avoidLabel'); if(aLbl) aLbl.textContent=greenRepelThresh.toFixed(2);
+}
+
+// =========================
+// UI
+// =========================
+let running=true;
+function setupUI(){
+  const pauseBtn=document.getElementById('pauseBtn');
+  const resetBtn=document.getElementById('resetBtn');
+  const saveBtn=document.getElementById('saveBtn');
+  const followChk=document.getElementById('followChk');
+  const trailChk=document.getElementById('trailChk');
+  const scoresChk=document.getElementById('scoresChk');
+  const speedSelect=document.getElementById('speedSelect');
+  const avoidSlider=document.getElementById('avoidSlider');
+  const runDslBtn=document.getElementById('runDslBtn');
+  const clearDslBtn=document.getElementById('clearDslBtn');
+  const dslBox=document.getElementById('dslBox');
+
+  pauseBtn.onclick=()=>{ running=!running; pauseBtn.textContent=running?'⏸️ Pause':'▶ Resume'; };
+  resetBtn.onclick=()=> resetSim();
+  saveBtn.onclick=()=> saveTrails();
+  followChk.oninput=(e)=> follow=e.target.checked;
+  trailChk.oninput=(e)=> showTrails=e.target.checked;
+  scoresChk.oninput=(e)=> showScores=e.target.checked;
+
+  speedSelect.addEventListener('change', e=>{
+    speedMul=(parseInt(e.target.value,10)===10)?10:1;
+  });
+
+  if(avoidSlider){
+    avoidSlider.value=String(greenRepelThresh);
+    avoidSlider.addEventListener('input', e=>{
+      const v=parseFloat(e.target.value); greenRepelThresh=clamp(isNaN(v)?greenRepelThresh:v,0,1);
+      if(greenSeekMode==='attract') greenSeekMode='hybrid'; // ensure threshold is respected
+    });
+  }
+
+  runDslBtn.onclick=()=>{
+    const lines=(dslBox.value||'').split(/\n/);
+    for(const line of lines){ const s=line.trim(); if(s) runCommand(s); }
+  };
+  clearDslBtn.onclick=()=>{ dslBox.value=''; };
+}
+
+function resetSim(){
+  rebuildTileScores();
+  permanentTrails=createGraphics(TRAIL_RES,TRAIL_RES); permanentTrails.noSmooth(); permanentTrails.clear();
+  heatmapLayer=createGraphics(TRAIL_RES,TRAIL_RES); heatmapLayer.noSmooth(); heatmapLayer.clear();
+  obstacles.length=0;
+  bots.length=0;
+  bots.push(new Bot('green')); bots.push(new Bot('orange'));
+  const g0=bots.find(b=>b.type==='green'); if(g0){ cam.x=g0.x; cam.y=g0.y; }
+  if(goalsEnabled){ spawnGoalRandom(); }
+  goalLastSpawnMs=(typeof millis==='function')?millis():0;
+}
+
+// =========================
+// DSL
+// =========================
+function parseColorHex(s){ if(!s) return null; s=s.trim(); if(!/^#([0-9a-f]{6}|[0-9a-f]{8})$/i.test(s)) return null; return s; }
+
+function runCommand(s){
+  const raw=s; s=s.trim(); const t=s.split(/\s+/);
+
+  // Programs
+  if(t[0]==='prog' && t[1]==='green'){ if(t[2]==='begin'){ collectingProgram=true; progLines=[]; return;} if(t[2]==='clear'){ greenProgram=null; return;} if(t[2]==='show'){ console.log(greenProgram); return;} }
+  if(s==='end' && collectingProgram){ greenProgram=parseGreenProgram(progLines); collectingProgram=false; console.log('Program loaded:',greenProgram); return; }
+  if(collectingProgram){ progLines.push(raw); return; }
+
+  // Obstacles capture
+  if(t[0]==='obstacle' && t[1]==='begin'){ collectingObstacle=true; obstaclePts=[]; return; }
+  if(s==='end' && collectingObstacle){ if(obstaclePts.length>=3){ const poly={pts:obstaclePts.slice(), bbox:polyBBox(obstaclePts)}; obstacles.push(poly);} collectingObstacle=false; return; }
+  if(collectingObstacle){ const m=raw.trim().match(/^(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)$/); if(m){ obstaclePts.push({x:clamp(parseFloat(m[1]),0,WORLD_SIZE), y:clamp(parseFloat(m[2]),0,WORLD_SIZE)});} return; }
+  if(t[0]==='obstacle' && t[1]==='clear'){ obstacles.length=0; return; }
+  if(t[0]==='obstacle' && t[1]==='list'){ console.log('Obstacles:', obstacles); return; }
+  if(t[0]==='set' && t[1]==='obstacles.affect_access'){ const v=(t[2]||'off').toLowerCase(); obstacleAffectsAccess=(v==='on'); return; }
+
+  // Goals
+  if(t[0]==='goals'){ if(t[1]==='on'){ goalsEnabled=true; if(!goal) spawnGoalRandom(); return; } if(t[1]==='off'){ goalsEnabled=false; goal=null; return; } }
+  if(t[0]==='goal'){
+    if(t[1]==='spawn'){ spawnGoalRandom(); return; }
+    if(t[1]==='set'){ const x=parseFloat(t[2]), y=parseFloat(t[3]); if(Number.isFinite(x)&&Number.isFinite(y)) setGoal(x,y); return; }
+    if(t[1]==='interval'){ const v=parseFloat(t[2]); if(Number.isFinite(v)&&v>0) goalIntervalMs=(v<100? v*1000 : v); return; }
+    if(t[1]==='margin'){ const m=parseFloat(t[2]); if(Number.isFinite(m)) goalMargin=Math.max(0,m); return; }
+    if(t[1]==='size'){ const r=parseFloat(t[2]); if(Number.isFinite(r)){ if(!goal) goal={x:WORLD_SIZE/2,y:WORLD_SIZE/2,r}; else goal.r=r; } return; }
+    if(t[1]==='show'){ if(t[2]==='on') goalShow=true; else if(t[2]==='off') goalShow=false; return; }
+    if(t[1]==='weight'){ const who=t[2]; const w=parseFloat(t[3]); if((who==='green'||who==='orange')&&Number.isFinite(w)) goalWeight[who]=w; return; }
+    if(t[1]==='expire'){ if(t[2]==='on') goalExpireOnReach=true; else if(t[2]==='off') goalExpireOnReach=false; return; }
+    if(t[1]==='reach_radius'){ const r=parseFloat(t[2]); if(Number.isFinite(r)) goalReachRadius=r; return; }
+  }
+
+  // Benches & fatigue
+  if (t[0]==='benches'){
+    if (t[1]==='add'){ const x=parseFloat(t[2]), y=parseFloat(t[3]); if(Number.isFinite(x)&&Number.isFinite(y)) benches.push({x:clamp(x,0,WORLD_SIZE), y:clamp(y,0,WORLD_SIZE)}); return; }
+    if (t[1]==='random'){ const n=parseInt(t[2]||'1',10); const m=benchMargin; for(let i=0;i<Math.max(0,n);i++){ const x=m+Math.random()*(WORLD_SIZE-2*m); const y=m+Math.random()*(WORLD_SIZE-2*m); benches.push({x,y}); } return; }
+    if (t[1]==='clear'){ benches.length=0; return; }
+    if (t[1]==='show'){ if(t[2]==='on') benchesShow=true; else if(t[2]==='off') benchesShow=false; return; }
+    if (t[1]==='size'){ const r=parseFloat(t[2]); if(Number.isFinite(r)) benchRadius=r; return; }
+    if (t[1]==='margin'){ const r=parseFloat(t[2]); if(Number.isFinite(r)) benchMargin=r; return; }
+    if (t[1]==='list'){ console.log('benches', benches); return; }
+  }
+  if(t[0]==='set' && t[1]==='fatigue.rate'){ const who=t[2]; const v=parseFloat(t[3]); if((who==='green'||who==='orange')&&Number.isFinite(v)) fatigueRate[who]=Math.max(0,v); return; }
+  if(t[0]==='set' && t[1]==='rest.time'){ if(t[2]==='bench'){ const s=parseFloat(t[3]); if(Number.isFinite(s)) restBenchMs=(s<100? s*1000 : s); return; } if(t[2]==='field'){ const s=parseFloat(t[3]); if(Number.isFinite(s)) restFieldMs=(s<100? s*1000 : s); return; } }
+
+  // Bots
+  if(t[0]==='spawn' && (t[1]==='green'||t[1]==='orange')){ const n=parseInt(t[2]||'1',10); if(Number.isFinite(n)) for(let i=0;i<n;i++) bots.push(new Bot(t[1])); return; }
+  if(t[0]==='set' && (t[1]==='bots.green'||t[1]==='bots.orange')){ const want=parseInt(t[2]||'0',10); const type=t[1].split('.')[1]; const current=bots.filter(b=>b.type===type).length; if(want>current){ for(let i=0;i<want-current;i++) bots.push(new Bot(type)); } else if(want<current){ let remove=current-want; bots=bots.filter(b=> !(b.type===type && remove-->0)); } return; }
+  if(t[0]==='kill'){ if(t[1]==='all'){ bots.length=0; return;} if(t[1]==='green'){ bots=bots.filter(b=>b.type!=='green'); return;} if(t[1]==='orange'){ bots=bots.filter(b=>b.type!=='orange'); return;} }
+  if(t[0]==='teleport' && (t[1]==='green'||t[1]==='orange')){ const x=parseFloat(t[2]), y=parseFloat(t[3]); if(Number.isFinite(x)&&Number.isFinite(y)){ for(const b of bots) if(b.type===t[1]){ b.x=clamp(x,0,WORLD_SIZE); b.y=clamp(y,0,WORLD_SIZE); } } return; }
+  if(t[0]==='heading' && (t[1]==='green'||t[1]==='orange')){ const ang=parseFloat(t[2]); if(Number.isFinite(ang)) for(const b of bots) if(b.type===t[1]) b.h=ang; return; }
+  if(t[0]==='randomize' && t[1]==='heading' && (t[2]==='green'||t[2]==='orange')){ for(const b of bots) if(b.type===t[2]) b.h=Math.random()*Math.PI*2; return; }
+
+  // Trails & export
+  if(t[0]==='trails'){
+    if(t[1]==='clear'){ if(permanentTrails) permanentTrails.clear(); return; }
+    if(t[1]==='width'){ const w=parseFloat(t[2]); if(Number.isFinite(w)&&w>0) trailWidth=w; return; }
+    if(t[1]==='color'){ const who=t[2]; const col=parseColorHex(t[3]); if((who==='green'||who==='orange')&&col){ if(who==='green') trailColorGreen=col; else trailColorOrange=col; } return; }
+    if(t[1]==='save'){ saveTrails(); return; }
+    if(t[1]==='on'){ showTrails=true; return; }
+    if(t[1]==='off'){ showTrails=false; return; }
+  }
+
+  // Camera
+  if(t[0]==='camera'){
+    if(t.length===3 && Number.isFinite(parseFloat(t[1])) && Number.isFinite(parseFloat(t[2]))){ cam.x=clamp(parseFloat(t[1]),0,WORLD_SIZE); cam.y=clamp(parseFloat(t[2]),0,WORLD_SIZE); return; }
+    if(t[1]==='lock'){ if(t[2]==='on') camLock=true; else if(t[2]==='off') camLock=false; return; }
+    if(t[1]==='follow'){ follow=true; followTarget=t[2]||'green'; return; }
+    if(t[1]==='speed'){ const v=parseFloat(t[2]); if(Number.isFinite(v)) camSpeed=clamp(v,0.01,0.9); return; }
+  }
+  if(t[0]==='view.pad_tiles'){ const v=parseInt(t[1]||'1',10); if(Number.isFinite(v)&&v>=0) viewPadTiles=v; return; }
+
+  // World
+  if(t[0]==='set' && t[1]==='world.size'){ const v=parseInt(t[2]||'0',10); if(Number.isFinite(v)&&v>0) reinitWorldSize(v); return; }
+  if(t[0]==='regen' && t[1]==='tiles'){ rngSeed=Math.floor(Math.random()*1e9); rebuildTileScores(); return; }
+  if(t[0]==='set' && t[1]==='seed'){ const v=parseInt(t[2]||'0',10); if(Number.isFinite(v)){ rngSeed=v; rebuildTileScores(); } return; }
+  if(t[0]==='tiles.bias'){ if(t[1]==='high'){ tilesDistMode='ipow'; tilesDistParam=2.2; rebuildTileScores(); return;} if(t[1]==='low'){ tilesDistMode='pow'; tilesDistParam=2.2; rebuildTileScores(); return;} if(t[1]==='uniform'){ tilesDistMode='identity'; rebuildTileScores(); return;} }
+  if(t[0]==='set' && t[1]==='tiles.dist'){ const mode=(t[2]||'identity'); const param=parseFloat(t[3]||tilesDistParam); if(['identity','pow','ipow','extremes','middle'].includes(mode)){ tilesDistMode=mode; tilesDistParam=Number.isFinite(param)?param:tilesDistParam; rebuildTileScores(); } return; }
+  if(t[0]==='set' && t[1]==='tiles.palette'){ if(t[2]==='contrast'||t[2]==='default') tilesPalette=t[2]; return; }
+
+  // Edges
+  if(t[0]==='set' && t[1]==='edge.margin'){ const v=parseFloat(t[2]); if(Number.isFinite(v)) edgeMargin=Math.max(0,v); return; }
+  if(t[0]==='set' && t[1]==='edge.force'){ const v=parseFloat(t[2]); if(Number.isFinite(v)) edgeForce=Math.max(0,v); return; }
+  if(t[0]==='edge' && t[1]==='wrap'){ if(t[2]==='on') edgeWrap=true; else if(t[2]==='off') edgeWrap=false; return; }
+
+  // Time
+  if(t[0]==='pause'){ running=false; return; }
+  if(t[0]==='resume'){ running=true; return; }
+  if(t[0]==='step'){ const n=parseInt(t[1]||'1',10); if(Number.isFinite(n)&&n>0){ stepFramesToRun+=n; running=false; } return; }
+
+  // Debug
+  if(t[0]==='log' && t[1]==='bots'){ console.log(bots.map(b=>({type:b.type,x:+b.x.toFixed(1),y:+b.y.toFixed(1),h:+b.h.toFixed(2),fatigue:+b.fatigue.toFixed(1)}))); return; }
+  if(t[0]==='log' && t[1]==='access'){ const x=parseFloat(t[2]), y=parseFloat(t[3]); if(Number.isFinite(x)&&Number.isFinite(y)) console.log('access',x,y,accessAt(x,y)); return; }
+  if(t[0]==='heatmap'){ if(t[1]==='on') showHeatmap=true; else if(t[1]==='off') showHeatmap=false; return; }
+
+  console.log('Unknown command:', s);
+}
+
+// Goals helpers
+function setGoal(x,y){ goal={x:clamp(x,0,WORLD_SIZE), y:clamp(y,0,WORLD_SIZE), r:goalReachRadius||40}; }
+function spawnGoalRandom(){
+  const m=Math.max(0,goalMargin);
+  const x=m+Math.random()*(WORLD_SIZE-2*m);
+  const y=m+Math.random()*(WORLD_SIZE-2*m);
+  setGoal(x,y);
+  goalLastSpawnMs=(typeof millis==='function')?millis():0;
+}
+
+// Save trails
+function saveTrails(){ if(!permanentTrails) return; save(permanentTrails, `trails_${Date.now()}.png`); }
+
+</script>
+</body>
+</html>
