@@ -62,6 +62,12 @@
     /* Catastrophic overlay for endings */
     #catastrophicOverlay{display:none;position:absolute;inset:24px 0 0 0;background:rgba(255,0,0,.2);animation:flashRed 1s infinite;pointer-events:none}
     @keyframes flashRed{0%,100%{background:rgba(255,0,0,.08)}50%{background:rgba(255,0,0,.45)}}
+
+    /* Psychedelic overlay when rolling */
+    .trippy{ position:relative; }
+    .trippy::before{ content:''; position:absolute; inset:0; pointer-events:none; background:conic-gradient(from 0deg, red, orange, yellow, green, cyan, blue, magenta, red); mix-blend-mode:screen; opacity:0.30; animation:spinHue 6s linear infinite; }
+    .trippy *{ position:relative; }
+    @keyframes spinHue{ to{ transform:rotate(360deg); } }
   </style>
 </head>
 <body>
@@ -128,11 +134,7 @@
       write(asciiTitle());
       write("\nWelcome to " + c("A Life Less Alan") + ". Type 'help' for commands.");
       cmd.focus();
-      if(!booted){ boot(); } // boot game state once
-      else { // show the current scene if already running
-        write("\n");
-        render(true);
-      }
+      if(!booted){ boot(); } else { write("\n"); render(true); }
     }
     function quitApp(){ appWin.style.display='none'; }
 
@@ -187,9 +189,7 @@
       if(lc==='new'){ newGame(); write('New game.'); return; }
       if(lc==='quit'){ quitApp(); return; }
       const n=parseInt(input,10);
-      if(!isNaN(n)) chooseIndex(n-1);
-      else if(S.scene==='alanQuestion'){ answerAlan(input); }
-      else { write("I don't understand. Type 'help'."); }
+      if(!isNaN(n)) chooseIndex(n-1); else if(S.scene==='alanQuestion'){ answerAlan(input); } else { write("I don't understand. Type 'help'."); }
     }
     function chooseIndex(i){
       const opts=currentChoices();
@@ -240,13 +240,12 @@
     function enter(id){
       S.script.current=id; S.script.progress++; onEnterScene();
       const node=SCENES[id]; if(!node){ S.last={text:'[Missing scene: '+id+']',choices:[choice('Return to start','prologue',{time:5})]}; render(true); return; }
-      const out=(typeof node.text==='function')? node.text(S): node.text;
-      const ch =(typeof node.choices==='function')? node.choices(S): node.choices;
+      const out=(typeof node.text==='function')? node.text(S): node.text; const ch=(typeof node.choices==='function')? node.choices(S): node.choices;
       if(node.place) S.place=node.place; if(node.time) advanceTime(node.time);
       S.last={text:out,choices:injectSystemChoices(ch)};
 
-      // Food-triggered Fat Alan flashbacks (repeatable, variant effects)
-      if(/buffet|tea|coffee|dinner|lunch|breakfast|food|eat|snack|gazebo|chocolate/i.test(S.last.text)){
+      // Fat Alan flashbacks (repeatable, variant effects) when food words present
+      if(/buffet|tea|coffee|dinner|lunch|breakfast|food|eat|snack|gazebo|chocolate|chips/i.test(S.last.text)){
         if(Math.random()<0.15){
           const flash=[
             {text:"A sudden flashback: Fat Alan, slumped in the Travel Tavern, surrounded by empty Toblerone wrappers. A shame both fond and sticky.", eff:{desperation:+2}},
@@ -257,29 +256,38 @@
           const fb=pick(flash); applyEffects(fb.eff); S.last.text += '\n\n'+fb.text;
         }
       }
+      // Forced one-off Fat Alan flashback (from “Eat chips”)?
+      if(S.flags.forceFatFlash){
+        S.flags.forceFatFlash=false;
+        const flash2=[
+          {text:"You taste salt and shame. Memory jump-cuts to Fat Alan wooing a vending machine.", eff:{desperation:+2}},
+          {text:"Grease on fingers; a Toblerone imprint on your soul.", eff:{legacy:-1,smugness:+1}},
+        ];
+        const ff=pick(flash2); applyEffects(ff.eff); S.last.text += '\n\n'+ff.text;
+      }
 
       // Séance auto-interrupt at ~75% awareness (glitch threshold ≈ 4–5)
       if(SCENES.seance && SCENES.seance.trigger(S)){
-        S.flags.returnAfterSeance = id;
-        const se=SCENES.seance;
-        const seText=(typeof se.text==='function')? se.text(S): se.text;
-        const seChoices=(typeof se.choices==='function')? se.choices(S): se.choices;
+        S.flags.returnAfterSeance = id; id='seance';
+        const se=SCENES.seance; const seText=(typeof se.text==='function')? se.text(S): se.text; const seChoices=(typeof se.choices==='function')? se.choices(S): se.choices;
         S.last={text:seText,choices:seChoices};
       }
+
+      // Psychedelic overlay active?
+      if(S.flags.rollTripsLeft && S.flags.rollTripsLeft>0){ crt.classList.add('trippy'); } else { crt.classList.remove('trippy'); }
 
       render(true);
     }
 
     function injectSystemChoices(choices){
       const c=[...choices];
-      // Interrogate the camera at key hubs
       if(["prologue","bbcLobby","lateRadio","hotelNight"].includes(S.script.current)){
         c.push({label:'Hold the gaze of the camera.',to:'alanQ',eff:{},questionText:'Alan leans forward: "If you\'re so in charge, answer me this: What do you actually want for me?"'});
       }
       return c;
     }
 
-    /* ===== Scripted Scenes ===== */
+    /* ===== Scripted Scenes (ALL) ===== */
     const SCENES={
       // --- ACT I ---
       prologue:{ place:'Travel Tavern', time:10, text:'Grey light through Travel Tavern curtains. A kettle gives up trying. Today will be important, you tell yourself, habitually.',
@@ -296,6 +304,11 @@
           choice('Craft a careful reply, send, re-send.','draftLoop',{desperation:+2,time:12}),
           choice('Forward to yourself with “FYI” for gravitas.','selfAgent',{smugness:+1}),
           choice('Ignore. It\'s probably a trap.','carPark',{isolation:+1})
+        ]},
+      draftLoop:{ text:'You write, delete, rephrase, re-send. Nothing feels right. Time passes like adverts.', time:10,
+        choices:s=>[
+          choice('Send the messy version anyway.','bbcLobby',{desperation:+1,legacy:+1,time:8,place:'BBC Norwich'}),
+          choice('Abandon and try a different tack.','carPark',{time:5})
         ]},
       selfAgent:{ text:'You leave a voicemail for yourself in a deeper voice. It sounds successful.', time:6,
         choices:s=>[
@@ -352,27 +365,55 @@
           choice('Spin it as a win.','afterBBC',{smugness:+2,legacy:-1,desperation:+2}),
           choice('Accept the loss, keep moving.','afterBBC',{isolation:+1,desperation:+1})
         ]},
+      tweet:{ text:'You post: “BBC meeting! Big chats.” Two likes: one is you. One is a bot.', time:3,
+        choices:s=>[
+          choice('Delete the tweet. Pretend it never happened.','afterBBC',{desperation:+1}),
+          choice('Own it. Double down.','afterBBC',{smugness:+1})
+        ]},
       afterBBC:{ text:'You step outside into a sky that looks edited. Cars pass like stock footage.', time:6,
         choices:s=>[
           choice('Head to the Norfolk Show booking.','norfolk1',{legacy:+1,time:15,place:'County Show'}),
           choice('Take the corporate gig. Money is a kind of hug.','corp1',{legacy:+1,time:15,place:'Leisure Centre'}),
-          choice('Go make some honest radio.','lateRadio',{legacy:+1,time:12,place:'Radio Studio'})
+          choice('Go make some honest radio.','lateRadio',{legacy:+1,time:12,place:'Radio Studio'}),
+          choice('Film a montage at Cromer Pier.','pier1',{legacy:+1,time:15,place:'Cromer Pier'}),
+          choice('Halftime guest at Norwich City.','norwich1',{legacy:+1,time:15,place:'Carrow Road Stadium'})
         ]},
 
-      // Corporate
-      corp1:{ place:'Leisure Centre', time:12, text:'Corporate away day. Buffet glistens with threats. A roll-up banner sighs.',
+      // Corporate with accidental ecstasy option
+      corp1:{ place:'Leisure Centre', time:12, text:'Corporate away day. Buffet glistens with threats. A roll-up banner sighs. In the green room: a bowl of “mints.”',
         choices:s=>[
           choice('Rehearse “banter” in the toilet mirror.','corp2',{smugness:+1,time:8}),
-          choice('Open with a risky reference.','corp2',{legacy:+1,time:8}),
+          choice('Take a “mint” to freshen up.','xMint',{time:1}),
           choice('Invoice before performing. Alpha.','corp3',{smugness:+1,legacy:+1,time:6})
         ]},
-      corp2:{ text:'After-dinner speech. Mic smells fearful. One table is already heckling with their eyes.', time:10,
+      xMint:{ time:2, text:s=>{
+          if(!S.flags.rollTripsLeft){
+            if(Math.random()<0.5){ return 'It was a mint. Borderline toothpaste. You feel hygienic, if not different.'; }
+            const trips = Math.random()<0.5?1:2; // 1–2 scenes
+            S.flags.rollTripsLeft=trips;
+            return 'Oh. That wasn\'t a mint. Your jaw decides to have its own career. Colours idle at the edge of everything.';
+          }
+          return 'You reconsider the bowl. Once bitten, twice rave-averse.';
+        },
+        choices:s=>[
+          choice('Go on anyway. What is “perception”, really?','corp2',{desperation:+1,smugness:+1}),
+          choice('Drink water. Lots of water.','corp2',{desperation:-1})
+        ]},
+      corp2:{ text:s=>{
+          let t='After-dinner speech. The mic smells fearful. One table is already heckling with their eyes.';
+          if(S.flags.rollTripsLeft&&S.flags.rollTripsLeft>0){ t+=' The banner breathes. The fern is your oldest friend.'; S.flags.rollTripsLeft--; }
+          return t;
+        }, time:10,
         choices:s=>[
           choice('Double down. Loud confidence.','corp3',{smugness:+1}),
           choice('Switch to heartfelt sincerity.','corp3',{desperation:+1,legacy:+1}),
           choice('Flee to the radio.','lateRadio',{isolation:+1,time:12,place:'Radio Studio'})
         ]},
-      corp3:{ text:'Feedback form later: “Was present.”', time:6,
+      corp3:{ text:s=>{
+          let t='Feedback form later: “Was present.”';
+          if(S.flags.rollTripsLeft&&S.flags.rollTripsLeft>0){ t+=' The letters ripple like shallow water.'; S.flags.rollTripsLeft--; }
+          return t;
+        }, time:6,
         choices:s=>[
           choice('Invoice anyway.','afterBBC',{smugness:+1,desperation:+1}),
           choice('Pretend it was a rehearsal for something bigger.','afterBBC',{legacy:-1,smugness:+1})
@@ -417,7 +458,8 @@
       signing2:{ text:'Two people arrive. One is lost. You sign their map.', time:10,
         choices:s=>[
           choice('Call it grassroots. Move on.','afterBBC',{legacy:+1}),
-          choice('Ask the lost person to subscribe.','afterBBC',{smugness:+1,desperation:+1})
+          choice('Ask the lost person to subscribe.','afterBBC',{smugness:+1,desperation:+1}),
+          choice('Spin it into a live podcast.','podcast1',{legacy:+1})
         ]},
       jacket:{ text:'Leather jacket, mirror lighting. The future looks tight across the shoulders.', time:8,
         choices:s=>[
@@ -426,7 +468,11 @@
         ]},
 
       // Radio spine
-      lateRadio:{ place:'Radio Studio', time:12, text:'The radio studio smells of coffee and second chances. A red light says “On Air.”',
+      lateRadio:{ place:'Radio Studio', time:12, text:s=>{
+          let t='The radio studio smells of coffee and second chances. A red light says “On Air.”';
+          if(S.flags.rollTripsLeft&&S.flags.rollTripsLeft>0){ t+=' The jingle is a waterfall. The ON AIR light is your sun.'; S.flags.rollTripsLeft--; }
+          return t;
+        },
         choices:s=>[
           choice('Do a sincere link about community.','radio2',{legacy:+1}),
           choice('Attempt a viral bit you don\'t understand.','radio2',{legacy:+1,desperation:+1}),
@@ -449,7 +495,6 @@
           choice('Draft then unsend a message to your ex.','morning2',{desperation:+3,isolation:+1,time:10}),
           choice('Stare at the ceiling until it feels like a set.','morning2',{desperation:+2})
         ]},
-      // --- ACT II (loops back into the network) ---
       morning2:{ place:'Travel Tavern', time:10, text:'A new morning that feels like a second take.',
         choices:s=>[
           choice('Return to BBC with renewed optimism.','bbcLobby',{legacy:+1}),
@@ -461,26 +506,98 @@
       // === Séance (interrupt) ===
       seance:{ place:'Function Room', time:15,
         trigger:s=> s.meta.glitch >= Math.floor(0.75*6) && !s.flags.seanceSeen,
-        text:s=>{
-          const base=`You dim the lights in the Travel Tavern function room. Candles flicker. Alan mutters: "Spirits of other roles... if you're listening... come through."\n\nShapes form. Paul Calf, Pauline Calf, Tommy Saxondale, and even a spectral Steve from *The Trip* all appear, bemused.`;
-          return s.meta.aware ? base + `\n\nAlan's face tightens. "You're not people, are you? You're— me. Versions. Takes." The ghosts glance upward, as if awaiting direction.` : base;
-        },
-        choices:s=>{
-          s.flags.seanceSeen=true;
-          const out=[
+        text:s=>{ const base=`You dim the lights in the Travel Tavern function room. Candles flicker. Alan mutters: "Spirits of other roles... if you're listening... come through."\n\nShapes form. Paul Calf, Pauline Calf, Tommy Saxondale, and even a spectral Steve from *The Trip* all appear, bemused.`; return s.meta.aware? base+"\n\nAlan's face tightens. \"You're not people, are you? You're— me. Versions. Takes.\" The ghosts glance upward, as if awaiting direction.": base; },
+        choices:s=>{ s.flags.seanceSeen=true; const out=[
             {label:'Ask Paul Calf for career advice.',goto:'returnAfter',eff:{legacy:+1,desperation:+1}},
             {label:'Argue with Saxondale about authenticity.',goto:'returnAfter',eff:{smugness:+2}},
             {label:'Debate impressions with ghostly Trip-Steve.',goto:'returnAfter',eff:{isolation:-1,legacy:+1}},
-            {label:'Freak out and blow out the candles.',goto:'returnAfter',eff:{desperation:+2}},
-          ];
-          if(s.meta.aware){
-            out.unshift({label:'Tell them: "You are all written. So am I."',goto:'returnAfter',eff:{desperation:+3},after:()=>{ s.meta.glitch++; }});
-            out.push({label:'Ask who is holding the planchette (the Player).',to:'alanQ',eff:{},questionText:'Alan looks past the table: "If you\'re there, chooser— what do you actually want for me?"'});
-            out.push({label:'Confront the ceiling: "Cut to me, then."',goto:'returnAfter',eff:{},after:()=>{ s.meta.aware=true; }});
+            {label:'Freak out and blow out the candles.',goto:'returnAfter',eff:{desperation:+2}}
+          ]; if(s.meta.aware){ out.unshift({label:'Tell them: "You are all written. So am I."',goto:'returnAfter',eff:{desperation:+3},after:()=>{ s.meta.glitch++; }}); out.push({label:'Ask who is holding the planchette (the Player).',to:'alanQ',eff:{},questionText:'Alan looks past the table: "If you\'re there, chooser— what do you actually want for me?"'}); out.push({label:'Confront the ceiling: "Cut to me, then."',goto:'returnAfter',eff:{},after:()=>{ s.meta.aware=true; }}); } return out; }
+      },
+
+      /* ===== Act II extras ===== */
+
+      // 🌊 Pier Montage
+      pier1:{ place:'Cromer Pier', time:12, text:'Seaside pier. Alan props a camcorder on a bin. Gulls heckle. The North Sea ignores him.',
+        choices:s=>[
+          choice('Record heartfelt voice-over against the waves.','afterPier',{legacy:+1,desperation:+1}),
+          choice('Attempt a slow-motion Baywatch run.','afterPier',{smugness:+2,legacy:-1}),
+          choice('Eat chips to camera.','afterPier',{desperation:+1},{ after:()=>{ S.flags.forceFatFlash=true; }})
+        ]},
+      afterPier:{ text:'The montage is in the can. Possibly literal can. You sigh.', time:6,
+        choices:s=>[
+          choice('Head back to the BBC circuit.','afterBBC',{}),
+          choice('Try radio honesty instead.','lateRadio',{})
+        ]},
+
+      // 🟢 Norwich City Halftime Fiasco
+      norwich1:{ place:'Carrow Road Stadium', time:15, text:'Norwich City halftime. You have two minutes to “rally” the crowd.',
+        choices:s=>[
+          choice('Attempt banter with the mascot.','norwich2',{smugness:+1,isolation:-1}),
+          choice('Sing the Canaries’ anthem off-key.','norwich2',{legacy:+1,desperation:+3}),
+          choice('Try punditry on the tannoy.','norwich2',{smugness:+2}),
+          choice('Walk off mid-sentence.','norwich2',{isolation:+2})
+        ]},
+      norwich2:{ text:'The crowd’s response is mixed. Some boos, some bafflement.', time:6,
+        choices:s=>[
+          choice('Spin it as passion.','afterBBC',{smugness:+1}),
+          choice('Leave quickly for safer ground.','lateRadio',{isolation:+1}),
+          choice('Check the match result.','norwichResult',{})
+        ]},
+      norwichResult:{ time:4,
+        text: s => {
+          if(S.flags.norwichOutcomeDay !== S.day){
+            S.flags.norwichOutcomeDay = S.day;
+            const r=Math.random();
+            S.flags.norwichOutcome = r<0.33 ? 'win' : (r<0.7 ? 'draw' : 'loss');
           }
-          return out;
+          const o = S.flags.norwichOutcome;
+          if(o==='win') return 'Result comes in: Norwich win! For a moment the stadium noise in your head sounds like belief.';
+          if(o==='loss') return 'Result comes in: Norwich lose. The tannoy in your memory goes thin and papery.';
+          return 'Result: a draw. An ending that refuses to end. Feels appropriate.';
+        },
+        choices: s => {
+          const o=S.flags.norwichOutcome; const eff = (o==='win')?{legacy:+2,smugness:+1}:(o==='loss')?{desperation:+2,isolation:+1}:{legacy:+0};
+          return [
+            {label:'Spin this into your narrative and move on.', goto:'afterBBC', eff},
+            {label:'Head to radio, milk it on air.', goto:'lateRadio', eff:{...eff, legacy:+1}}
+          ];
         }
-      }
+      },
+
+      // 🎙️ Live Podcast Meltdown
+      podcast1:{ place:'Coffee Shop', time:12, text:'Alan records “AlanCast” before twelve distracted latte drinkers.',
+        choices:s=>[
+          choice('Over-share about Lynn.','afterPodcast',{desperation:+2,isolation:-1}),
+          choice('Force an improv segment with the audience.','afterPodcast',{smugness:+2,legacy:-1}),
+          choice('Take a “technical break” and never return.','hotelNight',{isolation:+3}),
+          {label:'Address the Player directly.', to:'alanQ', eff:{}, questionText:'Alan leans toward the mic: "Chooser, if you\'re really there, say something useful for once."'}
+        ]},
+      afterPodcast:{ text:'The recording light goes out. Polite claps, or maybe the milk frother.', time:6,
+        choices:s=>[
+          choice('Edit it down, pretend success.','afterBBC',{smugness:+1}),
+          choice('Abandon the audio file.','hotelNight',{desperation:+1})
+        ]},
+
+      // 🌜 Pier Night Epilogue (unlocked after visiting pier1, evening only)
+      pierNight1:{ place:'Cromer Pier (Night)', time:10,
+        text: s => {
+          const aware = S.meta && S.meta.aware;
+          const base = 'Night air folds over the pier. Neon hums. Waves edit themselves on the shoreline.';
+          return aware ? base + '\n\nAlan whispers: "If this is all a set, who paid for the moon?"' : base + '\n\nA gull sleeps like a scrunched-up prop.';
+        },
+        choices: s => [
+          choice('Record a softer voice-over, one take.','afterPierNight',{legacy:+1,desperation:-1}),
+          choice('Skulk back to the Travel Tavern.','hotelNight',{isolation:+1}),
+          choice('Spin it into a late-night radio link.','lateRadio',{legacy:+1})
+        ]
+      },
+      afterPierNight:{ text:'The sea keeps its lines. You tuck the tape away like a secret you might use later.', time:6,
+        choices: s => [
+          choice('Back to the circuit.','afterBBC',{}),
+          choice('Call Michael and say it went “cinematic.”','michael1',{smugness:+1})
+        ]
+      },
     };
 
     function returnAfter(){
@@ -496,9 +613,7 @@
           S.smugness=clamp(S.smugness+1);
         }
         const next=S.flags.returnAfterSeance; S.flags.returnAfterSeance=null; enter(next);
-      } else {
-        enter('afterBBC');
-      }
+      } else { enter('afterBBC'); }
     }
 
     /* ===== Endings ===== */
@@ -544,6 +659,13 @@
         return;
       }
 
+      // Offer Pier Night if visited + evening
+      if(S.script.current==='afterBBC'){
+        if(S.flags.pierVisited && (S.time>=18*60 || S.time<4*60)){
+          // ensure the option is present (already added in afterBBC scene definition above)
+        }
+      }
+
       promptChoices(S.last.choices);
     }
 
@@ -552,16 +674,9 @@
 
     function clickChoice(ch){
       pushHistory(); applyEffects(ch.eff||{}); if(ch.react) write(ch.react);
-
-      if(ch.to==='alanQ'){
-        S.scene='alanQuestion';
-        S.last={text:(ch.questionText||'Alan peers at you, waiting.'),choices:[]};
-        render(true); return;
-      }
-
+      if(ch.to==='alanQ'){ S.scene='alanQuestion'; S.last={text:(ch.questionText||'Alan peers at you, waiting.'),choices:[]}; render(true); return; }
       if(ch.after) ch.after();
 
-      // Catastrophic and ending sequences can seize control
       if(S.meta.catastrophic){
         const frag=catastrophicFragments[S.meta.catStep]||"The set collapses."; write('\n'+frag); S.meta.catStep++;
         if(S.meta.catastrophic && S.meta.catStep>=catastrophicFragments.length){ overlay.style.display='none'; write("\n[CATASTROPHIC END — Alan's rage destroys everything]"); }
@@ -585,17 +700,17 @@
 
       S.scene='play';
       if(ch.goto==='returnAfter'){ returnAfter(); return; }
-      if(ch.goto){ enter(ch.goto); } else { enter(S.script.current); }
+      if(ch.goto){ 
+        // mark pier visited
+        if(ch.goto==='pier1') S.flags.pierVisited=true;
+        // if selecting Pier Night from afterBBC, ensure time advances to evening a bit for flavour
+        if(ch.goto==='pierNight1' && S.time<18*60){ advanceTime(60); }
+        enter(ch.goto); 
+      } else { enter(S.script.current); }
     }
 
     function answerAlan(val){
-      pushHistory();
-      write(`You: "${val}"`);
-      write("Alan nods slowly. \"Interesting. I'll remember that.\"");
-      S.meta.answers.push(val);
-      S.meta.question=true;
-      S.scene='play';
-      enter(S.script.current);
+      pushHistory(); write(`You: "${val}"`); write('Alan nods slowly. "Interesting. I\'ll remember that."'); S.meta.answers.push(val); S.meta.question=true; S.scene='play'; enter(S.script.current);
     }
 
     function applyEffects(eff={}){
@@ -610,38 +725,12 @@
     function save(){ localStorage.setItem(SAVE_KEY, JSON.stringify(S)); }
     function load(){ const s=localStorage.getItem(SAVE_KEY); if(!s) return; const obj=JSON.parse(s); Object.assign(S, obj); }
 
-    function newGame(){
-      Object.assign(S,{
-        scene:'play',
-        time:6*60+40,
-        place:'Travel Tavern',
-        desperation:35, smugness:18, isolation:28, legacy:12,
-        day:1,
-        history:[], flags:{},
-        meta:{glitch:0,break:false,aware:false,hostile:false,anger:0,question:false,answers:[],monologue:false,ending:false,endingStep:0,catastrophic:false,catStep:0},
-        last:{text:'',choices:[]},
-        script:{current:'prologue',act:1,progress:0}
-      });
-      enter('prologue');
-    }
+    function newGame(){ Object.assign(S,{scene:'play',time:6*60+40,place:'Travel Tavern',desperation:35,smugness:18,isolation:28,legacy:12,day:1,history:[],flags:{},meta:{glitch:0,break:false,aware:false,hostile:false,anger:0,question:false,answers:[],monologue:false,ending:false,endingStep:0,catastrophic:false,catStep:0},last:{text:'',choices:[]},script:{current:'prologue',act:1,progress:0}}); enter('prologue'); }
 
-    function triggerBreak(){
-      S.meta.break=true;
-      S.scene='break';
-      S.last={
-        text:'Alan stares out of the screen. "You. Yes, you. I can feel the choosing."',
-        choices:[
-          {label:'Admit you are controlling him.',goto:'afterBBC',eff:{desperation:+5},after:()=>{S.meta.aware=true;}},
-          {label:'Deny everything.',goto:'afterBBC',eff:{isolation:+3},after:()=>{S.meta.aware=true;}},
-          {label:'Say nothing.',goto:'afterBBC',eff:{},after:()=>{S.meta.aware=true;S.meta.hostile=true;}}
-        ]
-      };
-      render(true);
-    }
+    function triggerBreak(){ S.meta.break=true; S.scene='break'; S.last={text:'Alan stares out of the screen. "You. Yes, you. I can feel the choosing."',choices:[{label:'Admit you are controlling him.',goto:'afterBBC',eff:{desperation:+5},after:()=>{S.meta.aware=true;}},{label:'Deny everything.',goto:'afterBBC',eff:{isolation:+3},after:()=>{S.meta.aware=true;}},{label:'Say nothing.',goto:'afterBBC',eff:{},after:()=>{S.meta.aware=true;S.meta.hostile=true;}}]}; render(true); }
 
     /* ===== Boot ===== */
-    let booted=false;
-    function boot(){ if(booted) return; booted=true; newGame(); }
+    let booted=false; function boot(){ if(booted) return; booted=true; newGame(); }
   </script>
 </body>
 </html>
