@@ -1,0 +1,786 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Terra Nova: A Bleak March South</title>
+<style>
+  :root{
+    --bg:#0a0f13;          /* abyssal sky */
+    --ink:#cfd8df;         /* pale ink */
+    --ink-dim:#9aa6ad;
+    --accent:#7ea6c9;      /* glacial blue */
+    --danger:#c66a6a;      /* frostbite / risk */
+    --gold:#d7c9a1;        /* muted sun */
+    --panel:#0f151aee;     /* translucent panel */
+    --card:#111820f2;
+    --snow:#e9f2f9;
+    --ok:#9fc59f;
+  }
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--ink); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+    letter-spacing:.2px;
+  }
+  #wrap{position:fixed; inset:0; display:grid; grid-template-rows: 1fr auto; overflow:hidden}
+  canvas{display:block; width:100%; height:100%}
+  /* HUD */
+  #hud{position:fixed; inset:12px auto auto 12px; z-index:20; display:flex; gap:10px; flex-wrap:wrap; pointer-events:none}
+  .meter{background:#0e141a99; border:1px solid #16202a; border-radius:10px; padding:8px 10px; min-width:180px; box-shadow:0 0 18px #0008 inset; pointer-events:auto}
+  .bar{height:8px; background:#0c1116; border:1px solid #1b2730; border-radius:6px; overflow:hidden; margin-top:6px}
+  .fill{height:100%; width:40%; background:linear-gradient(to right, #5d7b8f, #a7c2d6)}
+  .meter h4{margin:0; font-size:12px; color:var(--ink-dim); font-weight:600; letter-spacing:.4px}
+  .meter .val{font-variant-numeric: tabular-nums; font-weight:700}
+  #topbar{position:fixed; inset:12px 12px auto auto; display:flex; gap:8px; z-index:30}
+  .btn{
+    pointer-events:auto; border:1px solid #1a2630; background:linear-gradient(#131a22,#0c1218);
+    color:var(--ink); padding:8px 12px; border-radius:12px; font-weight:600; font-size:13px;
+    box-shadow:0 2px 12px #0007, inset 0 1px 0 #1f2a36; cursor:pointer; user-select:none;
+  }
+  .btn:focus{outline:2px solid var(--accent)}
+  .btn.toggled{border-color:#2b4050; background:linear-gradient(#0f1921,#0a1218); color:var(--accent)}
+  #title{position:fixed; left:50%; transform:translateX(-50%); top:12px; z-index:25; letter-spacing:2px; font-weight:800; color:#dbe6ee; text-shadow:0 1px 0 #000, 0 0 30px #5ea2ff22}
+  #title small{display:block; margin-top:2px; color:var(--ink-dim); font-weight:600; letter-spacing:1px}
+  /* Panels */
+  #log, #choices{
+    position:fixed; bottom:12px; z-index:25; width:min(46vw,720px); background:var(--panel);
+    border:1px solid #17222b; box-shadow:0 10px 30px #000a,inset 0 1px 0 #18222b; border-radius:16px; padding:14px 16px;
+    backdrop-filter: blur(3px);
+  }
+  #log{left:12px}
+  #choices{right:12px}
+  #journal{height:120px; overflow:auto; font-size:14px; line-height:1.45}
+  #journal::-webkit-scrollbar{height:8px;width:8px} #journal::-webkit-scrollbar-thumb{background:#253341;border-radius:8px}
+  #choices h3{margin:0 0 8px 0; font-size:13px; color:var(--ink-dim); letter-spacing:.6px}
+  .choice{display:block; width:100%; text-align:left; margin:8px 0; background:var(--card); border:1px solid #1b2630; padding:10px 12px; border-radius:12px; cursor:pointer; font-weight:700}
+  .choice:hover, .choice:focus{outline:2px solid #294152}
+  .choice .meta{display:block; font-weight:600; font-size:12px; color:var(--ink-dim)}
+  .muted{color:var(--ink-dim)}
+  .danger{color:var(--danger)}
+  .ok{color:var(--ok)}
+  /* Overlay messages */
+  #centerMsg{
+    position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:40; pointer-events:none; text-align:center;
+    font-size:22px; line-height:1.2; color:#e6eef6; text-shadow:0 2px 18px #000b, 0 0 60px #5ea2ff22;
+  }
+  /* Accessibility hint bubble */
+  #hint{
+    position:fixed; right:12px; top:60px; z-index:26; background:var(--panel); border:1px solid #17222b; border-radius:12px; padding:10px 12px; max-width:360px;
+    box-shadow:0 10px 30px #000a; font-size:13px; color:var(--ink-dim)
+  }
+  a,button{transition:filter .15s ease, transform .06s ease}
+  .btn:active,.choice:active{transform:translateY(1px)}
+  /* Vignette overlay for bleakness */
+  #vignette{position:fixed; inset:0; pointer-events:none; z-index:10; background:radial-gradient(ellipse at center, transparent 50%, #000a 85%, #000d 100%)}
+  /* Mobile tweaks */
+  @media (max-width: 900px){
+    #log,#choices{width:calc(100vw - 24px); left:12px; right:12px}
+    #choices{bottom: calc(12px + 160px)}
+    #hud{inset:8px auto auto 8px}
+    #topbar{inset:8px 8px auto auto}
+    #title{top:8px}
+    #hint{display:none}
+  }
+</style>
+</head>
+<body>
+<div id="wrap" aria-label="Antarctic march game">
+  <canvas id="c" role="img" aria-label="Bleak Antarctic landscape rendering"></canvas>
+  <div id="vignette"></div>
+
+  <div id="title" aria-live="polite">
+    TERRA NOVA — SCOTT'S MARCH SOUTH
+    <small>“Great God! This is an awful place…”</small>
+  </div>
+
+  <div id="topbar" role="toolbar" aria-label="Game controls">
+    <button id="btnPause" class="btn" aria-pressed="false" title="Pause (P)">Pause</button>
+    <button id="btnHelp" class="btn" title="Help / Controls (H)">Help</button>
+    <button id="btnReduce" class="btn" aria-pressed="false" title="Reduce Motion (R)">Reduce Motion</button>
+    <button id="btnAlt" class="btn" aria-pressed="false" title="Toggle very rare alternate history survival (M)">Alt-history</button>
+  </div>
+
+  <div id="hud" aria-hidden="false">
+    <div class="meter" aria-label="Rations">
+      <h4>Rations <span class="val" id="valR">—</span></h4>
+      <div class="bar"><div id="barR" class="fill"></div></div>
+    </div>
+    <div class="meter" aria-label="Warmth">
+      <h4>Warmth <span class="val" id="valW">—</span></h4>
+      <div class="bar"><div id="barW" class="fill"></div></div>
+    </div>
+    <div class="meter" aria-label="Health">
+      <h4>Health <span class="val" id="valH">—</span></h4>
+      <div class="bar"><div id="barH" class="fill"></div></div>
+    </div>
+    <div class="meter" aria-label="Morale">
+      <h4>Morale <span class="val" id="valM">—</span></h4>
+      <div class="bar"><div id="barM" class="fill"></div></div>
+    </div>
+    <div class="meter" aria-label="Distance">
+      <h4>Latitude / Progress <span class="val" id="valD">—</span></h4>
+      <div class="bar"><div id="barD" class="fill"></div></div>
+    </div>
+  </div>
+
+  <div id="log" aria-live="polite" aria-label="Journal log">
+    <div id="journal"></div>
+  </div>
+
+  <div id="choices" aria-label="Choices">
+    <h3>Decision</h3>
+    <div id="choiceList"></div>
+  </div>
+
+  <div id="hint">
+    One-hand friendly: <b>Space</b> march/halt • <b>Enter</b> choose • <b>1–4</b> pick options • Click &amp; hold anywhere to march.<br>
+    <span class="muted">“Historical mode” is intentionally bleak. Toggle <b>Alt-history</b> if you want a faint chance of rescue.</span>
+  </div>
+
+  <div id="centerMsg" aria-live="assertive"></div>
+</div>
+
+<script>
+(()=>{
+  /* ======= Utility ======= */
+  const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
+  const lerp=(a,b,t)=>a+(b-a)*t;
+  const rand=(a=1,b=0)=>Math.random()*(a-b)+b;
+  const rint=(a,b)=>Math.floor(rand(a+1,b));
+  const ease=(t)=>t<.5? 2*t*t : -1+(4-2*t)*t;
+  const TAU=Math.PI*2;
+
+  /* ======= Canvas Setup ======= */
+  const canvas=document.getElementById('c');
+  const ctx=canvas.getContext('2d', { alpha:false, desynchronized:true });
+  let W=0,H=0, DPR=1;
+  function resize(){
+    DPR = Math.min(window.devicePixelRatio||1, 2);
+    W = canvas.width = Math.floor(window.innerWidth*DPR);
+    H = canvas.height= Math.floor(window.innerHeight*DPR);
+    canvas.style.width=window.innerWidth+"px";
+    canvas.style.height=window.innerHeight+"px";
+  }
+  window.addEventListener('resize', resize, {passive:true});
+  resize();
+
+  /* ======= Game State ======= */
+  const state = {
+    paused:false,
+    reduceMotion:false,
+    allowAlt:false, // rare survival
+    marching:false,
+    day:0,           // days since Cape Evans
+    tod:12,          // time of day 0-24
+    latProgress:0,   // 0 start, 1 South Pole, 2 hoped return, >2 improbable
+    journal:[],
+    choiceQueue:[],
+    currentChoices:null,
+    choiceAutoFocus:0,
+    rngSeed: Date.now()%100000|0,
+    crew:[ // Five silhouettes: Scott, Wilson, Oates, Bowers, Evans
+      {name:"Scott", alive:true},
+      {name:"Wilson", alive:true},
+      {name:"Oates", alive:true},
+      {name:"Bowers", alive:true},
+      {name:"Evans", alive:true},
+    ],
+    meters:{
+      rations:100, warmth:100, health:100, morale:100
+    },
+    weather:{
+      temp:-20, wind:15, vis:1, storm:0, cloud:0.5, gustPhase:0
+    },
+    terrain:{
+      slope:0.01, sastrugi:0.4, crevasse:0
+    },
+    art:{
+      footprints:[],
+      snow:[],
+      grainT:0
+    },
+    eventsFired:new Set(),
+    ended:false,
+    endingText:""
+  };
+
+  /* Simple mulberry32 PRNG for repeatability across a session */
+  function seeded(){
+    let t = state.rngSeed += 0x6D2B79F5;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  }
+  const srand=(a=1,b=0)=>seeded()*(a-b)+b;
+
+  /* ======= UI Elements ======= */
+  const el = {
+    barR:document.getElementById('barR'), valR:document.getElementById('valR'),
+    barW:document.getElementById('barW'), valW:document.getElementById('valW'),
+    barH:document.getElementById('barH'), valH:document.getElementById('valH'),
+    barM:document.getElementById('barM'), valM:document.getElementById('valM'),
+    barD:document.getElementById('barD'), valD:document.getElementById('valD'),
+    journal:document.getElementById('journal'),
+    centerMsg:document.getElementById('centerMsg'),
+    choiceList:document.getElementById('choiceList'),
+    btnPause:document.getElementById('btnPause'),
+    btnHelp:document.getElementById('btnHelp'),
+    btnReduce:document.getElementById('btnReduce'),
+    btnAlt:document.getElementById('btnAlt'),
+  };
+
+  /* ======= Journal ======= */
+  function addEntry(txt, cls=""){
+    const time = `Day ${state.day}, ${Math.round(state.tod)}h`;
+    const p = document.createElement('p');
+    p.innerHTML = `<span class="muted">${time} —</span> ${txt}`;
+    if(cls) p.classList.add(cls);
+    el.journal.appendChild(p);
+    el.journal.scrollTop = el.journal.scrollHeight;
+    state.journal.push({time, txt});
+  }
+  function centerFlash(txt, ms=1800){
+    el.centerMsg.textContent = txt;
+    setTimeout(()=>{ if(el.centerMsg.textContent===txt) el.centerMsg.textContent=""; }, ms);
+  }
+
+  /* ======= Choices ======= */
+  function setChoices(title, arr){
+    state.currentChoices = {title, arr};
+    renderChoices();
+  }
+  function clearChoices(){
+    state.currentChoices = null;
+    el.choiceList.innerHTML = "";
+  }
+  function renderChoices(){
+    const ctn = el.choiceList;
+    ctn.innerHTML = "";
+    const h = document.querySelector('#choices h3');
+    h.textContent = state.currentChoices ? state.currentChoices.title : "Decision";
+    if(!state.currentChoices) return;
+    state.currentChoices.arr.forEach((ch, i)=>{
+      const b = document.createElement('button');
+      b.className = 'choice'; b.setAttribute('data-i', i);
+      b.innerHTML = `<span class="meta">${i+1} — ${ch.meta||""}</span>${ch.text}`;
+      b.onclick = ()=>{ ch.onpick && ch.onpick(); clearChoices(); };
+      b.onkeyup = (ev)=>{ if(ev.key==='Enter') { b.click(); } };
+      ctn.appendChild(b);
+    });
+    // Autofocus first
+    const first = ctn.querySelector('.choice');
+    if(first) first.focus({preventScroll:true});
+  }
+
+  /* ======= Input ======= */
+  document.addEventListener('keydown', (e)=>{
+    if(e.repeat) return;
+    if(e.key===' '){ e.preventDefault(); state.marching = !state.marching; centerFlash(state.marching? "March." : "Halt."); }
+    else if(e.key==='Enter'){
+      // pick highlighted choice if any
+      const f = document.activeElement;
+      if(f && f.classList.contains('choice')) f.click();
+    } else if(/[1-4]/.test(e.key)){
+      const idx = parseInt(e.key,10)-1;
+      const btn = el.choiceList.querySelectorAll('.choice')[idx];
+      if(btn) btn.click();
+    } else if(e.key==='p' || e.key==='P'){ togglePause(); }
+    else if(e.key==='h' || e.key==='H'){ help(); }
+    else if(e.key==='r' || e.key==='R'){ toggleReduce(); }
+    else if(e.key==='m' || e.key==='M'){ toggleAlt(); }
+  });
+  // Mouse hold to march
+  let mouseDown=false;
+  window.addEventListener('mousedown', ()=>{ mouseDown=true; state.marching=true; });
+  window.addEventListener('mouseup', ()=>{ mouseDown=false; state.marching=false; });
+  window.addEventListener('blur', ()=>{ state.marching=false; });
+
+  function togglePause(){
+    state.paused = !state.paused;
+    el.btnPause.classList.toggle('toggled', state.paused);
+    el.btnPause.setAttribute('aria-pressed', String(state.paused));
+    centerFlash(state.paused? "Paused." : "Resume.");
+  }
+  function help(){
+    addEntry(`<b>Controls.</b> Space march/halt • Enter choose • 1–4 for choices • P pause • R reduce motion • M alt-history toggle.`, "muted");
+    centerFlash("Controls posted to journal.");
+  }
+  function toggleReduce(){
+    state.reduceMotion = !state.reduceMotion;
+    el.btnReduce.classList.toggle('toggled', state.reduceMotion);
+    el.btnReduce.setAttribute('aria-pressed', String(state.reduceMotion));
+    centerFlash(state.reduceMotion? "Motion reduced." : "Motion full.");
+  }
+  function toggleAlt(){
+    state.allowAlt = !state.allowAlt;
+    el.btnAlt.classList.toggle('toggled', state.allowAlt);
+    el.btnAlt.setAttribute('aria-pressed', String(state.allowAlt));
+    centerFlash(state.allowAlt? "A faint chance…" : "History asserts itself.");
+  }
+  el.btnPause.onclick = togglePause;
+  el.btnHelp.onclick = help;
+  el.btnReduce.onclick = toggleReduce;
+  el.btnAlt.onclick   = toggleAlt;
+
+  /* ======= Weather & Terrain Simulation ======= */
+  function stepWeather(dt){
+    // diurnal temp swing, plateau colder with progress, storms random
+    const w = state.weather;
+    w.gustPhase += dt * 0.3;
+    const dayFrac = (state.tod%24)/24;
+    const diurnal = Math.cos((dayFrac-0.3)*TAU)*6; // noon slightly warmer
+    const plateauCold = -lerp(0, 18, clamp(state.latProgress, 0, 1.2)); // colder southwards
+    const stormDrift = (w.storm>0? -8*w.storm : 0);
+    w.temp = -18 + diurnal + plateauCold + stormDrift + srand(-1,1);
+    // Storm evolution
+    if(srand() < 0.002 + 0.001*state.latProgress) w.storm = clamp(w.storm + 0.2 + srand(0.2,0), 0, 1);
+    else w.storm = clamp(w.storm - 0.01 - srand()*0.01, 0, 1);
+    w.wind = 10 + 35*w.storm + 10*Math.sin(w.gustPhase) + srand()*4;
+    w.cloud = clamp( lerp(w.cloud, clamp(0.2 + 0.8*w.storm + srand()*0.2, 0, 1), 0.02), 0, 1 );
+    w.vis = clamp( 1 - 0.85*w.storm - 0.2*srand(), 0.08, 1 );
+
+    // Terrain roughness & crevasse chance vary by stages
+    const p = state.latProgress;
+    state.terrain.sastrugi = clamp( (p<0.3? 0.3 : p<0.6? 0.6 : 0.8) + srand()*0.1, 0.2, 0.95 );
+    state.terrain.slope = clamp( (p<0.4? 0.02 : p<0.7? 0.05 : 0.01) + srand()*0.02, 0, 0.08 );
+    state.terrain.crevasse = clamp( (p>0.35 && p<0.6? 0.2 : 0.05) + srand()*0.05, 0, 0.35 );
+    // Snow particles replenish
+    if(state.art.snow.length< (state.reduceMotion ? 120 : 280)){
+      for(let i=0;i<8;i++){
+        state.art.snow.push(makeSnow());
+      }
+    }
+  }
+  function makeSnow(){
+    return {
+      x: srand(W), y: srand(H), z: srand(1), v:srand(0.4,0.05),
+      drift: srand(1,-1), life: srand(1), spin: srand(TAU)
+    };
+  }
+
+  /* ======= Expedition Logic ======= */
+  function dailyNarrativeTriggers(){
+    const d = state.day, p=state.latProgress;
+    const ef = state.eventsFired;
+
+    const once=(k, fn)=>{ if(!ef.has(k)){ ef.add(k); fn(); } };
+
+    once('start', ()=>{
+      addEntry(`We leave <i>Cape Evans</i> with high hopes. Sledges creak; the world is nothing but slate sky and merciless white.`);
+      setChoices("First March", [
+        {text:"Push hard while the weather holds.", meta:"Faster progress, more burn", onpick:()=>{ pushMarch(1.25,1.25); }},
+        {text:"Conserve strength and lay a small depot.", meta:"Slower now, safer later", onpick:()=>{ depot(+8); pushMarch(0.8,0.8); }},
+      ]);
+    });
+
+    if(p>0.18) once('beardmore', ()=>{
+      addEntry(`The Beardmore Glacier rises before us—broken blue teeth and hidden black mouths. We pick our way across.`)
+      setChoices("Beardmore Crossing", [
+        {text:"Rope up meticulously across every suspect span.", meta:"Safer, slower", onpick:()=>{ risk(-0.08); progress(-0.03); }},
+        {text:"Take the straight line to save time.", meta:"Faster, risky", onpick:()=>{ risk(+0.1); progress(+0.05); }},
+      ]);
+    });
+
+    if(p>0.5) once('plateau', ()=>{
+      addEntry(`The Polar Plateau: an infinite board of chalk. The air has a knife in it. Breaths crystallise and fall like lost words.`);
+    });
+
+    if(p>0.98) once('pole', ()=>{
+      // Reached the Pole
+      state.latProgress = 1; // snap
+      addEntry(`<b>At the Pole.</b> The black tent, the neat flag—Amundsen. We are second. The men stand in silence. The cold enters the soul.`, 'danger');
+      centerFlash("The Pole. Second.");
+      setChoices("At the Pole", [
+        {text:"Take a careful survey, leave a tidy record, and turn North.", meta:"Morale −, Resolve +", onpick:()=>{ morale(-12); health(+2); }},
+        {text:"Rage at the wind in private, then turn North.", meta:"Morale −−, Speed +", onpick:()=>{ morale(-18); progress(+0.02); }},
+      ]);
+    });
+
+    if(p>1.05 && !hasDeaths()) once('return', ()=>{
+      addEntry(`Northwards again. The wind in our faces now. Everything costs more. The map home is blank with doubt.`);
+    });
+
+    // Specific fates (bleak historicity)
+    if(p>1.08 && !isDead('Evans') && srand()<0.008){
+      kill('Evans', `Evans deteriorates; a fall at the foot of the glacier saps the last of him. We bury him in drift snow.`, true);
+    }
+    if(p>1.2 && !isDead('Oates') && state.meters.health<55 && srand()<0.005){
+      kill('Oates', `Oates wakes, laces his boots. “I am just going outside and may be some time.” He does not return.`, true);
+    }
+
+    // One Ton Depot miss (morale collapse)
+    if(p>1.26 && !ef.has('depot_miss')){
+      ef.add('depot_miss');
+      addEntry(`We search for the depot—miles of sameness. Flags lost to the storm. The stomach is a clock with no hands.`, 'danger');
+      morale(-12); ration(-8);
+    }
+
+    // Terminal event if meters fail
+    if(!state.ended && (state.meters.health<=0 || state.meters.rations<=0 || (p>1.3 && state.meters.warmth<=0))){
+      endExpedition(false);
+    }
+
+    // Vanishingly small alternate survival
+    if(state.allowAlt && !state.ended && p>1.32 && srand()<0.0009){
+      endExpedition(true);
+    }
+  }
+
+  function hasDeaths(){ return state.crew.some(x=>!x.alive); }
+  function isDead(n){ const m=state.crew.find(x=>x.name===n); return m && !m.alive; }
+  function kill(name, line, harsh=false){
+    const m = state.crew.find(x=>x.name===name);
+    if(!m || !m.alive) return;
+    m.alive=false;
+    addEntry(line, harsh?'danger':'');
+    morale(-10);
+    health(-8);
+  }
+
+  function ration(x){ state.meters.rations = clamp(state.meters.rations + x, 0, 100); }
+  function warmth(x){ state.meters.warmth  = clamp(state.meters.warmth  + x, 0, 100); }
+  function health(x){ state.meters.health  = clamp(state.meters.health  + x, 0, 100); }
+  function morale(x){ state.meters.morale  = clamp(state.meters.morale  + x, 0, 100); }
+  function progress(x){ state.latProgress = clamp(state.latProgress + x, 0, 1.5); }
+  function risk(x){ // risk affects random injuries & crevasse events
+    state.terrain.crevasse = clamp(state.terrain.crevasse + x, 0, 0.5);
+  }
+  function depot(bonus){ state.meters.rations = clamp(state.meters.rations + bonus, 0, 120); addEntry(`A small depot is scratched into the ice and flagged. May it stand.`, "muted"); }
+
+  /* ======= March Tick ======= */
+  function sim(dt){
+    if(state.paused || state.ended) return;
+
+    // time of day
+    state.tod += dt * 6; // 4x accelerated clock
+    if(state.tod>=24){ state.tod-=24; state.day++; dailyNarrativeTriggers(); }
+
+    stepWeather(dt);
+
+    // marching / resting logic
+    const w=state.weather, t=state.terrain, m=state.meters;
+    const effort = state.marching ? 1 : 0;
+    const stormDrag = 1 - (0.65*w.storm + 0.12*t.sastrugi);
+    const faceWind = 1 - (0.006*w.wind);
+    const visDrag = lerp(1, 0.7, 1-w.vis);
+    const slopeDrag = 1 - t.slope;
+
+    let speed = effort * 0.06 * stormDrag * faceWind * visDrag * slopeDrag; // arbitrary units
+    // warmth and ration consumption
+    const chill = (w.temp + w.wind*-0.6);
+    const burn = effort? (1.2 + 0.8*(1-stormDrag)) : 0.4;
+    const warmthLoss = ( -chill*0.005 + (effort?-0.4:0) ) * dt;
+    const rationBurn = burn * dt * 2.4;
+    const moraleDrift = (state.marching? -0.02 : +0.015) * dt;
+
+    // Apply meters
+    m.warmth = clamp(m.warmth + warmthLoss, 0, 100);
+    m.rations = clamp(m.rations - rationBurn, 0, 120);
+    m.morale = clamp(m.morale + moraleDrift, 0, 100);
+
+    // Health falls if warmth or rations low; rises a little at rest
+    if(m.warmth<35 || m.rations<35) m.health = clamp(m.health - dt* lerp(0.06,0.28, (35-Math.min(m.warmth,m.rations))/35 ), 0, 100);
+    else if(!state.marching) m.health = clamp(m.health + dt*0.05, 0, 100);
+
+    // Random crevasse hazard when marching
+    if(state.marching && srand()< 0.0008 + 0.002*t.crevasse){
+      const hurt = 4 + srand()*10;
+      health(-hurt);
+      warmth(-5);
+      morale(-6);
+      addEntry(`A hidden break swallows a boot; the rope grinds and holds. We pay a tax in skin and silence.`, "danger");
+    }
+
+    // Footprints
+    if(state.marching){
+      const px = W*0.25 + srand(-6,6), py = H*0.7 + srand(-3,3);
+      state.art.footprints.push({x:px, y:py, a:0.9});
+      if(state.art.footprints.length> (state.reduceMotion? 80 : 200)) state.art.footprints.shift();
+    }
+
+    // Advance
+    state.latProgress = clamp(state.latProgress + speed*dt, 0, 1.45);
+
+    // micro events: tent, tea, resolve
+    if(!state.marching && srand()<0.002){
+      warmth(+4); morale(+4); addEntry(`Tent up, tea brewed. Fingers sting then sing as they return.`, "ok");
+    }
+
+    // post-pole attrition intensifies
+    if(state.latProgress>1 && srand()<0.0015){
+      health(-2); warmth(-2);
+      if(srand()<0.25) addEntry(`Wind carves words from our faces. Speech shrinks to nods.`, "muted");
+    }
+  }
+
+  /* ======= Rendering ======= */
+  function draw(){
+    // Background sky gradient depends on time & storm
+    const w=state.weather; const dayFrac=(state.tod%24)/24;
+    const dusk = Math.abs(dayFrac-0.5); // 0 at midday & midnight
+    const storm = w.storm;
+
+    const g=ctx.createLinearGradient(0,0,0,H);
+    const top = mixRGB([10,15,19], [20,28,34], 1-dusk);
+    const stormTint = mixRGB(top, [12,16,20], 0.5*storm);
+    const sky1 = rgbStr(stormTint);
+    const sky2 = rgbStr(mixRGB(stormTint, [6,9,12], 0.6));
+    g.addColorStop(0, sky1); g.addColorStop(1, sky2);
+    ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+
+    // Sun/Moon disk (muted)
+    const sunX = W*0.1 + (W*0.8)*dayFrac;
+    const sunY = H* (0.7 - 0.45*Math.sin(dayFrac*TAU));
+    drawSun(sunX, sunY, 40*DPR, 0.6-0.4*storm);
+
+    // Far mountains / pressure ridges
+    drawRidges();
+
+    // Blown snow ground plane
+    drawGround();
+
+    // Footprints and sledge team
+    drawFootprints();
+    drawParty();
+
+    // Snow particles
+    drawSnow();
+
+    // Film grain & vignette are handled by CSS + subtle grain here
+    if(!state.reduceMotion){
+      state.art.grainT += 0.005;
+      ctx.globalAlpha = 0.06;
+      for(let i=0;i<80;i++){
+        const x = ((i*47.77 + state.art.grainT*W*0.7)%W);
+        const y = ((i*91.13 + state.art.grainT*H*0.3)%H);
+        ctx.fillStyle = `rgba(255,255,255,${(seeded()*0.12)})`;
+        ctx.fillRect(x,y,1,1);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // HUD updates
+    const m=state.meters;
+    updateMeter(el.barR, el.valR, m.rations, 120, "lb");
+    updateMeter(el.barW, el.valW, m.warmth, 100, "%");
+    updateMeter(el.barH, el.valH, m.health, 100, "%");
+    updateMeter(el.barM, el.valM, m.morale, 100, "%");
+    updateMeter(el.barD, el.valD, state.latProgress*100, 200, "% to Pole/Return");
+  }
+  function mixRGB(a,b,t){ return [lerp(a[0],b[0],t), lerp(a[1],b[1],t), lerp(a[2],b[2],t)]; }
+  function rgbStr(v){ return `rgb(${v.map(x=>x|0).join(',')})`; }
+
+  function drawSun(x,y,r,alpha){
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    const rad = r* (1 + 0.2*state.weather.cloud);
+    const g = ctx.createRadialGradient(x,y, 1, x,y, rad);
+    g.addColorStop(0, 'rgba(215,201,161,0.9)');
+    g.addColorStop(1, 'rgba(215,201,161,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x,y,rad,0,TAU); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawRidges(){
+    const layers = 4;
+    for(let i=0;i<layers;i++){
+      const y = H*0.55 + i*H*0.07;
+      ctx.beginPath();
+      const rough = 0.004 + i*0.001;
+      for(let x=0;x<=W;x+=8){
+        const n = noise1d(x*rough + i*10 + state.day*0.2) * (30 + i*20) * DPR;
+        const yy = y + n - i*12;
+        if(x===0) ctx.moveTo(x,yy); else ctx.lineTo(x,yy);
+      }
+      const shade = 30 + i*20 + state.weather.storm*15;
+      ctx.lineTo(W,H); ctx.lineTo(0,H); ctx.closePath();
+      ctx.fillStyle = `rgb(${shade},${shade+8},${shade+12})`;
+      ctx.fill();
+    }
+  }
+
+  function drawGround(){
+    // broad snowfield
+    const baseY = H*0.75;
+    const und = (x)=> noise1d(x*0.006 + state.day*0.1)*18*DPR;
+    ctx.beginPath();
+    for(let x=0;x<=W;x+=8){
+      const yy = baseY + und(x);
+      if(x===0) ctx.moveTo(x,yy); else ctx.lineTo(x,yy);
+    }
+    ctx.lineTo(W,H); ctx.lineTo(0,H); ctx.closePath();
+    const g=ctx.createLinearGradient(0,baseY,0,H);
+    const s = 235 - 30*state.weather.storm;
+    g.addColorStop(0, `rgb(${s},${s+3},${s+6})`);
+    g.addColorStop(1, `rgb(${s-18},${s-16},${s-14})`);
+    ctx.fillStyle=g; ctx.fill();
+
+    // etched sastrugi
+    if(!state.reduceMotion){
+      ctx.globalAlpha = 0.35+0.3*state.terrain.sastrugi;
+      ctx.strokeStyle = `rgba(180,190,200,0.25)`;
+      ctx.lineWidth = 1*DPR;
+      for(let i=0;i<120;i++){
+        const y = baseY + rand(160*DPR, -20*DPR);
+        const len = rand(W*0.3, W*0.05);
+        const x0 = rand(W);
+        ctx.beginPath();
+        ctx.moveTo(x0, y);
+        ctx.quadraticCurveTo(x0+len*0.3, y-10, x0+len, y);
+        ctx.stroke();
+      }
+      ctx.globalAlpha=1;
+    }
+  }
+
+  function drawFootprints(){
+    const fp = state.art.footprints;
+    ctx.save();
+    for(const f of fp){
+      ctx.globalAlpha = f.a;
+      ctx.fillStyle = 'rgba(120,140,160,0.7)';
+      ctx.beginPath(); ctx.ellipse(f.x, f.y, 3*DPR, 7*DPR, 0.2, 0, TAU); ctx.fill();
+      f.a -= 0.003;
+    }
+    ctx.restore();
+    // prune faded
+    state.art.footprints = fp.filter(f=>f.a>0.05);
+  }
+
+  function drawParty(){
+    const baseX = W*0.25, baseY=H*0.7;
+    const nAlive = state.crew.filter(m=>m.alive).length;
+
+    // Sledge
+    ctx.save();
+    ctx.translate(baseX, baseY);
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = '#1b232b';
+    ctx.strokeStyle = '#0d1216';
+    ctx.lineWidth = 2*DPR;
+    ctx.beginPath();
+    ctx.rect(-30*DPR, -6*DPR, 60*DPR, 12*DPR);
+    ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-28*DPR,6*DPR); ctx.lineTo(28*DPR,6*DPR); ctx.stroke();
+    ctx.restore();
+
+    // Men silhouettes (alive members)
+    const spread = 40*DPR;
+    const wob = Math.sin(Date.now()*0.004)*2*DPR;
+    const stepPhase = (Date.now()*0.006)%TAU;
+
+    let idx=0;
+    for(const m of state.crew){
+      if(!m.alive) continue;
+      const off = -nAlive*spread*0.5 + idx*spread;
+      drawMan(baseX+off, baseY-8*DPR + wob, stepPhase+idx*0.8, m.name==='Scott');
+      idx++;
+    }
+
+    // Rope lines
+    ctx.save();
+    ctx.strokeStyle = 'rgba(90,110,125,0.7)';
+    ctx.lineWidth = 1.5*DPR;
+    ctx.beginPath();
+    ctx.moveTo(baseX-30*DPR, baseY-2*DPR);
+    ctx.lineTo(baseX - nAlive*spread*0.5, baseY-10*DPR);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawMan(x,y,phase,isLeader=false){
+    ctx.save();
+    ctx.translate(x,y);
+    ctx.globalAlpha = isLeader? 0.95 : 0.85;
+    const h=26*DPR, w=10*DPR;
+    // body
+    ctx.fillStyle = '#121820';
+    ctx.beginPath(); ctx.ellipse(0,-h*0.2, w, h*0.6, 0, 0, TAU); ctx.fill();
+    // head hood
+    ctx.fillStyle='#0b1117';
+    ctx.beginPath(); ctx.arc(0,-h*0.75, w*0.45, 0, TAU); ctx.fill();
+    // legs stepping
+    const s = Math.sin(phase)*5*DPR;
+    ctx.strokeStyle='#0c1218'; ctx.lineWidth=2*DPR;
+    ctx.beginPath(); ctx.moveTo(-w*0.2,-h*0.1); ctx.lineTo(-w*0.4, s+2*DPR); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo( w*0.2,-h*0.1); ctx.lineTo( w*0.4,-s+2*DPR); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawSnow(){
+    const arr=state.art.snow;
+    const w=state.weather;
+    const wind = w.wind*DPR*(state.reduceMotion? 0.3:1);
+    for(let i=0;i<arr.length;i++){
+      const s=arr[i];
+      const vx = (wind*0.05) + s.drift*0.6;
+      const vy = 0.3 + s.v*(1+0.7*w.storm);
+      s.x += vx; s.y += vy; s.spin += 0.05;
+      if(s.x>W+4) s.x = -4;
+      if(s.x<-4) s.x = W+4;
+      if(s.y>H+4){ arr[i] = makeSnow(); arr[i].y = -4; }
+      const a = 0.35 + 0.5*(1-w.vis);
+      ctx.fillStyle = `rgba(240,248,255,${a*(0.5+s.z*0.5)})`;
+      const size = (1+s.z*2)*DPR;
+      ctx.fillRect(s.x, s.y, size, size);
+    }
+  }
+
+  /* ======= Perlin-ish noise ======= */
+  const grad1d = new Float32Array(2048).map(()=>Math.random()*2-1);
+  function noise1d(x){
+    const xi = Math.floor(x)%2048; const xf = x-Math.floor(x);
+    const a = grad1d[(xi+2048)%2048], b = grad1d[(xi+1+2048)%2048];
+    const u = xf*xf*(3-2*xf);
+    return lerp(a,b,u);
+  }
+
+  /* ======= HUD helpers ======= */
+  function updateMeter(bar, valEl, v, max, suffix){
+    const pct = clamp(v/max,0,1); bar.style.width = (pct*100)+"%";
+    const warn = pct<0.3 ? 'danger' : (pct>0.7? 'ok' : '');
+    valEl.textContent = `${Math.round(v)}/${max}${suffix? ' '+suffix:''}`;
+    valEl.className = warn;
+  }
+
+  /* ======= Game Loop ======= */
+  let last = performance.now();
+  function frame(now){
+    const dt = Math.min(0.05, (now-last)/1000); last=now;
+    if(!state.paused && !state.ended){ sim(dt); }
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  /* ======= Start ======= */
+  addEntry(`Provisions tallied; the <i>Barrier</i> is a hymn of white. We step off the known world.`);
+  addEntry(`This design draws on the spirit of Scott’s journals—paraphrased to keep the ice from cracking under quotation.`);
+  dailyNarrativeTriggers();
+  requestAnimationFrame(frame);
+
+  /* ======= Ending ======= */
+  function endExpedition(survived){
+    state.ended=true; state.marching=false; clearChoices();
+    if(survived){
+      state.endingText = `Against all odds, a relief party finds our trace in a lull between blows. Not triumph—merely breath. History bends by a hair.`;
+      addEntry(state.endingText, "ok");
+      centerFlash("Rescued.");
+    } else {
+      state.endingText = `Tent half-buried, ink freezing in the pen. Pages weighted with final words. Outside, the wind writes the last line.`;
+      addEntry(state.endingText, "danger");
+      centerFlash("Silence.");
+    }
+    // Post an epilogue choice to restart
+    setTimeout(()=>{
+      setChoices("Epilogue", [
+        {text:"Close the book and begin again.", meta:"Restart", onpick:()=>location.reload()},
+        {text:"Sit with the quiet awhile.", meta:"Pause", onpick:()=>{ state.paused=true; }},
+      ]);
+    }, 1200);
+  }
+
+})();
+</script>
+</body>
+</html>
