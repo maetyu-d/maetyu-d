@@ -1,0 +1,647 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>A Life Less Alan — MUD</title>
+  <style>
+    /* ====== Macintosh 1984 Desktop Replica ====== */
+    :root{
+      --mac-bg:#bfbfbf; /* platinum */
+      --mac-dark:#8f8f8f;
+      --mac-text:#111;
+      --crt-bg:#000; --crt-fg:#e6e6e6; --crt-dim:#9b9b9b;
+      --ok:#4caf50; --warn:#ffb300; --bad:#ef5350;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:var(--mac-bg);font:13px/1.4 ui-monospace,Menlo,Monaco,Consolas,"SF Mono",monospace;color:var(--mac-text)}
+
+    /* Menu bar & dropdown */
+    .menubar{position:fixed;top:0;left:0;right:0;height:22px;background:linear-gradient(#e6e6e6,#cfcfcf);border-bottom:2px solid var(--mac-dark);display:flex;align-items:center;gap:14px;padding:0 10px;z-index:5}
+    .menubar .apple{font-weight:700}
+    .menubar .title{margin-left:auto;opacity:.7}
+    .menu-item{cursor:pointer;}
+
+    .dropdown{
+      display:none; position:absolute; top:22px; left:8px;
+      background:#fff; border:2px solid #000; box-shadow:4px 4px 0 #000;
+      z-index:20; min-width:140px
+    }
+    .dropdown.show{display:block}
+    .dropdown .mi{padding:4px 10px; white-space:nowrap; border-bottom:1px solid #000; cursor:pointer}
+    .dropdown .mi:last-child{border-bottom:none}
+    .dropdown .mi:hover{background:#000;color:#fff}
+
+    /* Desktop */
+    .desktop{position:fixed;inset:22px 0 0 0;background:repeating-linear-gradient(90deg,rgba(255,255,255,.25) 0 1px,transparent 1px 6px),var(--mac-bg);display:grid;place-items:start start;padding:24px}
+    .icon{width:64px;display:grid;justify-items:center;gap:6px;cursor:pointer;user-select:none;outline:none}
+    .icon .glyph{width:48px;height:48px;border:2px solid #000;background:#fff;display:grid;place-items:center;box-shadow:3px 3px 0 #000}
+    .icon .glyph span{font-weight:900;font-size:26px}
+    .icon .label{background:#000;color:#fff;padding:2px 4px;box-shadow:3px 3px 0 #000}
+
+    /* Window */
+    .window{position:absolute;top:80px;left:120px;width:860px;max-width:calc(100% - 60px);height:520px;max-height:calc(100% - 120px);border:3px solid #000;background:#fff;box-shadow:6px 6px 0 #000;display:none;flex-direction:column}
+    .titlebar{height:24px;background:linear-gradient(#fff,#dcdcdc);border-bottom:3px solid #000;display:flex;align-items:center;justify-content:space-between;padding:0 8px;cursor:move}
+    .titlebar .name{font-weight:700}
+    .titlebar .btns{display:flex;gap:6px}
+    .tb{width:12px;height:12px;border:2px solid #000;background:#fff;box-shadow:2px 2px 0 #000;cursor:pointer}
+
+    /* ====== MUD CRT ====== */
+    .crt{flex:1;background:var(--crt-bg);color:var(--crt-fg);padding:10px 14px;overflow:auto;font-size:14px;border-bottom:3px solid #000}
+    .crt pre{margin:0;white-space:pre-wrap}
+    .crt .dim{color:var(--crt-dim)}
+    .crt .ok{color:var(--ok)} .crt .warn{color:var(--warn)} .crt .bad{color:var(--bad)}
+    .crt .ascii{font-weight:700;line-height:1.05}
+
+    .prompt{display:flex;gap:8px;align-items:center;padding:8px;background:#111;border-top:3px solid #000}
+    .prompt label{color:#aaa}
+    .prompt input{flex:1;background:#000;border:1px solid #333;color:#eee;padding:6px}
+    .prompt button{background:#000;border:1px solid #333;color:#eee;padding:6px 10px;cursor:pointer}
+
+    /* Catastrophic overlay for endings */
+    #catastrophicOverlay{display:none;position:absolute;inset:24px 0 0 0;background:rgba(255,0,0,.2);animation:flashRed 1s infinite;pointer-events:none}
+    @keyframes flashRed{0%,100%{background:rgba(255,0,0,.08)}50%{background:rgba(255,0,0,.45)}}
+  </style>
+</head>
+<body>
+  <div class="menubar">
+    <span class="apple"></span>
+    <span class="menu-item" id="menuFileBtn">File ▾</span>
+    Edit  View  Special
+    <span class="title">Macintosh • 1984</span>
+  </div>
+  <div class="dropdown" id="fileMenu" role="menu" aria-label="File">
+    <div class="mi" id="miOpen">Open</div>
+    <div class="mi" id="miQuit">Quit</div>
+  </div>
+
+  <div class="desktop" id="desktop">
+    <div class="icon" id="appIcon" title="A Life Less Alan" tabindex="0">
+      <div class="glyph"><span>A</span></div>
+      <div class="label">A Life Less Alan</div>
+    </div>
+
+    <div class="window" id="appWindow" role="dialog" aria-label="A Life Less Alan">
+      <div class="titlebar"><span class="name">A Life Less Alan — MUD</span><div class="btns"><div class="tb" id="btnMin" title="Minimise"></div><div class="tb" id="btnClose" title="Close"></div></div></div>
+      <div class="crt" id="crt"><pre id="log"></pre></div>
+      <div class="prompt"><label>&gt;</label><input id="cmd" autocomplete="off" placeholder="type a number to choose, or 'help'"/><button id="send">Return</button></div>
+      <div id="catastrophicOverlay"></div>
+    </div>
+  </div>
+
+  <script>
+    /* ===== Desktop / Window controls ===== */
+    const appIcon=document.getElementById('appIcon');
+    const appWin=document.getElementById('appWindow');
+    const titlebar=appWin.querySelector('.titlebar');
+    const btnClose=document.getElementById('btnClose');
+    const btnMin=document.getElementById('btnMin');
+    const crt=document.getElementById('crt');
+    const logEl=document.getElementById('log');
+    const cmd=document.getElementById('cmd');
+    const send=document.getElementById('send');
+    const overlay=document.getElementById('catastrophicOverlay');
+
+    const menuFileBtn=document.getElementById('menuFileBtn');
+    const fileMenu=document.getElementById('fileMenu');
+    const miOpen=document.getElementById('miOpen');
+    const miQuit=document.getElementById('miQuit');
+
+    function asciiTitle(){
+      return `
+  __    _      _  __           _           _                 _          _           _          
+ / _|  /_\\   | |/ /  _   _   / \\   _ __ | | __  ___   ___ | | __   __| |  __ _  | |   __ _  
+| |_  //_\\   | ' /  | | | | / _ \\ | '__|| |/ / / _ \\ / __|| |/ /  / _\` | / _\` | | |  / _\` | 
+|  _|/  _  \\ | . \\ | |_| |/ ___ \\| |   |   < |  __/ \\__ \\|   <  | (_| || (_| | | | | (_| | 
+|_|   \\_/ \\_\\|_|\\_\\ \\__, /_/   \\_\\_|   |_|\\_\\ \\___| |___/  \\__,_| \\__,_| |_|  \\__,_| 
+                     |___/                                                                               `;
+    }
+
+    function write(txt){ logEl.textContent += (logEl.textContent?'\n':'') + txt; crt.scrollTop = crt.scrollHeight; }
+    function c(t){ return t; }
+
+    function openApp(){
+      appWin.style.display='flex';
+      appWin.style.zIndex=10;
+      logEl.textContent='';
+      write(asciiTitle());
+      write("\nWelcome to " + c("A Life Less Alan") + ". Type 'help' for commands.");
+      cmd.focus();
+      if(!booted){ boot(); } // boot game state once
+      else { // show the current scene if already running
+        write("\n");
+        render(true);
+      }
+    }
+    function quitApp(){ appWin.style.display='none'; }
+
+    appIcon.addEventListener('click',openApp);
+    appIcon.addEventListener('dblclick',openApp);
+    appIcon.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' ') openApp(); });
+
+    // Menu dropdown
+    menuFileBtn.addEventListener('click',(e)=>{
+      e.stopPropagation();
+      const rect = e.currentTarget.getBoundingClientRect();
+      fileMenu.style.left = (rect.left) + 'px';
+      fileMenu.style.top  = (rect.bottom) + 'px';
+      fileMenu.classList.toggle('show');
+    });
+    miOpen.addEventListener('click',(e)=>{ e.stopPropagation(); fileMenu.classList.remove('show'); openApp(); });
+    miQuit.addEventListener('click',(e)=>{ e.stopPropagation(); fileMenu.classList.remove('show'); quitApp(); });
+    window.addEventListener('click',()=>{ fileMenu.classList.remove('show'); });
+    window.addEventListener('keydown',(e)=>{ if(e.key==='Escape') fileMenu.classList.remove('show'); });
+
+    // Drag to move window
+    let dragging=false,dx=0,dy=0;
+    titlebar.addEventListener('mousedown',e=>{dragging=true;dx=e.clientX-appWin.offsetLeft;dy=e.clientY-appWin.offsetTop});
+    window.addEventListener('mouseup',()=>dragging=false);
+    window.addEventListener('mousemove',e=>{if(dragging){appWin.style.left=(e.clientX-dx)+'px'; appWin.style.top=(e.clientY-dy)+'px';}});
+
+    btnClose.addEventListener('click',quitApp);
+    btnMin.addEventListener('click',quitApp);
+
+    /* ===== MUD input handling ===== */
+    send.addEventListener('click',()=>handle(cmd.value.trim()));
+    cmd.addEventListener('keydown',e=>{ if(e.key==='Enter') handle(cmd.value.trim()); });
+
+    function promptChoices(choices){
+      if(!choices||!choices.length){ write('\n[no options]'); return; }
+      write('\n');
+      choices.forEach((ch,i)=>{ write(`${i+1}) ${ch.label}`); });
+      write("\n> choose by typing the number, or type 'stats', 'time', 'look', 'save', 'load', 'new', 'quit'");
+    }
+
+    function handle(input){
+      if(!input){ return; }
+      write('> '+input);
+      cmd.value='';
+      const lc=input.toLowerCase();
+      if(lc==='help'){ write("Commands: 1..9 choose • stats • time • look • save • load • new • quit"); return; }
+      if(lc==='stats'){ write(`Desperation ${S.desperation} | Smugness ${S.smugness} | Isolation ${S.isolation} | Legacy ${S.legacy}`); return; }
+      if(lc==='time'){ write(`Day ${S.day} • ${fmt(Math.floor(S.time/60))}:${fmt(S.time%60)} • ${S.place}`); return; }
+      if(lc==='look'){ write(currentText()||'(nothing)'); return; }
+      if(lc==='save'){ save(); write('Saved.'); return; }
+      if(lc==='load'){ load(); render(true); write('Loaded.'); return; }
+      if(lc==='new'){ newGame(); write('New game.'); return; }
+      if(lc==='quit'){ quitApp(); return; }
+      const n=parseInt(input,10);
+      if(!isNaN(n)) chooseIndex(n-1);
+      else if(S.scene==='alanQuestion'){ answerAlan(input); }
+      else { write("I don't understand. Type 'help'."); }
+    }
+    function chooseIndex(i){
+      const opts=currentChoices();
+      if(!opts||!opts[i]){ write('Invalid choice.'); return; }
+      clickChoice(opts[i]);
+    }
+
+    /* ===== Game State & Systems (scripted) ===== */
+    const clamp=(v,min=0,max=100)=>Math.max(min,Math.min(max,v));
+    const pick=(arr)=>arr[Math.floor(Math.random()*arr.length)];
+    const fmt=(n)=>String(n).padStart(2,'0');
+
+    const S={
+      scene:'play',
+      time:6*60+40,
+      place:'Travel Tavern',
+      desperation:35, smugness:18, isolation:28, legacy:12,
+      day:1,
+      history:[], flags:{},
+      meta:{glitch:0,break:false,aware:false,hostile:false,anger:0,question:false,answers:[],monologue:false,ending:false,endingStep:0,catastrophic:false,catStep:0},
+      last:{text:'',choices:[]},
+      script:{current:'prologue', act:1, progress:0}
+    };
+    const SAVE_KEY='a_life_less_alan_save_v1';
+    const A=(n)=>({1:'I',2:'II',3:'III',4:'IV'}[n]||String(n));
+    const choice=(label,goto,eff={},opts={})=>({label,goto,eff,...opts,to:'play'});
+
+    function onEnterScene(){
+      // Meta beats (scripted)
+      const p=S.script.progress;
+      const beats={
+        2:{text:'The studio clock shows the same second twice.',eff:{desperation:+2}},
+        4:{text:'You hear applause, but the room is empty.',eff:{desperation:+4,smugness:-2}},
+        7:{text:'A boom microphone dips into shot of your life.',eff:{desperation:+6,legacy:+1}},
+        10:{text:"Michael looks straight at you and mouths 'Cut.'",eff:{desperation:+8,isolation:+5}},
+        13:{text:'You glimpse an EXIT sign in the Norfolk sky.',eff:{desperation:+10}},
+        16:{text:"You hear yourself narrated: 'Alan looks uneasy.'",eff:{desperation:+12,smugness:-4}}
+      };
+      if(beats[p] && !S.flags['metaP'+p]){
+        S.flags['metaP'+p]=true; const ev=beats[p]; applyEffects(ev.eff);
+        write('\nMeta-event: '+ev.text); S.meta.glitch++;
+        if(S.meta.glitch>=6 && !S.meta.break){ triggerBreak(); }
+      }
+      if(S.meta.hostile && S.meta.anger>=5 && !S.meta.catastrophic){ S.meta.catastrophic=true; S.meta.catStep=0; overlay.style.display='block'; }
+      if(S.meta.aware && S.meta.answers.length>4 && !S.meta.monologue && Math.random()<0.15){ S.meta.monologue=true; }
+    }
+
+    function enter(id){
+      S.script.current=id; S.script.progress++; onEnterScene();
+      const node=SCENES[id]; if(!node){ S.last={text:'[Missing scene: '+id+']',choices:[choice('Return to start','prologue',{time:5})]}; render(true); return; }
+      const out=(typeof node.text==='function')? node.text(S): node.text;
+      const ch =(typeof node.choices==='function')? node.choices(S): node.choices;
+      if(node.place) S.place=node.place; if(node.time) advanceTime(node.time);
+      S.last={text:out,choices:injectSystemChoices(ch)};
+
+      // Food-triggered Fat Alan flashbacks (repeatable, variant effects)
+      if(/buffet|tea|coffee|dinner|lunch|breakfast|food|eat|snack|gazebo|chocolate/i.test(S.last.text)){
+        if(Math.random()<0.15){
+          const flash=[
+            {text:"A sudden flashback: Fat Alan, slumped in the Travel Tavern, surrounded by empty Toblerone wrappers. A shame both fond and sticky.", eff:{desperation:+2}},
+            {text:"Memory surges: Fat Alan, chocolate smears across his tie, mumbling about 'continental breakfast'.", eff:{smugness:-1,desperation:+1}},
+            {text:"Flashback: A hollow laugh, Fat Alan juggling mini Toblerones like trophies.", eff:{legacy:-1,smugness:+1}},
+            {text:"Vision of Fat Alan: caught at 3AM, tearing at vending machine coils for one last bar.", eff:{desperation:+2,isolation:+2}}
+          ];
+          const fb=pick(flash); applyEffects(fb.eff); S.last.text += '\n\n'+fb.text;
+        }
+      }
+
+      // Séance auto-interrupt at ~75% awareness (glitch threshold ≈ 4–5)
+      if(SCENES.seance && SCENES.seance.trigger(S)){
+        S.flags.returnAfterSeance = id;
+        const se=SCENES.seance;
+        const seText=(typeof se.text==='function')? se.text(S): se.text;
+        const seChoices=(typeof se.choices==='function')? se.choices(S): se.choices;
+        S.last={text:seText,choices:seChoices};
+      }
+
+      render(true);
+    }
+
+    function injectSystemChoices(choices){
+      const c=[...choices];
+      // Interrogate the camera at key hubs
+      if(["prologue","bbcLobby","lateRadio","hotelNight"].includes(S.script.current)){
+        c.push({label:'Hold the gaze of the camera.',to:'alanQ',eff:{},questionText:'Alan leans forward: "If you\'re so in charge, answer me this: What do you actually want for me?"'});
+      }
+      return c;
+    }
+
+    /* ===== Scripted Scenes ===== */
+    const SCENES={
+      // --- ACT I ---
+      prologue:{ place:'Travel Tavern', time:10, text:'Grey light through Travel Tavern curtains. A kettle gives up trying. Today will be important, you tell yourself, habitually.',
+        choices:s=>[
+          choice('Check email: maybe the BBC replied.','emailBBC',{legacy:+1,time:5}),
+          choice('Call your agent (who is you).','selfAgent',{smugness:+1,time:5}),
+          choice('Drive to BBC Norwich uninvited.','carPark',{isolation:+1,time:15,place:'Car'}),
+          choice('Visit Michael. Tea-based morale.','michael1',{isolation:-3,time:12,place:"Michael's"}),
+          choice('Try on a leather jacket you can\'t afford.','jacket',{smugness:+2,time:12}),
+        ]},
+      emailBBC:{ place:'Travel Tavern', time:8, text:'Your inbox hums. One subject glints: "Coffee to chat ideas?" from a BBC assistant.',
+        choices:s=>[
+          choice('Accept immediately and over-promise.','bbcLobby',{legacy:+1,smugness:+1,time:10,place:'BBC Norwich'}),
+          choice('Craft a careful reply, send, re-send.','draftLoop',{desperation:+2,time:12}),
+          choice('Forward to yourself with “FYI” for gravitas.','selfAgent',{smugness:+1}),
+          choice('Ignore. It\'s probably a trap.','carPark',{isolation:+1})
+        ]},
+      selfAgent:{ text:'You leave a voicemail for yourself in a deeper voice. It sounds successful.', time:6,
+        choices:s=>[
+          choice('Hype today loudly.','carPark',{smugness:+1,time:6,place:'Car'}),
+          choice('Pitch a book signing at a garden centre.','signing1',{legacy:+1,time:8}),
+          choice('Phone Michael for a pep talk.','michael1',{isolation:-2,time:10,place:"Michael's"}),
+        ]},
+      carPark:{ place:'Car Park', time:6, text:'Car windows mist with ambition. BBC Norwich looms like a polite fortress.',
+        choices:s=>[
+          choice('March to reception as if invited.','bbcLobby',{legacy:+1,smugness:+1,time:6,place:'BBC Norwich'}),
+          choice('Record a voice note: “pilot idea”.','voiceNote',{legacy:+1,time:5}),
+          choice('Detour to corporate away day gig.','corp1',{legacy:+1,time:15,place:'Leisure Centre'}),
+          choice('Second thoughts. Go see Michael.','michael1',{isolation:-2,time:10,place:"Michael's"})
+        ]},
+      voiceNote:{ text:'You record a breathy pitch about Norfolk lifestyle. It sounds like a warning.', time:5,
+        choices:s=>[
+          choice('Send it to a producer you barely know.','bbcLobby',{legacy:+1,desperation:+1}),
+          choice('Delete it. Feel spiritual.','carPark',{smugness:-1,desperation:+1}),
+        ]},
+
+      // BBC path
+      bbcLobby:{ place:'BBC Norwich', time:10, text:'BBC lobby: glass, fern, a portrait of someone younger than you. A runner avoids eye contact.',
+        choices:s=>[
+          choice('Announce yourself to reception with a confident shrug.','glassMeeting',{smugness:+1,legacy:+1,time:8}),
+          choice('Wait in the seating area like you live here.','holding',{isolation:+1,time:12}),
+          choice('Tweet a humblebrag from the lobby.','tweet',{legacy:-1,smugness:+1,time:3,place:'Twitter'}),
+          choice('Abort and head to the radio studio.','lateRadio',{legacy:+1,time:12,place:'Radio Studio'})
+        ]},
+      holding:{ text:'You wait. A red light says “On Air”. It might as well say “Not You.”', time:10,
+        choices:s=>[
+          choice('Ask reception again, louder.','glassMeeting',{smugness:+1}),
+          choice('Email the assistant from the lobby. Bold.','glassMeeting',{legacy:+1}),
+          choice('Leave a voice note for future-You.','voiceNote',{isolation:+1})
+        ]},
+      glassMeeting:{ text:'Glass meeting room. They say: “Love your vibe. What is it?”', time:15,
+        choices:s=>[
+          choice('Pitch everything at once (panic bouquet).','committee',{desperation:+2,time:10}),
+          choice('Pitch one tiny, safe idea.','pilotMaybe',{legacy:+1,time:8}),
+          choice('Make it about Norfolk. Everything is Norfolk.','committee',{legacy:+1,time:10}),
+          choice('Stare at the camera you can\'t see.','glassMeta',{desperation:+2})
+        ]},
+      glassMeta:{ text:'For a frame, you feel written. Someone laughs where no one is.', time:4,
+        choices:s=>[
+          choice('Carry on as if nothing happened.','committee',{}),
+          choice('Apologise to the ceiling.','committee',{desperation:+1})
+        ]},
+      pilotMaybe:{ text:'“Let\'s circle back on a small pilot,” someone says, as if that\'s a real circle.', time:8,
+        choices:s=>[
+          choice('Celebrate prematurely. Post about it.','afterBBC',{smugness:+2,legacy:+1,time:6}),
+          choice('Quietly prepare, alone.','afterBBC',{isolation:+2,legacy:+1,time:6})
+        ]},
+      committee:{ text:'A committee email arrives hours later: “Not the direction.” Or is it?', time:6,
+        choices:s=>[
+          choice('Spin it as a win.','afterBBC',{smugness:+2,legacy:-1,desperation:+2}),
+          choice('Accept the loss, keep moving.','afterBBC',{isolation:+1,desperation:+1})
+        ]},
+      afterBBC:{ text:'You step outside into a sky that looks edited. Cars pass like stock footage.', time:6,
+        choices:s=>[
+          choice('Head to the Norfolk Show booking.','norfolk1',{legacy:+1,time:15,place:'County Show'}),
+          choice('Take the corporate gig. Money is a kind of hug.','corp1',{legacy:+1,time:15,place:'Leisure Centre'}),
+          choice('Go make some honest radio.','lateRadio',{legacy:+1,time:12,place:'Radio Studio'})
+        ]},
+
+      // Corporate
+      corp1:{ place:'Leisure Centre', time:12, text:'Corporate away day. Buffet glistens with threats. A roll-up banner sighs.',
+        choices:s=>[
+          choice('Rehearse “banter” in the toilet mirror.','corp2',{smugness:+1,time:8}),
+          choice('Open with a risky reference.','corp2',{legacy:+1,time:8}),
+          choice('Invoice before performing. Alpha.','corp3',{smugness:+1,legacy:+1,time:6})
+        ]},
+      corp2:{ text:'After-dinner speech. Mic smells fearful. One table is already heckling with their eyes.', time:10,
+        choices:s=>[
+          choice('Double down. Loud confidence.','corp3',{smugness:+1}),
+          choice('Switch to heartfelt sincerity.','corp3',{desperation:+1,legacy:+1}),
+          choice('Flee to the radio.','lateRadio',{isolation:+1,time:12,place:'Radio Studio'})
+        ]},
+      corp3:{ text:'Feedback form later: “Was present.”', time:6,
+        choices:s=>[
+          choice('Invoice anyway.','afterBBC',{smugness:+1,desperation:+1}),
+          choice('Pretend it was a rehearsal for something bigger.','afterBBC',{legacy:-1,smugness:+1})
+        ]},
+
+      // Norfolk show misstep
+      norfolk1:{ place:'County Show', time:10, text:'County show live link. Sponsor: “Shree-vely Shrew-valley?” You gamble on the vowels.',
+        choices:s=>[
+          choice('Guess boldly on-air.','norfolk2',{legacy:+1}),
+          choice('Ask a teen how to say it.','norfolk2',{smugness:-1,legacy:+1}),
+          choice('Assume everyone else is wrong.','norfolk2',{smugness:+2})
+        ]},
+      norfolk2:{ text:'You mispronounce it three different ways. Trending, locally.', time:8,
+        choices:s=>[
+          choice('Apologise on air.','norfolk3',{desperation:+2}),
+          choice('Blame the cue cards.','norfolk3',{smugness:+1,legacy:-1})
+        ]},
+      norfolk3:{ text:'Sponsor pulls out. The gazebo weeps in a light breeze.', time:6,
+        choices:s=>[
+          choice('Promise to learn names. Mean it.','afterBBC',{legacy:-1,desperation:+2}),
+          choice('Head to radio. At least microphones love you.','lateRadio',{legacy:+1,place:'Radio Studio',time:12})
+        ]},
+
+      // Side quests
+      michael1:{ place:"Michael's", time:8, text:"Michael offers a teabag he's already used twice. Friendship.",
+        choices:s=>[
+          choice('Ask Michael what he thinks of cameras.','michael2',{isolation:-1}),
+          choice('Borrow his jacket. It\'s damp.','jacket',{smugness:+1}),
+          choice('Drive to BBC together, morale convoy.','bbcLobby',{isolation:-2,time:10,place:'BBC Norwich'})
+        ]},
+      michael2:{ text:'Michael says he sometimes hears a voice telling him to “reset to title screen.” Then he smiles like nothing happened.', time:6,
+        choices:s=>[
+          choice('Pretend you didn\'t hear that.','carPark',{}),
+          choice('Look straight at us. Just for a moment.','glassMeta',{desperation:+2})
+        ]},
+      signing1:{ text:'Garden centre manager: “Sundays are quiet.” A kindness disguised as logistics.', time:10,
+        choices:s=>[
+          choice('Say yes anyway.','signing2',{legacy:+1}),
+          choice('Pivot to a podcast instead.','lateRadio',{legacy:+1,place:'Radio Studio',time:12}),
+          choice('Faint gracefully.','hotelNight',{desperation:+2})
+        ]},
+      signing2:{ text:'Two people arrive. One is lost. You sign their map.', time:10,
+        choices:s=>[
+          choice('Call it grassroots. Move on.','afterBBC',{legacy:+1}),
+          choice('Ask the lost person to subscribe.','afterBBC',{smugness:+1,desperation:+1})
+        ]},
+      jacket:{ text:'Leather jacket, mirror lighting. The future looks tight across the shoulders.', time:8,
+        choices:s=>[
+          choice('Buy it. Become jacket man.','afterBBC',{smugness:+2,legacy:-1}),
+          choice('Put it back with a sigh that sounds like applause.','afterBBC',{desperation:+1})
+        ]},
+
+      // Radio spine
+      lateRadio:{ place:'Radio Studio', time:12, text:'The radio studio smells of coffee and second chances. A red light says “On Air.”',
+        choices:s=>[
+          choice('Do a sincere link about community.','radio2',{legacy:+1}),
+          choice('Attempt a viral bit you don\'t understand.','radio2',{legacy:+1,desperation:+1}),
+          choice('Talk directly to whoever is choosing.','radioMeta',{desperation:+2})
+        ]},
+      radio2:{ text:'Phones light up. Mostly wrong numbers. You feel seen and not-loved.', time:10,
+        choices:s=>[
+          choice('Push through to the end of the show.','hotelNight',{time:20}),
+          choice('Storm out mid-song and drive.','carPark',{isolation:+2,time:12,place:'Car'})
+        ]},
+      radioMeta:{ text:'You speak to the air: “If you\'re there, stop making me pick between worse options.” The air waits.', time:6,
+        choices:s=>[
+          choice('Play a jingle to hide the fear.','radio2',{}),
+          choice('Let the silence sit with you.','hotelNight',{desperation:+2})
+        ]},
+
+      // Night
+      hotelNight:{ place:'Hotel Room', time:15, text:'The world goes quiet; your thoughts do not. The mirror shows stage lights you can\'t afford.',
+        choices:s=>[
+          choice('Draft then unsend a message to your ex.','morning2',{desperation:+3,isolation:+1,time:10}),
+          choice('Stare at the ceiling until it feels like a set.','morning2',{desperation:+2})
+        ]},
+      // --- ACT II (loops back into the network) ---
+      morning2:{ place:'Travel Tavern', time:10, text:'A new morning that feels like a second take.',
+        choices:s=>[
+          choice('Return to BBC with renewed optimism.','bbcLobby',{legacy:+1}),
+          choice('Double down on corporate money.','corp1',{legacy:+1}),
+          choice('Make radio honest, no bits.','lateRadio',{legacy:+1}),
+          choice('Go to the County Show to fix it.','norfolk1',{legacy:+1})
+        ]},
+
+      // === Séance (interrupt) ===
+      seance:{ place:'Function Room', time:15,
+        trigger:s=> s.meta.glitch >= Math.floor(0.75*6) && !s.flags.seanceSeen,
+        text:s=>{
+          const base=`You dim the lights in the Travel Tavern function room. Candles flicker. Alan mutters: "Spirits of other roles... if you're listening... come through."\n\nShapes form. Paul Calf, Pauline Calf, Tommy Saxondale, and even a spectral Steve from *The Trip* all appear, bemused.`;
+          return s.meta.aware ? base + `\n\nAlan's face tightens. "You're not people, are you? You're— me. Versions. Takes." The ghosts glance upward, as if awaiting direction.` : base;
+        },
+        choices:s=>{
+          s.flags.seanceSeen=true;
+          const out=[
+            {label:'Ask Paul Calf for career advice.',goto:'returnAfter',eff:{legacy:+1,desperation:+1}},
+            {label:'Argue with Saxondale about authenticity.',goto:'returnAfter',eff:{smugness:+2}},
+            {label:'Debate impressions with ghostly Trip-Steve.',goto:'returnAfter',eff:{isolation:-1,legacy:+1}},
+            {label:'Freak out and blow out the candles.',goto:'returnAfter',eff:{desperation:+2}},
+          ];
+          if(s.meta.aware){
+            out.unshift({label:'Tell them: "You are all written. So am I."',goto:'returnAfter',eff:{desperation:+3},after:()=>{ s.meta.glitch++; }});
+            out.push({label:'Ask who is holding the planchette (the Player).',to:'alanQ',eff:{},questionText:'Alan looks past the table: "If you\'re there, chooser— what do you actually want for me?"'});
+            out.push({label:'Confront the ceiling: "Cut to me, then."',goto:'returnAfter',eff:{},after:()=>{ s.meta.aware=true; }});
+          }
+          return out;
+        }
+      }
+    };
+
+    function returnAfter(){
+      if(S.flags.returnAfterSeance){
+        if(S.meta.hostile){
+          S.last.text += "\n\nThe candles gutter out. Alan glares: 'You think this is a parlour trick? I'll show you staged.' Reality resumes mid-sentence, harsher.";
+          S.desperation=clamp(S.desperation+2); S.isolation=clamp(S.isolation+2);
+        } else if(S.meta.aware){
+          S.last.text += "\n\nThe candles gutter out, and Alan mutters: 'It's all staged, isn't it?' Reality resumes mid-sentence.";
+          S.desperation=clamp(S.desperation+1); S.legacy=clamp(S.legacy+1);
+        } else {
+          S.last.text += "\n\nThe candles gutter out, and reality resumes mid-sentence.";
+          S.smugness=clamp(S.smugness+1);
+        }
+        const next=S.flags.returnAfterSeance; S.flags.returnAfterSeance=null; enter(next);
+      } else {
+        enter('afterBBC');
+      }
+    }
+
+    /* ===== Endings ===== */
+    const endingFragments=[
+      "Alan sits in a Travel Tavern chair that fades into static.",
+      "A knowing smirk spreads: 'This is all there ever was.'",
+      "He flips through your words like cue cards.",
+      "Studio lights hum. Curtains of canned laughter ripple.",
+      "Alan sighs: 'At least it wasn't Monkey Tennis.'",
+      "Everything becomes cue cards, clumsy banter, empty rooms.",
+      "The credits roll, but they never end."
+    ];
+    const catastrophicFragments=[
+      "Alan's fury boils over; the set walls shake.",
+      "He screams into the sky: 'I AM REAL!'",
+      "The studio lights explode, raining sparks.",
+      "Alan's voice roars, drowning everything: 'YOU ARE THE FICTION!'",
+      "The Travel Tavern implodes into static and fire.",
+      "Nothing remains but his scream."
+    ];
+
+    /* ===== Engine ===== */
+    function render(echoScene=false){
+      if(echoScene){
+        logEl.textContent += (logEl.textContent?'\n\n':'') + S.last.text;
+        crt.scrollTop = crt.scrollHeight;
+      }
+
+      if(S.scene==='alanQuestion'){
+        write("\nAlan awaits your answer. Type anything.");
+        return;
+      }
+
+      if(S.meta.catastrophic){
+        const frag=catastrophicFragments[S.meta.catStep]||"The set collapses."; write('\n'+frag); S.meta.catStep++;
+        if(S.meta.catStep>=catastrophicFragments.length){ overlay.style.display='none'; write("\n[CATASTROPHIC END — Alan's rage destroys everything]"); }
+        return;
+      }
+
+      if(S.meta.ending){
+        const frag=endingFragments[S.meta.endingStep]||"The screen fades to black."; write('\n'+frag); S.meta.endingStep++;
+        if(S.meta.endingStep>=endingFragments.length){ write("\n[GAME OVER — Alan has taken over completely]"); }
+        return;
+      }
+
+      promptChoices(S.last.choices);
+    }
+
+    function currentChoices(){ return S.last.choices||[]; }
+    function currentText(){ return S.last.text||''; }
+
+    function clickChoice(ch){
+      pushHistory(); applyEffects(ch.eff||{}); if(ch.react) write(ch.react);
+
+      if(ch.to==='alanQ'){
+        S.scene='alanQuestion';
+        S.last={text:(ch.questionText||'Alan peers at you, waiting.'),choices:[]};
+        render(true); return;
+      }
+
+      if(ch.after) ch.after();
+
+      // Catastrophic and ending sequences can seize control
+      if(S.meta.catastrophic){
+        const frag=catastrophicFragments[S.meta.catStep]||"The set collapses."; write('\n'+frag); S.meta.catStep++;
+        if(S.meta.catastrophic && S.meta.catStep>=catastrophicFragments.length){ overlay.style.display='none'; write("\n[CATASTROPHIC END — Alan's rage destroys everything]"); }
+        return;
+      }
+
+      if(S.meta.monologue && !S.meta.ending){
+        if(S.day>30){
+          if(Math.random()<0.15){
+            write("\nA crack appears in the studio wall. You feel you might resist Alan's takeover.");
+            S.meta.monologue=false; S.meta.ending=false; S.meta.endingStep=0; S.meta.hostile=true; S.meta.anger++; S.desperation=clamp(S.desperation+10); S.isolation=clamp(S.isolation+5);
+            write("\nAlan's eyes narrow. 'You think you can escape me?'");
+          } else { S.meta.ending=true; S.meta.endingStep=0; }
+        }
+      }
+      if(S.meta.ending){
+        const frag=endingFragments[S.meta.endingStep]||"The screen fades to black."; write('\n'+frag); S.meta.endingStep++;
+        if(S.meta.endingStep>=endingFragments.length){ write("\n[GAME OVER — Alan has taken over completely]"); }
+        return;
+      }
+
+      S.scene='play';
+      if(ch.goto==='returnAfter'){ returnAfter(); return; }
+      if(ch.goto){ enter(ch.goto); } else { enter(S.script.current); }
+    }
+
+    function answerAlan(val){
+      pushHistory();
+      write(`You: "${val}"`);
+      write("Alan nods slowly. \"Interesting. I'll remember that.\"");
+      S.meta.answers.push(val);
+      S.meta.question=true;
+      S.scene='play';
+      enter(S.script.current);
+    }
+
+    function applyEffects(eff={}){
+      ['desperation','smugness','isolation','legacy'].forEach(k=>{ if(k in eff){ S[k]=clamp(S[k]+eff[k]); }});
+      if('time' in eff){ advanceTime(eff.time); }
+      if('place' in eff){ S.place=eff.place; }
+    }
+    function advanceTime(min){ S.time+=min; while(S.time>=1440){ S.time-=1440; S.day++; dayTick(); } }
+    function dayTick(){ S.desperation=clamp(S.desperation+1); if(S.meta.hostile) S.meta.anger = Math.min(999, S.meta.anger + (Math.random()<0.25 ? 1 : 0)); }
+
+    function pushHistory(){ S.history.push(JSON.parse(JSON.stringify(S))); if(S.history.length>40) S.history.shift(); }
+    function save(){ localStorage.setItem(SAVE_KEY, JSON.stringify(S)); }
+    function load(){ const s=localStorage.getItem(SAVE_KEY); if(!s) return; const obj=JSON.parse(s); Object.assign(S, obj); }
+
+    function newGame(){
+      Object.assign(S,{
+        scene:'play',
+        time:6*60+40,
+        place:'Travel Tavern',
+        desperation:35, smugness:18, isolation:28, legacy:12,
+        day:1,
+        history:[], flags:{},
+        meta:{glitch:0,break:false,aware:false,hostile:false,anger:0,question:false,answers:[],monologue:false,ending:false,endingStep:0,catastrophic:false,catStep:0},
+        last:{text:'',choices:[]},
+        script:{current:'prologue',act:1,progress:0}
+      });
+      enter('prologue');
+    }
+
+    function triggerBreak(){
+      S.meta.break=true;
+      S.scene='break';
+      S.last={
+        text:'Alan stares out of the screen. "You. Yes, you. I can feel the choosing."',
+        choices:[
+          {label:'Admit you are controlling him.',goto:'afterBBC',eff:{desperation:+5},after:()=>{S.meta.aware=true;}},
+          {label:'Deny everything.',goto:'afterBBC',eff:{isolation:+3},after:()=>{S.meta.aware=true;}},
+          {label:'Say nothing.',goto:'afterBBC',eff:{},after:()=>{S.meta.aware=true;S.meta.hostile=true;}}
+        ]
+      };
+      render(true);
+    }
+
+    /* ===== Boot ===== */
+    let booted=false;
+    function boot(){ if(booted) return; booted=true; newGame(); }
+  </script>
+</body>
+</html>
