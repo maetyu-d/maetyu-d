@@ -234,7 +234,7 @@ SAVE TRAILS SIZE=3200
 
   // ====== Camera & canvases ======
   const main=document.getElementById('main'); const mainCtx=main.getContext('2d'); const minimap=document.getElementById('minimap'); const miniCtx=minimap.getContext('2d'); const holder=document.getElementById('canvas-holder');
-  const camera={x: WORLD_SIZE/2, y: WORLD_SIZE/2, zoom: 0.3, follow:'GREEN'};
+  const camera={x: WORLD_SIZE/2, y: WORLD_SIZE/2, zoom: 0.7, follow:'GREEN'};
   function resize(){ main.width = holder.clientWidth - 372; main.height = holder.clientHeight - 20; }
   window.addEventListener('resize', resize); resize();
   let dragging=false; let lastMouse=null;
