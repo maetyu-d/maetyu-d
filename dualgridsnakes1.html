@@ -1,0 +1,1158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analogue Snake Sequencer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'VT323', monospace;
+            background-color: #000;
+            color: #ff0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            flex-direction: column;
+            padding: 2rem;
+        }
+
+        .container {
+            background-color: #000;
+            padding: 2.5rem;
+            border: 2px solid #333;
+            max-width: 95%;
+            display: flex;
+            flex-direction: row;
+            gap: 2rem;
+            align-items: flex-start;
+        }
+
+        .grid-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .controls-container {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            align-items: center;
+            min-width: 200px;
+        }
+
+        canvas {
+            border: 2px solid #333;
+            background-color: #000;
+        }
+
+        .btn {
+            padding: 0.875rem 2rem;
+            border-radius: 0;
+            font-size: 1.125rem;
+            font-weight: bold;
+            transition: all 0.2s;
+            cursor: pointer;
+            border: 2px solid #ff0;
+            background-color: #000;
+            color: #ff0;
+        }
+
+        .btn:hover {
+            background-color: #ff0;
+            color: #000;
+        }
+
+        .info-box {
+            background-color: #000;
+            padding: 1.25rem;
+            border: 2px solid #333;
+            text-align: center;
+            line-height: 1.6;
+            font-size: 1rem;
+        }
+
+        .snake-info-container {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            text-align: center;
+        }
+        
+        .snake-info label {
+            color: #ff0;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200">
+<div class="container">
+    <div class="grid-container">
+        <h2 class="text-2xl font-bold">Main Grid (32x32)</h2>
+        <canvas id="mainCanvas"></canvas>
+    </div>
+    
+    <div class="controls-container">
+        <h1 class="text-4xl font-bold mb-2 text-center">Analogue Shift Register Sequencer</h1>
+        <p class="text-lg text-gray-400 text-center mb-4">A generative music experiment inspired by the classic Snake game.</p>
+        
+        <div class="flex flex-col items-center gap-4 w-full">
+            <button id="playBtn" class="btn">Play</button>
+            <button id="stopBtn" class="btn">Stop</button>
+            <button id="resetBtn" class="btn">Reset</button>
+        </div>
+        
+        <div class="flex flex-col items-center w-full mt-4">
+            <label for="tempo-slider">Tempo (BPM): <span id="tempo-value">120</span></label>
+            <input type="range" id="tempo-slider" min="60" max="200" value="120" class="w-full">
+        </div>
+        <div class="flex flex-col items-center w-full">
+            <label>Current Scale: <span id="scale-display">C Major</span></label>
+        </div>
+        <div class="flex flex-col items-center w-full">
+            <label for="density-slider">Event Density: <span id="density-value">3</span></label>
+            <input type="range" id="density-slider" min="1" max="500" value="3" class="w-full">
+        </div>
+        
+        <div id="snake-info" class="snake-info-container w-full"></div>
+        <div class="info-box w-full">
+            <p>The snakes now move automatically and will seek each other out. A collision will cause a musical mutation! The screen will flash when they touch. Events on the main grid will trigger drum events on the rhythm grid.</p>
+        </div>
+    </div>
+    
+    <div class="grid-container">
+        <h2 class="text-2xl font-bold">Rhythm Grid (16x16)</h2>
+        <canvas id="drumCanvas"></canvas>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const mainCanvas = document.getElementById('mainCanvas');
+        const mainCtx = mainCanvas.getContext('2d');
+        const drumCanvas = document.getElementById('drumCanvas');
+        const drumCtx = drumCanvas.getContext('2d');
+
+        const playBtn = document.getElementById('playBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const tempoSlider = document.getElementById('tempo-slider');
+        const tempoValue = document.getElementById('tempo-value');
+        const scaleDisplay = document.getElementById('scale-display');
+        const snakeInfoContainer = document.getElementById('snake-info');
+        const densitySlider = document.getElementById('density-slider');
+        const densityValue = document.getElementById('density-value');
+
+        const MAIN_GRID_SIZE = 32;
+        const DRUM_GRID_SIZE = 16;
+        const CELL_SIZE = 30;
+        const SPEED = 200; // Milliseconds per move
+        let gameLoopInterval = null;
+        let isPlaying = false;
+        let isColliding = false;
+
+        // Set canvas dimensions
+        mainCanvas.width = MAIN_GRID_SIZE * CELL_SIZE;
+        mainCanvas.height = MAIN_GRID_SIZE * CELL_SIZE;
+        drumCanvas.width = DRUM_GRID_SIZE * CELL_SIZE;
+        drumCanvas.height = DRUM_GRID_SIZE * CELL_SIZE;
+
+        // Global scale and list of scales
+        const scales = [
+            { name: "C Major", notes: ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4'] },
+            { name: "C Minor", notes: ['C4', 'D4', 'Eb4', 'F4', 'G4', 'Ab4', 'Bb4'] },
+            { name: "C Dorian", notes: ['C4', 'D4', 'Eb4', 'F4', 'G4', 'A4', 'Bb4'] },
+            { name: "C Lydian", notes: ['C4', 'D4', 'E4', 'F#4', 'G4', 'A4', 'B4'] },
+            { name: "G Mixolydian", notes: ['G4', 'A4', 'B4', 'C5', 'D5', 'E5', 'F5'] }
+        ];
+        let currentScale = scales[0];
+        scaleDisplay.textContent = currentScale.name;
+
+        // Master limiter to prevent distortion
+        const masterLimiter = new Tone.Limiter(-6).toDestination();
+
+        // Gamelan-like synth preset with reduced volume
+        const gamelanSynth = new Tone.PolySynth(Tone.FMSynth, {
+            volume: -10, // Reduce gain to prevent clipping
+            harmonicity: 0.5,
+            modulationIndex: 10,
+            oscillator: { type: "sine" },
+            envelope: {
+                attack: 0.01,
+                decay: 0.1,
+                sustain: 0,
+                release: 0.1
+            },
+            modulation: {
+                type: "square"
+            }
+        }).connect(masterLimiter);
+
+        // Ambient synth for sustained chords with reduced volume
+        const ambientSynth = new Tone.PolySynth(Tone.Synth, {
+            volume: -24, // Reduced gain to prevent clipping with sustained notes
+            oscillator: { type: "sine" },
+            envelope: {
+                attack: 0.5,
+                decay: 1.2,
+                sustain: 0.8,
+                release: 2
+            },
+            filter: {
+                frequency: 1000,
+                type: "lowpass"
+            },
+            filterEnvelope: {
+                attack: 0.5,
+                decay: 0.2,
+                sustain: 0.5,
+                release: 2,
+                baseFrequency: 200,
+                octaves: 3
+            }
+        }).connect(masterLimiter);
+        
+        // 606 Drum Synths
+        const kickSynth = new Tone.MembraneSynth({
+            volume: -8,
+            pitchDecay: 0.05,
+            octaves: 10,
+            envelope: {
+                attack: 0.001,
+                decay: 0.4,
+                sustain: 0.01,
+                release: 0.04,
+            }
+        }).connect(masterLimiter);
+
+        const snareSynth = new Tone.NoiseSynth({
+            volume: -10,
+            noise: { type: 'white' },
+            envelope: {
+                attack: 0.001,
+                decay: 0.1,
+                sustain: 0.01,
+                release: 0.04,
+            }
+        }).connect(masterLimiter);
+
+        const hihatSynth = new Tone.NoiseSynth({
+            volume: -15,
+            noise: { type: 'pink' },
+            envelope: {
+                attack: 0.001,
+                decay: 0.05,
+                sustain: 0.01,
+                release: 0.02,
+            }
+        }).connect(masterLimiter);
+
+        // Snakes and their sequences
+        const snakes = [
+            {
+                id: 1,
+                body: [{ x: 8, y: 8 }],
+                direction: { x: 1, y: 0 },
+                color: '#58a6ff', // Blue
+                notes: [],
+                synth: gamelanSynth,
+                sequence: null,
+                head: null,
+                interval: "8n",
+                offset: 0,
+                timeSignature: '4/4'
+            },
+            {
+                id: 2,
+                body: [{ x: 24, y: 24 }],
+                direction: { x: -1, y: 0 },
+                color: '#da3633', // Red
+                notes: [],
+                synth: gamelanSynth,
+                sequence: null,
+                head: null,
+                interval: "8n",
+                offset: "4n",
+                timeSignature: '4/4'
+            }
+        ];
+
+        const drumSnakes = [
+            {
+                id: 101,
+                body: [{ x: 4, y: 4 }],
+                direction: { x: 1, y: 0 },
+                color: '#d1b16c',
+                notes: [],
+                synth: null, // No synth needed, they trigger events
+                sequence: null,
+                head: null,
+                interval: "4n",
+                offset: 0,
+                timeSignature: '4/4',
+                isDrum: true
+            },
+            {
+                id: 102,
+                body: [{ x: 12, y: 12 }],
+                direction: { x: -1, y: 0 },
+                color: '#d1b16c',
+                notes: [],
+                synth: null,
+                sequence: null,
+                head: null,
+                interval: "4n",
+                offset: "2n",
+                timeSignature: '4/4',
+                isDrum: true
+            }
+        ];
+        
+        // Maps time signature strings to Tone.js loop lengths in notes
+        const timeSigMap = {
+            '2/4': 2,
+            '3/4': 3,
+            '4/4': 4,
+            '5/4': 5,
+            '7/8': 7
+        };
+
+        // Grid function squares
+        const gridFunctions = [];
+        const functionTypes = [
+            { type: 'addLength', color: '#2e8b57', symbol: '+' },
+            { type: 'subtractLength', color: '#c94c4c', symbol: '-' },
+            { type: 'transpose', color: '#6a5acd', symbol: 'T' },
+            { type: 'changeRhythm', color: '#d1b16c', symbol: 'R' },
+            { type: 'changeScale', color: '#3d85c6', symbol: 'S' },
+            { type: 'changeTimeSig', color: '#c27ba0', symbol: 'TS' },
+            { type: 'changeOctave', color: '#a03b5a', symbol: 'O' },
+            { type: 'modulo', color: '#b966a3', symbol: '%' },
+            { type: 'addSustainedChords', color: '#00ffff', symbol: 'C' }
+        ];
+
+        // Drum grid functions
+        const drumFunctions = [];
+        const drumFunctionTypes = [
+            { type: 'kick', color: '#c94c4c', symbol: 'K' },
+            { type: 'snare', color: '#d1b16c', symbol: 'SN' },
+            { type: 'hihat', color: '#2e8b57', symbol: 'HH' }
+        ];
+        
+        // A global variable to ensure drum events have unique, strictly increasing times.
+        let lastDrumTime = Tone.now();
+        
+        function drawSymbol(ctx, x, y, symbol, color) {
+            ctx.fillStyle = color;
+            ctx.font = `${CELL_SIZE * 0.7}px 'Permanent Marker', cursive`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(symbol, x * CELL_SIZE + CELL_SIZE / 2, y * CELL_SIZE + CELL_SIZE / 2);
+        }
+
+        function spawnNewGridFunction(gridFunctions, gridSize, functionTypes) {
+            if (gridFunctions.length >= densitySlider.value) return;
+
+            let newX, newY, isOccupied;
+            do {
+                newX = Math.floor(Math.random() * gridSize);
+                newY = Math.floor(Math.random() * gridSize);
+                isOccupied = snakes.some(snake => snake.body.some(segment => segment.x === newX && segment.y === newY));
+                isOccupied = isOccupied || gridFunctions.some(func => func.x === newX && func.y === newY);
+            } while (isOccupied);
+
+            const randomFunction = functionTypes[Math.floor(Math.random() * functionTypes.length)];
+            gridFunctions.push({ x: newX, y: newY, ...randomFunction });
+        }
+        
+        // Find the closest note in a given scale
+        function getNoteInScale(note, scale) {
+            const midiNote = Tone.Midi(note).toMidi();
+            const scaleMidi = scale.map(n => Tone.Midi(n).toMidi());
+            
+            let closestNote = scaleMidi[0];
+            let minDistance = Infinity;
+
+            scaleMidi.forEach(scaleNote => {
+                const distance = Math.abs(scaleNote - midiNote);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestNote = scaleNote;
+                }
+            });
+            return Tone.Midi(closestNote).toNote();
+        }
+
+        // Generate a random note from the scale
+        function getRandomNote() {
+            return currentScale.notes[Math.floor(Math.random() * currentScale.notes.length)];
+        }
+
+        // Get number of notes for a given time sig and interval
+        function getNotesPerMeasure(timeSig, interval) {
+            const [numerator, denominator] = timeSig.split('/').map(Number);
+            const intervalDuration = Tone.Time(interval).toSeconds();
+            const beatDuration = Tone.Time('4n').toSeconds();
+            const notesPerBeat = Math.round(beatDuration / intervalDuration);
+            return notesPerBeat * numerator * (denominator / 4);
+        }
+
+        // Initialize sequences with some starting notes
+        function initializeSnakes(snakes, isDrumGrid = false) {
+            snakes.forEach(snake => {
+                if (!isDrumGrid) {
+                    snake.notes = Array(snake.body.length).fill().map(() => getRandomNote());
+                    if (snake.sequence) {
+                        snake.sequence.stop().dispose();
+                    }
+                    const loopEnd = `${timeSigMap[snake.timeSignature]}n`;
+                    snake.sequence = new Tone.Sequence((time, note) => {
+                        snake.synth.triggerAttackRelease(note, snake.interval, time);
+                    }, snake.notes, snake.interval).start(snake.offset);
+                    snake.sequence.loop = true;
+                    snake.sequence.loopEnd = loopEnd;
+                }
+            });
+            Tone.Transport.bpm.value = tempoSlider.value;
+            renderSnakeInfo();
+        }
+
+        // --- Game Logic ---
+
+        function update() {
+            // Update main snakes
+            autoMoveSnakes(snakes, MAIN_GRID_SIZE);
+            snakes.forEach(snake => {
+                const newHead = {
+                    x: (snake.body[0].x + snake.direction.x + MAIN_GRID_SIZE) % MAIN_GRID_SIZE,
+                    y: (snake.body[0].y + snake.direction.y + MAIN_GRID_SIZE) % MAIN_GRID_SIZE
+                };
+
+                snake.head = newHead;
+                snake.body.unshift(newHead);
+                snake.notes.unshift(getRandomNote());
+                if (snake.sequence) {
+                    snake.sequence.set(snake.notes);
+                }
+                if (snake.body.length > snake.notes.length) {
+                    snake.body.pop();
+                }
+            });
+            checkForCollisions(snakes);
+            checkForGridFunctionCollisions(snakes, gridFunctions, MAIN_GRID_SIZE);
+
+            // Update drum snakes
+            autoMoveSnakes(drumSnakes, DRUM_GRID_SIZE);
+            drumSnakes.forEach(snake => {
+                const newHead = {
+                    x: (snake.body[0].x + snake.direction.x + DRUM_GRID_SIZE) % DRUM_GRID_SIZE,
+                    y: (snake.body[0].y + snake.direction.y + DRUM_GRID_SIZE) % DRUM_GRID_SIZE
+                };
+                snake.head = newHead;
+                snake.body.unshift(newHead);
+                snake.body.pop();
+            });
+            checkForGridFunctionCollisions(drumSnakes, drumFunctions, DRUM_GRID_SIZE);
+
+            draw();
+        }
+
+        function autoMoveSnakes(snakeArray, gridSize) {
+            snakeArray.forEach(snake => {
+                const head = snake.body[0];
+                const otherSnakes = snakeArray.filter(s => s.id !== snake.id);
+                
+                if (otherSnakes.length > 0 && Math.random() < 0.5) {
+                    const otherSnake = otherSnakes[Math.floor(Math.random() * otherSnakes.length)];
+                    const otherHead = otherSnake.body[0];
+
+                    const dx = otherHead.x - head.x;
+                    const dy = otherHead.y - head.y;
+
+                    if (Math.abs(dx) > Math.abs(dy)) {
+                        if (dx > 0 && snake.direction.x !== -1) {
+                            snake.direction = { x: 1, y: 0 };
+                        } else if (dx < 0 && snake.direction.x !== 1) {
+                            snake.direction = { x: -1, y: 0 };
+                        }
+                    } else {
+                        if (dy > 0 && snake.direction.y !== -1) {
+                            snake.direction = { x: 0, y: 1 };
+                        } else if (dy < 0 && snake.direction.y !== 1) {
+                            snake.direction = { x: 0, y: -1 };
+                        }
+                    }
+                }
+
+                const nextX = (head.x + snake.direction.x + gridSize) % gridSize;
+                const nextY = (head.y + snake.direction.y + gridSize) % gridSize;
+
+                if (nextX === 0 && snake.direction.x === -1 || nextX === gridSize - 1 && snake.direction.x === 1 ||
+                    nextY === 0 && snake.direction.y === -1 || nextY === gridSize - 1 && snake.direction.y === 1) {
+                    const currentDir = snake.direction;
+                    let newDir;
+                    if (currentDir.x !== 0) {
+                        newDir = (Math.random() > 0.5) ? { x: 0, y: 1 } : { x: 0, y: -1 };
+                    } else {
+                        newDir = (Math.random() > 0.5) ? { x: 1, y: 0 } : { x: -1, y: 0 };
+                    }
+                    snake.direction = newDir;
+                }
+            });
+        }
+
+        function checkForCollisions(snakeArray) {
+            let collisionOccurred = false;
+            for (let i = 0; i < snakeArray.length; i++) {
+                const snake1 = snakeArray[i];
+                if (!snake1 || !snake1.head) continue;
+                for (let j = i + 1; j < snakeArray.length; j++) {
+                    const snake2 = snakeArray[j];
+                    if (!snake2 || !snake2.head) continue;
+
+                    // Head-on collision
+                    if (snake1.head.x === snake2.head.x && snake1.head.y === snake2.head.y) {
+                        console.log(`Snake ${snake1.id} and Snake ${snake2.id} head-on collision!`);
+                        collisionOccurred = true;
+                    }
+
+                    // Snake 1 head collides with snake 2 body
+                    for (let k = 1; k < snake2.body.length; k++) {
+                        if (snake1.head.x === snake2.body[k].x && snake1.head.y === snake2.body[k].y) {
+                            console.log(`Snake ${snake1.id} collided with Snake ${snake2.id}'s body!`);
+                            collisionOccurred = true;
+                            // CUTTING LOGIC
+                            if (snakeArray.length < 4) {
+                                const newBody = snake2.body.slice(k);
+                                const newNotes = snake2.notes.slice(k);
+                                snake2.body.length = k;
+                                snake2.notes.length = k;
+                                snake2.sequence.set(snake2.notes);
+
+                                const newSnake = {
+                                    id: snakeArray.length + 1,
+                                    body: newBody,
+                                    direction: { x: (Math.random() > 0.5 ? 1 : -1), y: 0 },
+                                    color: '#d9e236',
+                                    notes: newNotes,
+                                    synth: gamelanSynth,
+                                    sequence: null,
+                                    head: null,
+                                    interval: "2n",
+                                    offset: Math.random() > 0.5 ? "8n" : 0,
+                                    timeSignature: '4/4'
+                                };
+                                snakeArray.push(newSnake);
+                                newSnake.sequence = new Tone.Sequence((time, note) => {
+                                    newSnake.synth.triggerAttackRelease(note, newSnake.interval, time);
+                                }, newSnake.notes, newSnake.interval).start(newSnake.offset);
+                                newSnake.sequence.loop = true;
+                                newSnake.sequence.loopEnd = `${timeSigMap[newSnake.timeSignature]}n`;
+                                console.log(`Snake ${snake2.id} cut! New snake spawned.`);
+                            }
+                            break;
+                        }
+                    }
+
+                    // Snake 2 head collides with snake 1 body
+                    for (let k = 1; k < snake1.body.length; k++) {
+                        if (snake2.head.x === snake1.body[k].x && snake2.head.y === snake1.body[k].y) {
+                            console.log(`Snake ${snake2.id} collided with Snake ${snake1.id}'s body!`);
+                            collisionOccurred = true;
+                            // CUTTING LOGIC
+                            if (snakeArray.length < 4) {
+                                const newBody = snake1.body.slice(k);
+                                const newNotes = snake1.notes.slice(k);
+                                snake1.body.length = k;
+                                snake1.notes.length = k;
+                                snake1.sequence.set(snake1.notes);
+
+                                const newSnake = {
+                                    id: snakeArray.length + 1,
+                                    body: newBody,
+                                    direction: { x: (Math.random() > 0.5 ? 1 : -1), y: 0 },
+                                    color: '#d9e236',
+                                    notes: newNotes,
+                                    synth: gamelanSynth,
+                                    sequence: null,
+                                    head: null,
+                                    interval: "2n",
+                                    offset: Math.random() > 0.5 ? "8n" : 0,
+                                    timeSignature: '4/4'
+                                };
+                                snakeArray.push(newSnake);
+                                newSnake.sequence = new Tone.Sequence((time, note) => {
+                                    newSnake.synth.triggerAttackRelease(note, newSnake.interval, time);
+                                }, newSnake.notes, newSnake.interval).start(newSnake.offset);
+                                newSnake.sequence.loop = true;
+                                newSnake.sequence.loopEnd = `${timeSigMap[newSnake.timeSignature]}n`;
+                                console.log(`Snake ${snake1.id} cut! New snake spawned.`);
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+            if (collisionOccurred) {
+                modifySequences();
+                isColliding = true;
+                setTimeout(() => {
+                    isColliding = false;
+                }, 100);
+            }
+        }
+
+        function checkForGridFunctionCollisions(snakeArray, funcArray, gridSize) {
+            snakeArray.forEach(snake => {
+                const head = snake.body[0];
+                const funcIndex = funcArray.findIndex(f => f.x === head.x && f.y === head.y);
+                if (funcIndex !== -1) {
+                    const func = funcArray[funcIndex];
+                    console.log(`Snake ${snake.id} activated function: ${func.type}`);
+                    if (snake.isDrum) {
+                         applyDrumFunction(func.type);
+                    } else {
+                        applyGridFunction(func.type, snake);
+                        triggerDrumEvent();
+                    }
+                    funcArray.splice(funcIndex, 1);
+                    if (snake.isDrum) {
+                        spawnNewGridFunction(drumFunctions, DRUM_GRID_SIZE, drumFunctionTypes);
+                    } else {
+                        spawnNewGridFunction(gridFunctions, MAIN_GRID_SIZE, functionTypes);
+                    }
+                    
+                    isColliding = true;
+                    setTimeout(() => {
+                        isColliding = false;
+                    }, 100);
+                }
+            });
+        }
+        
+        function applyDrumFunction(type) {
+            // Ensure the time is strictly increasing to prevent a Tone.js error
+            const time = Math.max(Tone.now(), lastDrumTime + 0.001);
+            lastDrumTime = time;
+
+            switch(type) {
+                case 'kick':
+                    kickSynth.triggerAttackRelease('C1', '8n', time);
+                    break;
+                case 'snare':
+                    snareSynth.triggerAttackRelease('8n', time);
+                    break;
+                case 'hihat':
+                    hihatSynth.triggerAttackRelease('16n', time);
+                    break;
+            }
+        }
+
+        function triggerDrumEvent() {
+            const randomType = drumFunctionTypes[Math.floor(Math.random() * drumFunctionTypes.length)];
+            const newX = Math.floor(Math.random() * DRUM_GRID_SIZE);
+            const newY = Math.floor(Math.random() * DRUM_GRID_SIZE);
+            drumFunctions.push({ x: newX, y: newY, ...randomType });
+        }
+
+
+        function applyGridFunction(type, targetSnake) {
+            const allSnakes = snakes;
+
+            switch(type) {
+                case 'addLength':
+                    allSnakes.forEach(snake => {
+                        const newLength = snake.notes.length + 2;
+                        while (snake.notes.length < newLength) {
+                            snake.notes.push(getRandomNote());
+                        }
+                        snake.sequence.set(snake.notes);
+                    });
+                    console.log(`All snakes' lengths increased.`);
+                    break;
+                case 'subtractLength':
+                    allSnakes.forEach(snake => {
+                        if (snake.notes.length > 2) {
+                            const newLength = Math.max(2, snake.notes.length - 2);
+                            snake.notes.length = newLength;
+                            snake.sequence.set(snake.notes);
+                            console.log(`Snake ${snake.id} length shortened to ${newLength}`);
+                        }
+                    });
+                    break;
+                case 'transpose':
+                    allSnakes.forEach(snake => {
+                        const transposition = Math.floor(Math.random() * 24) - 12;
+                        snake.notes = snake.notes.map(note => {
+                            if (typeof note === 'string') {
+                                const transposedNote = Tone.Midi(note).transpose(transposition).toNote();
+                                return getNoteInScale(transposedNote, currentScale.notes);
+                            }
+                            return note;
+                        });
+                        snake.sequence.set(snake.notes);
+                    });
+                    console.log(`All snakes transposed.`);
+                    break;
+                case 'changeRhythm':
+                    allSnakes.forEach(snake => {
+                        const intervals = ["2n", "4n", "8n", "4t"];
+                        const newInterval = intervals[Math.floor(Math.random() * intervals.length)];
+                        if (snake.sequence) {
+                            snake.sequence.stop().dispose();
+                        }
+                        snake.interval = newInterval;
+                        snake.sequence = new Tone.Sequence((time, note) => {
+                            snake.synth.triggerAttackRelease(note, snake.interval, time);
+                        }, snake.notes, snake.interval).start(snake.offset);
+                        snake.sequence.loop = true;
+                        snake.sequence.loopEnd = `${timeSigMap[snake.timeSignature]}n`;
+                    });
+                    console.log(`Rhythm changed.`);
+                    break;
+                case 'changeScale':
+                    currentScale = scales[Math.floor(Math.random() * scales.length)];
+                    scaleDisplay.textContent = currentScale.name;
+                    console.log(`Global scale changed to ${currentScale.name}`);
+                    break;
+                case 'changeTimeSig':
+                    const timeSigs = ['2/4', '3/4', '5/4', '7/8'];
+                    const newTimeSig = timeSigs[Math.floor(Math.random() * timeSigs.length)];
+                    targetSnake.timeSignature = newTimeSig;
+                    
+                    const newLoopEnd = `${timeSigMap[newTimeSig]}n`;
+                    targetSnake.sequence.loopEnd = newLoopEnd;
+                    console.log(`Snake ${targetSnake.id}'s time signature changed to ${newTimeSig}`);
+
+                    // Re-sync notes to new time signature
+                    const notesPerMeasure = getNotesPerMeasure(targetSnake.timeSignature, targetSnake.interval);
+                    while(targetSnake.notes.length < notesPerMeasure) {
+                        targetSnake.notes.push(getRandomNote());
+                    }
+                    while(targetSnake.notes.length > notesPerMeasure) {
+                        targetSnake.notes.pop();
+                    }
+                    targetSnake.sequence.set(targetSnake.notes);
+                    renderSnakeInfo();
+                    break;
+                case 'changeOctave':
+                    allSnakes.forEach(snake => {
+                        const octaveShift = Math.random() > 0.5 ? 12 : -12;
+                        snake.notes = snake.notes.map(note => {
+                            if (typeof note === 'string') {
+                                return Tone.Midi(note).transpose(octaveShift).toNote();
+                            }
+                            return note;
+                        });
+                        snake.sequence.set(snake.notes);
+                    });
+                    console.log(`Octave shifted for all snakes.`);
+                    break;
+                case 'modulo':
+                    allSnakes.forEach(snake => {
+                        const scaleLength = currentScale.notes.length;
+                        const moduloBy = Math.floor(Math.random() * scaleLength) + 1;
+                        snake.notes = snake.notes.map(note => {
+                            if (typeof note === 'string') {
+                                const noteIndex = currentScale.notes.indexOf(getNoteInScale(note, currentScale.notes));
+                                const newIndex = (noteIndex + moduloBy) % scaleLength;
+                                return currentScale.notes[newIndex];
+                            }
+                            return note;
+                        });
+                        snake.sequence.set(snake.notes);
+                    });
+                    console.log(`All sequences moduled.`);
+                    break;
+                case 'addSustainedChords':
+                    targetSnake.synth = ambientSynth;
+                    targetSnake.interval = "2n";
+                    targetSnake.notes = targetSnake.notes.map(note => {
+                        if (typeof note === 'string') {
+                            return createThoughtfulChord(note, currentScale.notes);
+                        }
+                        return note;
+                    });
+                    targetSnake.sequence.stop().dispose();
+                    targetSnake.sequence = new Tone.Sequence((time, note) => {
+                        targetSnake.synth.triggerAttackRelease(note, "1n", time);
+                    }, targetSnake.notes, targetSnake.interval).start(targetSnake.offset);
+                    targetSnake.sequence.loop = true;
+                    targetSnake.sequence.loopEnd = `${timeSigMap[targetSnake.timeSignature]}n`;
+                    console.log(`Snake ${targetSnake.id} is now playing sustained chords.`);
+                    renderSnakeInfo();
+                    break;
+            }
+        }
+        
+        function createThoughtfulChord(rootNote, scale) {
+            const rootIndex = scale.indexOf(getNoteInScale(rootNote, scale));
+            if (rootIndex === -1) return [rootNote];
+
+            const chordTypeChance = Math.random();
+            let chordIntervals = [];
+
+            if (chordTypeChance < 0.6) { // 60% chance for a basic triad
+                chordIntervals = [0, 2, 4];
+            } else if (chordTypeChance < 0.9) { // 30% chance for a seventh chord
+                chordIntervals = [0, 2, 4, 6];
+            } else { // 10% chance for a suspended chord
+                chordIntervals = [0, 3, 4]; // Example: sus4, can also do sus2
+            }
+            
+            const chordNotes = chordIntervals.map(interval => {
+                const noteIndex = (rootIndex + interval) % scale.length;
+                return scale[noteIndex];
+            });
+
+            // Randomly invert the chord
+            if (Math.random() < 0.5) {
+                const inversionCount = Math.floor(Math.random() * (chordNotes.length - 1)) + 1;
+                for (let i = 0; i < inversionCount; i++) {
+                    const firstNote = chordNotes.shift();
+                    const midiNote = Tone.Midi(firstNote).toMidi();
+                    const transposed = Tone.Midi(midiNote + 12).toNote();
+                    chordNotes.push(transposed);
+                }
+            }
+
+            return chordNotes;
+        }
+
+        // Existing musical mutation function for snake-to-snake collisions
+        function modifySequences() {
+            const allSnakes = snakes;
+            // Pick a random modification type
+            const modification = Math.floor(Math.random() * 12);
+
+            switch(modification) {
+                case 0:
+                    applyGridFunction('addLength');
+                    break;
+                case 1:
+                    applyGridFunction('transpose');
+                    break;
+                case 2:
+                    allSnakes.forEach(snake => {
+                        snake.notes.reverse();
+                        snake.sequence.set(snake.notes);
+                    });
+                    console.log(`All sequences reversed.`);
+                    break;
+                case 3:
+                    const newBPM = Math.floor(Math.random() * (160 - 80 + 1)) + 80;
+                    Tone.Transport.bpm.value = newBPM;
+                    tempoSlider.value = newBPM;
+                    tempoValue.textContent = newBPM;
+                    console.log(`Tempo changed to ${newBPM}`);
+                    break;
+                case 4:
+                    applyGridFunction('changeRhythm');
+                    break;
+                case 5: // Introduce Chords (In-key)
+                    allSnakes.forEach(snake => {
+                        snake.notes = snake.notes.map(note => {
+                             if (Array.isArray(note)) return note; // Already a chord, leave it
+                            if (Math.random() < 0.5) {
+                                return createThoughtfulChord(note, currentScale.notes);
+                            }
+                            return note;
+                        });
+                        snake.sequence.set(snake.notes);
+                    });
+                    console.log(`Thoughtful chords introduced.`);
+                    break;
+                case 6:
+                    applyGridFunction('changeScale');
+                    break;
+                case 7: // Inversion (In-key)
+                    allSnakes.forEach(snake => {
+                        const inversionCenter = Tone.Midi(snake.notes[0]).toMidi();
+                        snake.notes = snake.notes.map(note => {
+                            if (typeof note === 'string') {
+                                const midiNote = Tone.Midi(note).toMidi();
+                                const invertedMidi = inversionCenter - (midiNote - inversionCenter);
+                                return getNoteInScale(Tone.Midi(invertedMidi).toNote(), currentScale.notes);
+                            }
+                            return note;
+                        });
+                        snake.sequence.set(snake.notes);
+                    });
+                    console.log(`Sequences inverted.`);
+                    break;
+                case 8:
+                    const randomSnake = allSnakes[Math.floor(Math.random() * allSnakes.length)];
+                    applyGridFunction('changeTimeSig', randomSnake);
+                    break;
+                case 9:
+                    applyGridFunction('changeOctave');
+                    break;
+                case 10:
+                    applyGridFunction('subtractLength');
+                    break;
+                case 11:
+                    applyGridFunction('modulo');
+                    break;
+            }
+            triggerDrumEvent();
+        }
+
+        function renderSnakeInfo() {
+            snakeInfoContainer.innerHTML = '';
+            snakes.forEach(snake => {
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'flex flex-col items-center snake-info';
+                infoDiv.innerHTML = `
+                    <label>Snake ${snake.id}</label>
+                    <label>Time Sig: <span>${snake.timeSignature}</span></label>
+                `;
+                infoDiv.style.color = snake.color;
+                snakeInfoContainer.appendChild(infoDiv);
+            });
+        }
+
+        function draw() {
+            // Draw Main Grid
+            mainCtx.fillStyle = '#000';
+            mainCtx.fillRect(0, 0, mainCanvas.width, mainCanvas.height);
+            mainCtx.strokeStyle = '#333';
+            mainCtx.lineWidth = 1;
+
+            for (let i = 0; i <= MAIN_GRID_SIZE; i++) {
+                mainCtx.beginPath();
+                mainCtx.moveTo(i * CELL_SIZE, 0);
+                mainCtx.lineTo(i * CELL_SIZE, mainCanvas.height);
+                mainCtx.stroke();
+                mainCtx.beginPath();
+                mainCtx.moveTo(0, i * CELL_SIZE);
+                mainCtx.lineTo(mainCanvas.width, i * CELL_SIZE);
+                mainCtx.stroke();
+            }
+
+            snakes.forEach(snake => {
+                snake.body.forEach(segment => {
+                    const x = segment.x * CELL_SIZE;
+                    const y = segment.y * CELL_SIZE;
+                    mainCtx.fillStyle = snake.color;
+                    mainCtx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
+                    mainCtx.strokeStyle = '#000';
+                    mainCtx.lineWidth = 1;
+                    mainCtx.strokeRect(x, y, CELL_SIZE, CELL_SIZE);
+                });
+            });
+
+            gridFunctions.forEach(func => {
+                const x = func.x * CELL_SIZE;
+                const y = func.y * CELL_SIZE;
+                mainCtx.fillStyle = func.color;
+                mainCtx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
+                mainCtx.strokeStyle = '#000';
+                mainCtx.lineWidth = 1;
+                mainCtx.strokeRect(x, y, CELL_SIZE, CELL_SIZE);
+                mainCtx.fillStyle = '#000';
+                mainCtx.font = `${CELL_SIZE * 0.7}px 'VT323', monospace`;
+                mainCtx.textAlign = 'center';
+                mainCtx.textBaseline = 'middle';
+                mainCtx.fillText(func.symbol, x + CELL_SIZE / 2, y + CELL_SIZE / 2);
+            });
+
+            if (isColliding) {
+                mainCtx.fillStyle = 'rgba(255, 255, 0, 0.5)';
+                mainCtx.fillRect(0, 0, mainCanvas.width, mainCanvas.height);
+            }
+
+            // Draw Drum Grid
+            drumCtx.fillStyle = '#000';
+            drumCtx.fillRect(0, 0, drumCanvas.width, drumCanvas.height);
+            drumCtx.strokeStyle = '#333';
+            drumCtx.lineWidth = 1;
+            for (let i = 0; i <= DRUM_GRID_SIZE; i++) {
+                drumCtx.beginPath();
+                drumCtx.moveTo(i * CELL_SIZE, 0);
+                drumCtx.lineTo(i * CELL_SIZE, drumCanvas.height);
+                drumCtx.stroke();
+                drumCtx.beginPath();
+                drumCtx.moveTo(0, i * CELL_SIZE);
+                drumCtx.lineTo(drumCanvas.width, i * CELL_SIZE);
+                drumCtx.stroke();
+            }
+            
+            drumSnakes.forEach(snake => {
+                snake.body.forEach(segment => {
+                    const x = segment.x * CELL_SIZE;
+                    const y = segment.y * CELL_SIZE;
+                    drumCtx.fillStyle = snake.color;
+                    drumCtx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
+                    drumCtx.strokeStyle = '#000';
+                    drumCtx.lineWidth = 1;
+                    drumCtx.strokeRect(x, y, CELL_SIZE, CELL_SIZE);
+                });
+            });
+
+            drumFunctions.forEach(func => {
+                const x = func.x * CELL_SIZE;
+                const y = func.y * CELL_SIZE;
+                drumCtx.fillStyle = func.color;
+                drumCtx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
+                drumCtx.strokeStyle = '#000';
+                drumCtx.lineWidth = 1;
+                drumCtx.strokeRect(x, y, CELL_SIZE, CELL_SIZE);
+                drumCtx.fillStyle = '#000';
+                drumCtx.font = `${CELL_SIZE * 0.7}px 'VT323', monospace`;
+                drumCtx.textAlign = 'center';
+                drumCtx.textBaseline = 'middle';
+                drumCtx.fillText(func.symbol, x + CELL_SIZE / 2, y + CELL_SIZE / 2);
+            });
+        }
+
+        function startGame() {
+            if (gameLoopInterval) clearInterval(gameLoopInterval);
+            Tone.Transport.stop();
+            initializeSnakes(snakes);
+            initializeSnakes(drumSnakes, true);
+            draw();
+            Tone.Transport.start();
+            gameLoopInterval = setInterval(update, SPEED);
+            isPlaying = true;
+            if (gridFunctions.length === 0) {
+                for (let i = 0; i < densitySlider.value; i++) {
+                    spawnNewGridFunction(gridFunctions, MAIN_GRID_SIZE, functionTypes);
+                }
+            }
+            if (drumFunctions.length === 0) {
+                 for (let i = 0; i < 5; i++) {
+                    spawnNewGridFunction(drumFunctions, DRUM_GRID_SIZE, drumFunctionTypes);
+                }
+            }
+        }
+
+        function stopGame() {
+            if (gameLoopInterval) {
+                clearInterval(gameLoopInterval);
+                gameLoopInterval = null;
+            }
+            Tone.Transport.stop();
+            isPlaying = false;
+        }
+
+        function resetGame() {
+            stopGame();
+            snakes.length = 0;
+            snakes.push(
+                {
+                    id: 1,
+                    body: [{ x: 8, y: 8 }],
+                    direction: { x: 1, y: 0 },
+                    color: '#2e8b57',
+                    notes: [],
+                    synth: gamelanSynth,
+                    sequence: null,
+                    head: null,
+                    interval: "8n",
+                    offset: 0,
+                    timeSignature: '4/4'
+                },
+                {
+                    id: 2,
+                    body: [{ x: 24, y: 24 }],
+                    direction: { x: -1, y: 0 },
+                    color: '#c94c4c',
+                    notes: [],
+                    synth: gamelanSynth,
+                    sequence: null,
+                    head: null,
+                    interval: "8n",
+                    offset: "4n",
+                    timeSignature: '4/4'
+                }
+            );
+            drumSnakes.length = 0;
+            drumSnakes.push(
+                {
+                    id: 101,
+                    body: [{ x: 4, y: 4 }],
+                    direction: { x: 1, y: 0 },
+                    color: '#d1b16c',
+                    notes: [],
+                    synth: null,
+                    sequence: null,
+                    head: null,
+                    interval: "4n",
+                    offset: 0,
+                    timeSignature: '4/4',
+                    isDrum: true
+                },
+                {
+                    id: 102,
+                    body: [{ x: 12, y: 12 }],
+                    direction: { x: -1, y: 0 },
+                    color: '#d1b16c',
+                    notes: [],
+                    synth: null,
+                    sequence: null,
+                    head: null,
+                    interval: "4n",
+                    offset: "2n",
+                    timeSignature: '4/4',
+                    isDrum: true
+                }
+            );
+            snakes.forEach(snake => {
+                if (snake.sequence) {
+                    snake.sequence.stop().dispose();
+                }
+            });
+            Tone.Transport.bpm.value = 120;
+            tempoSlider.value = 120;
+            tempoValue.textContent = 120;
+            currentScale = scales[0];
+            scaleDisplay.textContent = currentScale.name;
+            gridFunctions.length = 0;
+            drumFunctions.length = 0;
+            draw();
+            renderSnakeInfo();
+        }
+
+        // --- Event Listeners ---
+        playBtn.addEventListener('click', () => {
+            if (!isPlaying) {
+                startGame();
+            }
+        });
+        stopBtn.addEventListener('click', stopGame);
+        resetBtn.addEventListener('click', resetGame);
+        
+        tempoSlider.addEventListener('input', (e) => {
+            const newBPM = e.target.value;
+            Tone.Transport.bpm.value = newBPM;
+            tempoValue.textContent = newBPM;
+        });
+
+        densitySlider.addEventListener('input', (e) => {
+            densityValue.textContent = e.target.value;
+            if (isPlaying) {
+                const targetDensity = parseInt(e.target.value);
+                while (gridFunctions.length > targetDensity) {
+                    gridFunctions.pop();
+                }
+                while (gridFunctions.length < targetDensity) {
+                    spawnNewGridFunction(gridFunctions, MAIN_GRID_SIZE, functionTypes);
+                }
+                draw();
+            }
+        });
+
+        document.addEventListener('keydown', e => {});
+
+        draw();
+    });
+</script>
+
+</body>
+</html>
