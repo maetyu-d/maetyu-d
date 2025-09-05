@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ANTARCTICA: DEAD RECKONING</title>
+<style>
+  :root{
+    --bg:#0b1014; --ink:#cfd8df; --dim:#99a6ad; --ice:#eaf2f8;
+    --storm:#1a242e; --accent:#7aa6c9; --danger:#c66a6a; --ok:#8fbe96;
+  }
+  html,body{height:100%}
+  body{margin:0; background:var(--bg); color:var(--ink); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;}
+  canvas{display:block; width:100vw; height:100vh}
+  #ui{position:fixed; inset:0; pointer-events:none}
+  .edge{position:absolute; z-index:10; pointer-events:auto}
+  #left{left:12px; top:12px; display:flex; gap:10px; flex-direction:column;}
+  #right{right:12px; top:12px; display:flex; gap:10px; flex-direction:column;}
+  .card{background:#0f161cbb; border:1px solid #152029; border-radius:14px; padding:10px 12px; box-shadow:0 10px 30px #0009, inset 0 1px 0 #17222b}
+  .meter h4{margin:0; font-size:12px; color:var(--dim); letter-spacing:.4px}
+  .bar{height:8px; background:#0c1116; border:1px solid #1b2730; border-radius:6px; overflow:hidden; margin-top:6px}
+  .fill{height:100%; width:40%; background:linear-gradient(to right,#5b788c,#a6c1d5)}
+  .val{font-variant-numeric: tabular-nums; font-weight:700}
+  #compass{width:180px; height:180px; border-radius:16px; display:grid; place-items:center}
+  #compass canvas{width:160px; height:160px}
+  #minimap{width:180px; height:180px; border-radius:16px; display:grid; place-items:center}
+  #minimap canvas{width:160px; height:160px}
+  #journal{position:absolute; left:12px; bottom:12px; width:min(56vw,760px); max-height:36vh; overflow:auto}
+  #journal .card{max-height:36vh}
+  #jtxt{font-size:14px; line-height:1.45}
+  #jtxt p{margin:.4em 0}
+  #choices{position:absolute; right:12px; bottom:12px; width:min(40vw,560px)}
+  #choices h3{margin:0 0 8px 0; font-size:13px; color:var(--dim); letter-spacing:.5px}
+  .choice{display:block; width:100%; text-align:left; margin:8px 0; background:#0f161cf2; border:1px solid #1b2630; padding:10px 12px; border-radius:12px; cursor:pointer; font-weight:700; color:var(--ink)}
+  .choice:hover, .choice:focus{outline:2px solid #294152}
+  .muted{color:var(--dim)} .danger{color:var(--danger)} .ok{color:var(--ok)}
+  #title{position:fixed; top:10px; left:50%; transform:translateX(-50%); text-align:center; font-weight:800; letter-spacing:1.5px; color:#e3ecf4; text-shadow:0 1px 0 #000, 0 0 30px #5ea2ff22}
+  #title small{display:block; font-weight:600; letter-spacing:1px; color:var(--dim)}
+  #topbar{position:fixed; top:10px; right:12px; display:flex; gap:8px; pointer-events:auto}
+  .btn{border:1px solid #1a2630; background:linear-gradient(#131a22,#0c1218); color:var(--ink); padding:8px 12px; border-radius:12px; font-weight:700; font-size:13px; box-shadow:0 2px 12px #0007, inset 0 1px 0 #1f2a36; cursor:pointer; user-select:none}
+  .btn.toggled{border-color:#2b4050; color:var(--accent)}
+  #center{position:fixed; inset:0; display:flex; align-items:center; justify-content:center; text-align:center; pointer-events:none; z-index:5; font-size:22px; line-height:1.2; color:#e6eef6; text-shadow:0 2px 18px #000b, 0 0 60px #5ea2ff22}
+  #hint{position:fixed; right:12px; top:56px; max-width:360px}
+  #vignette{position:fixed; inset:0; pointer-events:none; background:radial-gradient(ellipse at center, transparent 55%, #000a 85%, #000d 100%)}
+  @media (max-width: 900px){
+    #journal{width:calc(100vw - 24px)}
+    #choices{width:calc(100vw - 24px); bottom: calc(12px + 160px)}
+    #hint{display:none}
+  }
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="Antarctic whiteout and horizon"></canvas>
+
+<div id="ui">
+  <div id="title">
+    ANTARCTICA: DEAD RECKONING
+    <small>“Great God! This is an awful place…”</small>
+  </div>
+
+  <div id="topbar">
+    <button id="btnHaul" class="btn" title="Toggle Haul (Space)">Haul</button>
+    <button id="btnPause" class="btn" title="Pause (P)">Pause</button>
+    <button id="btnReduce" class="btn" title="Reduce Motion (R)">Reduce</button>
+    <button id="btnHelp" class="btn" title="Help/Controls (H)">Help</button>
+  </div>
+
+  <div id="left" class="edge">
+    <div class="card meter" aria-label="Rations"><h4>Rations <span class="val" id="vR">—</span></h4><div class="bar"><div class="fill" id="bR"></div></div></div>
+    <div class="card meter" aria-label="Warmth"><h4>Warmth <span class="val" id="vW">—</span></h4><div class="bar"><div class="fill" id="bW"></div></div></div>
+    <div class="card meter" aria-label="Health"><h4>Health <span class="val" id="vH">—</span></h4><div class="bar"><div class="fill" id="bH"></div></div></div>
+    <div class="card meter" aria-label="Bearing"><h4>Bearing <span class="val" id="vB">—</span></h4><div class="bar"><div class="fill" id="bB"></div></div></div>
+  </div>
+
+  <div id="right" class="edge">
+    <div id="compass" class="card" aria-label="Compass">
+      <canvas id="comp"></canvas>
+    </div>
+    <div id="minimap" class="card" aria-label="Map inset (dead reckoning)">
+      <canvas id="map"></canvas>
+    </div>
+    <div class="card" id="hint">
+      One-hand friendly: <b>Space</b> haul/stop • <b>Enter</b> choose • <b>1–4</b> pick options • <b>P</b> pause • <b>R</b> reduce motion.
+      <span class="muted">Dead-reckoning: keep bearing near 0° (true south) but storms distort the compass. Plant flags to find your depot again. The inset map will drift under storm.</span>
+    </div>
+  </div>
+
+  <div id="journal">
+    <div class="card"><div id="jtxt"></div></div>
+  </div>
+
+  <div id="choices">
+    <div class="card"><h3>Decision</h3><div id="choiceList"></div></div>
+  </div>
+
+  <div id="center" aria-live="assertive"></div>
+  <div id="vignette"></div>
+</div>
+
+<script>
+(()=>{
+  /* ===== Canvas & DPR ===== */
+  const C=document.getElementById('c');
+  const CT=C.getContext('2d',{alpha:false,desynchronized:true});
+  const CC=document.getElementById('comp');
+  const CX=CC.getContext('2d');
+  const MC=document.getElementById('map');
+  const MX=MC.getContext('2d');
+  let W=0,H=0,DPR=1;
+  function resize(){
+    DPR=Math.min(devicePixelRatio||1,2);
+    W=C.width=innerWidth*DPR; H=C.height=innerHeight*DPR;
+    C.style.width=innerWidth+'px'; C.style.height=innerHeight+'px';
+    CC.width=160*DPR; CC.height=160*DPR; CC.style.width='160px'; CC.style.height='160px';
+    MC.width=160*DPR; MC.height=160*DPR; MC.style.width='160px'; MC.style.height='160px';
+  }
+  addEventListener('resize',resize,{passive:true}); resize();
+
+  /* ===== State ===== */
+  const S={
+    paused:false, reduce:false,
+    day:0, tod:11.7,
+    bearing:0, target:0,
+    drift:0, driftVel:0,
+    progress:0,
+    hauling:false,
+    meters:{r:100,w:100,h:100},
+    weather:{temp:-20, wind:14, storm:0, vis:1, cloud:0.5, aurora:0},
+    terrain:{sastrugi:0.5, slope:0.02, crev:0.1},
+    art:{snow:[], ridgenoise:new Float32Array(4096).map(()=>Math.random()*2-1), grain:0, trail:[], flags:[]},
+    journal:[], ended:false,
+    seed:null, stats:{flags:0, crevasses:0, stormHours:0},
+  };
+  const el={
+    vR:document.getElementById('vR'), bR:document.getElementById('bR'),
+    vW:document.getElementById('vW'), bW:document.getElementById('bW'),
+    vH:document.getElementById('vH'), bH:document.getElementById('bH'),
+    vB:document.getElementById('vB'), bB:document.getElementById('bB'),
+    choiceList:document.getElementById('choiceList'),
+    jtxt:document.getElementById('jtxt'),
+    center:document.getElementById('center'),
+    btnPause:document.getElementById('btnPause'),
+    btnReduce:document.getElementById('btnReduce'),
+    btnHelp:document.getElementById('btnHelp'),
+    btnHaul:document.getElementById('btnHaul'),
+  };
+
+  function clamp(n,a,b){return Math.max(a,Math.min(b,n));}
+  const TAU=Math.PI*2; const deg2rad=(d)=>d*Math.PI/180;
+
+  /* ===== Permadeath seed & RNG ===== */
+  function parseSeed(){
+    const url = new URL(window.location.href);
+    let s = url.searchParams.get('seed');
+    if(!s && url.hash){ const m = url.hash.match(/seed=(\d+)/); if(m) s=m[1]; }
+    return s ? (parseInt(s,10)>>>0) : null;
+  }
+  function newSeed(){ return ((Date.now() ^ Math.floor(Math.random()*1e9)) >>> 0); }
+  function setURLSeed(seed){
+    const url = new URL(window.location.href);
+    url.searchParams.set('seed', String(seed));
+    history.replaceState(null, '', url.toString());
+  }
+  function mulberry32(a){return function(){let t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return ((t^t>>>14)>>>0)/4294967296;}}
+  S.seed = parseSeed() || newSeed();
+  const spent = localStorage.getItem('obit_'+S.seed);
+  if(spent){ S.seed = newSeed(); }
+  setURLSeed(S.seed);
+  const R = mulberry32(S.seed);
+  const rand=(a=1,b=0)=>R()*(a-b)+b;
+
+  /* ===== Journal & UI ===== */
+  function log(t,cls=""){const p=document.createElement('p'); p.innerHTML=t; if(cls)p.classList.add(cls); el.jtxt.appendChild(p); el.jtxt.scrollTop=el.jtxt.scrollHeight; S.journal.push(t);}
+  function flash(t,ms=1600){el.center.textContent=t; setTimeout(()=>{if(el.center.textContent===t) el.center.textContent='';},ms);}
+  function setChoices(title,arr){
+    document.querySelector('#choices h3').textContent=title;
+    el.choiceList.innerHTML='';
+    arr.forEach((ch,i)=>{
+      const b=document.createElement('button');
+      b.className='choice';
+      b.innerHTML=`<span class="muted">${i+1}</span> ${ch.text}`;
+      b.onclick=()=>{ch.onpick&&ch.onpick();};
+      el.choiceList.appendChild(b);
+    });
+    const f=el.choiceList.querySelector('.choice'); if(f) f.focus({preventScroll:true});
+  }
+  function clearChoices(){el.choiceList.innerHTML='';}
+
+  /* ===== Input ===== */
+  addEventListener('keydown',e=>{
+    if(e.repeat) return;
+    if(e.key===' '){ e.preventDefault(); S.hauling=!S.hauling; flash(S.hauling?'Haul.':'Stand.'); el.btnHaul.classList.toggle('toggled', S.hauling); }
+    else if(e.key==='p'||e.key==='P'){togglePause();}
+    else if(e.key==='r'||e.key==='R'){toggleReduce();}
+    else if(e.key==='h'||e.key==='H'){help();}
+    else if(/[1-4]/.test(e.key)){const idx=parseInt(e.key,10)-1; const btn=el.choiceList.querySelectorAll('.choice')[idx]; if(btn) btn.click();}
+  });
+  addEventListener('mousedown',()=>{S.hauling=true; el.btnHaul.classList.add('toggled');});
+  addEventListener('mouseup',()=>{S.hauling=false; el.btnHaul.classList.remove('toggled');});
+  addEventListener('touchstart',()=>{S.hauling=true; el.btnHaul.classList.add('toggled');},{passive:true});
+  addEventListener('touchend',()=>{S.hauling=false; el.btnHaul.classList.remove('toggled');},{passive:true});
+  addEventListener('blur',()=>{S.hauling=false; el.btnHaul.classList.remove('toggled');});
+
+  function togglePause(){S.paused=!S.paused; el.btnPause.classList.toggle('toggled',S.paused); flash(S.paused?'Paused.':'Resume.');}
+  function toggleReduce(){S.reduce=!S.reduce; el.btnReduce.classList.toggle('toggled',S.reduce); flash(S.reduce?'Motion ↓':'Motion ↑');}
+  function help(){log(`<b>Controls</b> — Space: haul/stop • Click/Tap: haul while held • Enter: choose • 1–4: pick • P: pause • R: reduce motion. <span class="muted">Keep bearing near 0°. In storms, both compass and map drift. Plant flags at depots.</span>`, 'muted'); flash('Help posted.');}
+
+  el.btnHaul.onclick=()=>{S.hauling=!S.hauling; el.btnHaul.classList.toggle('toggled', S.hauling); flash(S.hauling?'Haul.':'Stand.');};
+
+  /* ===== Weather & Sim ===== */
+  function stepWeather(dt){
+    const w=S.weather; const t=S.terrain;
+    const dayFrac=(S.tod%24)/24; const diurnal=Math.cos((dayFrac-0.3)*TAU)*6; const southCold=-18*S.progress;
+    if(R()<0.0015+0.0008*S.progress) w.storm=Math.max(0,Math.min(1,w.storm+0.18+rand(0.18,0))); else w.storm=Math.max(0,Math.min(1,w.storm-0.01-rand()*0.01));
+    w.wind=12+36*w.storm+8*Math.sin(Date.now()*0.002)+rand()*4;
+    w.cloud=Math.max(0,Math.min(1,0.25+0.7*w.storm+rand()*0.15));
+    w.vis=Math.max(0.07,Math.min(1,1-0.72*w.storm-rand()*0.12));
+    w.temp = -18 + diurnal + southCold + (w.storm?-10*w.storm:0) + rand(1,-1);
+    t.sastrugi=Math.max(0.2,Math.min(0.95,(S.progress<0.35?0.4:S.progress<0.7?0.7:0.85)+rand()*0.1));
+    t.slope=Math.max(0,Math.min(0.08,(S.progress<0.5?0.03:0.015)+rand()*0.02));
+    t.crev=Math.max(0,Math.min(0.35,(S.progress>0.3 && S.progress<0.6?0.24:0.08)+rand()*0.05));
+    S.driftVel += (rand(0.12,-0.12))*w.storm*dt*6; S.driftVel*=0.96; S.drift += S.driftVel; S.drift = Math.max(-28*w.storm, Math.min(28*w.storm, S.drift));
+    S.weather.aurora = Math.max(0,Math.min(1,(1-w.cloud) * ((dayFrac<0.25||dayFrac>0.75)? 1:0) * 1.2));
+    const cap=S.reduce?120:320; while(S.art.snow.length<cap) S.art.snow.push(makeSnow());
+  }
+  function makeSnow(){return {x:rand(W), y:rand(H), z:rand(), v:rand(0.4,0.08), drift:rand(1,-1), spin:rand(Math.PI*2), a:rand(0.5,0.15)}}
+
+  function sim(dt){
+    if(S.paused||S.ended) return;
+    S.tod += dt*6; if(S.tod>=24){S.tod-=24; S.day++; dayBeats();}
+    stepWeather(dt);
+    if(S.weather.storm>0.6){ S.stats.stormHours += dt*6; }
+
+    const w=S.weather, t=S.terrain, m=S.meters;
+    const effectiveBearing = S.bearing + S.drift;
+    const align = Math.max(0, 1 - Math.abs(effectiveBearing)/32);
+    const stormDrag = 1 - (0.65*w.storm + 0.12*t.sastrugi);
+    const faceWind = 1 - (0.006*w.wind);
+    const slopeDrag = 1 - t.slope;
+    const visDrag = 0.8 + 0.2*w.vis;
+
+    const hauling = S.hauling?1:0;
+    let speed = hauling * 0.07 * align * stormDrag * faceWind * slopeDrag * visDrag;
+
+    const chill = (w.temp + w.wind*-0.65);
+    const warmthLoss = (-chill*0.006 + (hauling?-0.45:-0.08)) * dt;
+    const rationUse = (hauling?2.5:1.2) * (1+0.7*w.storm) * dt;
+
+    m.w = clamp(m.w + warmthLoss, 0, 100);
+    m.r = clamp(m.r - rationUse, 0, 120);
+    if(m.w<35 || m.r<35) m.h = clamp(m.h - dt * (0.06 + 0.22*(35-Math.min(m.w,m.r))/35), 0, 100);
+    else if(!S.hauling) m.h = clamp(m.h + dt*0.05, 0, 100);
+
+    if(S.hauling && R() < (0.0007 + 0.001*t.crev) * (1.1 - w.vis)){
+      const hurt=4+rand()*10; m.h=clamp(m.h-hurt,0,100); m.w=clamp(m.w-5,0,100);
+      S.stats.crevasses++;
+      log(`A sound like tearing silk. Rope jerks; we pay in silence.`, 'danger');
+    }
+
+    if(S.hauling){ const px=W*0.25+rand(-8,8), py=H*0.72+rand(-4,4); S.art.trail.push({x:px,y:py,a:0.9}); if(S.art.trail.length>(S.reduce?120:260)) S.art.trail.shift(); }
+
+    S.progress = clamp(S.progress + speed*dt, 0, 1.45);
+
+    if(S.progress>1.08 && R()<0.001){ log(`We are fewer by morning. The rope hangs with a new curve.`, 'danger'); }
+
+    if((m.h<=0 || m.r<=0 || (S.progress>1.28 && m.w<=0)) && !S.ended){ end(false); }
+  }
+
+  /* ===== Beats ===== */
+  const fired=new Set(); function mark(k){if(fired.has(k)) return true; fired.add(k); return false;}
+  function dayBeats(){
+    const p=S.progress;
+    if(S.day===0){
+      log(`We step off the known world. The horizon is a rule drawn by a cold god.`);
+      setChoices('First March', [
+        {text:'Push while the sky is kind.', onpick:()=>{S.hauling=true; log('Straps bite. The rope learns our names.', 'muted');}},
+        {text:'Lay a depot and mark it well.', onpick:()=>{S.meters.r=clamp(S.meters.r+8,0,120); plantFlag(); log('We cache tins under a black cross of bamboo.', 'muted');}}
+      ]);
+    }
+    if(p>0.5 && !mark('plateau')){ log(`The Plateau: a chalk sheet humming with knives. Shadows shorten until they are only persuasion.`); }
+    if(p>0.98 && !mark('pole')){ log(`<b>At the Pole.</b> A dark tent. A neat flag. We are second. The cold enters the soul.`, 'danger'); flash('The Pole. Second.'); clearChoices(); setChoices('Turn North', [
+      {text:'Take a careful survey and go.', onpick:()=>{S.hauling=false; S.meters.h=clamp(S.meters.h+3,0,100);}},
+      {text:'Rage at the wind, then go.', onpick:()=>{S.meters.h=clamp(S.meters.h-2,0,100); S.bearing+=rand(6,-6);}}
+    ]); }
+    if(p>1.12 && !mark('return')){ log(`North again. Everything costs more. The world is the same everywhere and never kind.`); }
+    if(p>1.26 && !mark('missdepot')){ log(`Flags lost to ground-blizzard. We walk in a book with pages torn out.`, 'danger'); S.meters.r=clamp(S.meters.r-10,0,120);}
+  }
+
+  /* ===== Ending / Obituary ===== */
+  function end(survive){
+    S.ended=true; S.hauling=false; clearChoices();
+    if(survive){ log(`A relief party threads our flags between weathers. Not triumph—merely breath.`, 'ok'); flash('Rescued.'); }
+    else {
+      const cause = (S.meters.h<=0)? 'Health failure' : (S.meters.r<=0)? 'Starvation' : (S.meters.w<=0)? 'Exposure' : 'Exhaustion';
+      const days = S.day; const km = (S.progress*1300).toFixed(0);
+      const obit = { seed:S.seed, days, km, flags:S.stats.flags, crevasses:S.stats.crevasses, stormHours:Math.round(S.stats.stormHours), cause };
+      try{ localStorage.setItem('obit_'+S.seed, JSON.stringify(obit)); }catch(e){}
+      log(`\n<b>OBITUARY</b><br> Seed: <b>${S.seed}</b><br> Days: <b>${days}</b> • Distance: <b>${km} km</b><br> Flags set: <b>${obit.flags}</b> • Crevasse incidents: <b>${obit.crevasses}</b> • Storm hours: <b>${obit.stormHours}</b><br> Cause: <span class='danger'><b>${cause}</b></span>`, 'danger');
+      flash('Silence.');
+    }
+    setTimeout(()=>{
+      const nextSeed = newSeed();
+      setChoices('Epilogue', [
+        {text:'New expedition (new seed)', onpick:()=>{ const url=new URL(location.href); url.searchParams.set('seed', String(nextSeed)); location.href=url.toString(); }},
+        {text:'Repeat this route (same seed)', onpick:()=>{ const url=new URL(location.href); url.searchParams.set('seed', String(S.seed)); location.href=url.toString(); }},
+        {text:'Sit with the quiet awhile.', onpick:()=>{S.paused=true}}
+      ]);
+    }, 1100);
+  }
+
+  /* ===== Bearing Control ===== */
+  addEventListener('mousemove', (e)=>{ if(!S.hauling) return; const mid=innerWidth*0.5; const dx=(e.clientX-mid)/(innerWidth*0.5); S.bearing = clamp(dx*30, -45, 45); });
+  addEventListener('touchmove', (e)=>{ if(!S.hauling) return; const t=e.touches[0]; const mid=innerWidth*0.5; const dx=(t.clientX-mid)/(innerWidth*0.5); S.bearing = clamp(dx*30, -45, 45); }, {passive:true});
+  addEventListener('keydown', (e)=>{ if(e.key==='ArrowLeft') S.bearing=clamp(S.bearing-4,-45,45); if(e.key==='ArrowRight') S.bearing=clamp(S.bearing+4,-45,45); });
+
+  /* ===== Rendering ===== */
+  const mix=(a,b,t)=>a+(b-a)*t;
+  const rgb=(v)=>`rgb(${v|0},${(v+6)|0},${(v+10)|0})`;
+  function draw(){
+    const w=S.weather; const dayFrac=(S.tod%24)/24; const dusk=Math.abs(dayFrac-0.5); const storm=w.storm;
+    const g=CT.createLinearGradient(0,0,0,H);
+    const top = [mix(10,22,1-dusk), mix(15,30,1-dusk), mix(19,34,1-dusk)];
+    const sky1=rgb(top[0]); const sky2=rgb(mix(top[0],8,0.6)); g.addColorStop(0,sky1); g.addColorStop(1,sky2); CT.fillStyle=g; CT.fillRect(0,0,W,H);
+    const sunX=W*0.1 + (W*0.8)*dayFrac; const sunY=H*(0.7-0.45*Math.sin(dayFrac*TAU)); drawSun(sunX,sunY,42*DPR, 0.6-0.4*storm);
+    if(S.weather.aurora>0.01) drawAurora();
+    drawRidges();
+    drawGround();
+    drawFlags();
+    drawTrail();
+    drawTeam();
+    drawSnow();
+    if(!S.reduce){
+      S.art.grain+=0.005; CT.globalAlpha=0.06;
+      for(let i=0;i<80;i++){
+        const x=((i*47.77 + S.art.grain*W*0.7)%W);
+        const y=((i*91.13 + S.art.grain*H*0.3)%H);
+        CT.fillStyle=`rgba(255,255,255,${(R()*0.12)})`;
+        CT.fillRect(x,y,1,1);
+      }
+      CT.globalAlpha=1;
+    }
+    meter(el.bR,el.vR,S.meters.r,120,'lb');
+    meter(el.bW,el.vW,S.meters.w,100,'%');
+    meter(el.bH,el.vH,S.meters.h,100,'%');
+    const bearingShown = clamp(S.bearing+S.drift,-90,90);
+    meter(el.bB,el.vB, 50 - Math.abs(bearingShown)/90*50, 50, '—');
+    drawCompass(bearingShown);
+    drawMapInset();
+  }
+  function drawSun(x,y,r,alpha){ CT.save(); CT.globalAlpha=alpha; const rad=r*(1+0.2*S.weather.cloud); const g=CT.createRadialGradient(x,y,1,x,y,rad); g.addColorStop(0,'rgba(215,201,161,0.9)'); g.addColorStop(1,'rgba(215,201,161,0)'); CT.fillStyle=g; CT.beginPath(); CT.arc(x,y,rad,0,TAU); CT.fill(); CT.restore(); }
+  function drawAurora(){ const n=8; CT.save(); CT.globalAlpha=0.18*S.weather.aurora; for(let i=0;i<n;i++){ CT.beginPath(); const y=H*0.28 + Math.sin((i*0.7)+Date.now()*0.0007)*18*DPR; CT.moveTo(0,y); for(let x=0;x<=W;x+=12){ const yy=y + Math.sin((x*0.004)+i)*10*DPR; CT.lineTo(x,yy);} CT.strokeStyle='rgb(120,170,200)'; CT.lineWidth=2*DPR; CT.stroke(); } CT.restore(); }
+  function drawRidges(){ const layers=4; for(let i=0;i<layers;i++){ const y=H*0.55 + i*H*0.07; CT.beginPath(); for(let x=0;x<=W;x+=8){ const n=S.art.ridgenoise[( (x|0)+i*97 )%S.art.ridgenoise.length] * (30 + i*20) * DPR; const yy=y + n - i*12; if(x===0) CT.moveTo(x,yy); else CT.lineTo(x,yy);} const shade=30 + i*20 + S.weather.storm*15; CT.lineTo(W,H); CT.lineTo(0,H); CT.closePath(); CT.fillStyle=`rgb(${shade},${shade+8},${shade+12})`; CT.fill(); } }
+  function drawGround(){ const baseY=H*0.75; CT.beginPath(); for(let x=0;x<=W;x+=8){ const und = Math.sin((x*0.006)+S.day*0.2)*12*DPR; const yy=baseY+und; if(x===0) CT.moveTo(x,yy); else CT.lineTo(x,yy);} CT.lineTo(W,H); CT.lineTo(0,H); CT.closePath(); const s=235-30*S.weather.storm; const g=CT.createLinearGradient(0,baseY,0,H); g.addColorStop(0,`rgb(${s},${s+3},${s+6})`); g.addColorStop(1,`rgb(${s-18},${s-16},${s-14})`); CT.fillStyle=g; CT.fill(); if(!S.reduce){ CT.globalAlpha=0.35+0.3*S.terrain.sastrugi; CT.strokeStyle='rgba(180,190,200,0.25)'; CT.lineWidth=1*DPR; for(let i=0;i<140;i++){ const y=baseY + rand(160*DPR,-20*DPR); const len=rand(W*0.3,W*0.05); const x0=rand(W); CT.beginPath(); CT.moveTo(x0,y); CT.quadraticCurveTo(x0+len*0.3, y-10, x0+len, y); CT.stroke(); } CT.globalAlpha=1; } }
+  function drawTrail(){ const fp=S.art.trail; CT.save(); for(const f of fp){ CT.globalAlpha=f.a; CT.fillStyle='rgba(120,140,160,0.75)'; CT.beginPath(); CT.ellipse(f.x,f.y,3*DPR,7*DPR,0.2,0,TAU); CT.fill(); f.a-=0.003; } CT.restore(); S.art.trail = fp.filter(f=>f.a>0.05); }
+  function drawFlags(){ CT.save(); for(const fl of S.art.flags){ CT.globalAlpha=0.9; const x=fl.x, y=fl.y; CT.strokeStyle='#0c1218'; CT.lineWidth=2*DPR; CT.beginPath(); CT.moveTo(x,y-18*DPR); CT.lineTo(x,y); CT.stroke(); CT.fillStyle='#223747'; CT.beginPath(); CT.moveTo(x,y-18*DPR); CT.lineTo(x+10*DPR, y-14*DPR); CT.lineTo(x, y-10*DPR); CT.closePath(); CT.fill(); } CT.restore(); }
+  function drawTeam(){ const baseX=W*0.25, baseY=H*0.7;
+    CT.save(); CT.translate(baseX,baseY); CT.globalAlpha=0.9; CT.fillStyle='#1b232b'; CT.strokeStyle='#0d1216'; CT.lineWidth=2*DPR; CT.beginPath(); CT.rect(-30*DPR,-6*DPR,60*DPR,12*DPR); CT.fill(); CT.beginPath(); CT.moveTo(-28*DPR,6*DPR); CT.lineTo(28*DPR,6*DPR); CT.stroke(); CT.restore();
+    const nAlive = 5 - Math.min(3, Math.floor(S.progress*2));
+    const spread=40*DPR; const wob=Math.sin(Date.now()*0.004)*2*DPR; const ph=(Date.now()*0.006)%TAU; let idx=0; for(let i=0;i<nAlive;i++){ const off=-nAlive*spread*0.5 + idx*spread; drawMan(baseX+off, baseY-8*DPR+wob, ph+idx*0.8, i===0); idx++; }
+    CT.save(); CT.strokeStyle='rgba(90,110,125,0.7)'; CT.lineWidth=1.5*DPR; CT.beginPath(); CT.moveTo(baseX-30*DPR, baseY-2*DPR); CT.lineTo(baseX - nAlive*spread*0.5, baseY-10*DPR); CT.stroke(); CT.restore(); }
+  function drawMan(x,y,phase,isLead){ CT.save(); CT.translate(x,y); CT.globalAlpha=isLead?0.95:0.85; const h=26*DPR,w=10*DPR; CT.fillStyle='#121820'; CT.beginPath(); CT.ellipse(0,-h*0.2,w,h*0.6,0,0,TAU); CT.fill(); CT.fillStyle='#0b1117'; CT.beginPath(); CT.arc(0,-h*0.75, w*0.45, 0, TAU); CT.fill(); const s=Math.sin(phase)*5*DPR; CT.strokeStyle='#0c1218'; CT.lineWidth=2*DPR; CT.beginPath(); CT.moveTo(-w*0.2,-h*0.1); CT.lineTo(-w*0.4, s+2*DPR); CT.stroke(); CT.beginPath(); CT.moveTo(w*0.2,-h*0.1); CT.lineTo(w*0.4,-s+2*DPR); CT.stroke(); CT.restore(); }
+  function drawSnow(){ const arr=S.art.snow; const w=S.weather; const wind=w.wind*DPR*(S.reduce?0.3:1); for(let i=0;i<arr.length;i++){ const s=arr[i]; const vx=(wind*0.05)+s.drift*0.6; const vy=0.3 + s.v*(1+0.7*w.storm); s.x+=vx; s.y+=vy; s.spin+=0.05; if(s.x>W+4) s.x=-4; if(s.x<-4) s.x=W+4; if(s.y>H+4){ arr[i]=makeSnow(); arr[i].y=-4; } const a=0.35+0.5*(1-w.vis); CT.fillStyle=`rgba(240,248,255,${a*(0.5+s.z*0.5)})`; const size=(1+s.z*2)*DPR; CT.fillRect(s.x,s.y,size,size);} }
+
+  /* ===== Compass & Inset ===== */
+  function drawCompass(bearing){
+    CX.clearRect(0,0,CC.width,CC.height);
+    const cx=CC.width/2, cy=CC.height/2, r=Math.min(cx,cy)-6*DPR;
+    CX.save();
+    CX.globalAlpha=0.9; CX.strokeStyle='#1b2730'; CX.lineWidth=2*DPR; CX.beginPath(); CX.arc(cx,cy,r,0,TAU); CX.stroke();
+    CX.fillStyle='#0d1319'; CX.beginPath(); CX.arc(cx,cy,r-4*DPR,0,TAU); CX.fill();
+    CX.translate(cx,cy);
+    for(let a=-90;a<=90;a+=15){ CX.save(); CX.rotate(deg2rad(a)); CX.strokeStyle=a===0?'#98b6cb':'#27323a'; CX.lineWidth=a===0?2*DPR:1*DPR; CX.beginPath(); CX.moveTo(0,-(r-12*DPR)); CX.lineTo(0,-(r-22*DPR)); CX.stroke(); CX.restore(); }
+    CX.rotate(deg2rad(bearing));
+    CX.strokeStyle='#7aa6c9'; CX.lineWidth=2*DPR; CX.beginPath(); CX.moveTo(0,0); CX.lineTo(0,-(r-18*DPR)); CX.stroke();
+    CX.restore();
+    CX.fillStyle='#9fb7c8'; CX.font=`${12*DPR}px system-ui, sans-serif`; CX.textAlign='center'; CX.fillText(`${bearing.toFixed(0)}°`, cx, cy+r-8*DPR);
+  }
+  function drawMapInset(){
+    MX.clearRect(0,0,MC.width,MC.height);
+    const cx=MC.width/2, cy=MC.height/2, r=Math.min(cx,cy)-10*DPR;
+    MX.save();
+    const s=S.weather.storm; const t=Date.now()*0.001;
+    const jitter = s>0? ( (R()-0.5)*6*s*DPR ):0;
+    MX.translate(cx + jitter, cy + jitter);
+    MX.rotate((Math.sin(t*0.7)*0.06 + (S.drift*0.002)) * s);
+    MX.globalAlpha=0.9; MX.strokeStyle='#1b2730'; MX.lineWidth=2*DPR; MX.beginPath(); MX.arc(0,0,r,0,TAU); MX.stroke();
+    MX.fillStyle='#0d1319'; MX.beginPath(); MX.arc(0,0,r-4*DPR,0,TAU); MX.fill();
+    MX.strokeStyle='#2a3a45'; MX.lineWidth=2*DPR; MX.beginPath(); MX.moveTo(0, r-18*DPR); MX.lineTo(0, -r+18*DPR); MX.stroke();
+    MX.fillStyle='#223747'; MX.beginPath(); MX.arc(0, r-18*DPR, 3*DPR, 0, TAU); MX.fill();
+    MX.fillStyle='#334a5a'; MX.beginPath(); MX.arc(0, -r+18*DPR, 3*DPR, 0, TAU); MX.fill();
+    const p = S.progress; const total=1.45;
+    const y = (r-18*DPR) - ( (r*2-36*DPR) * Math.max(0,Math.min(1,p/total)) );
+    MX.fillStyle='#7aa6c9'; MX.beginPath(); MX.arc(0, y, 4*DPR, 0, TAU); MX.fill();
+    if(s>0.25){ MX.globalAlpha=0.5*s; MX.strokeStyle='#3a4e5c'; MX.beginPath(); for(let i=-2;i<=2;i++){ MX.moveTo(-r+14*DPR, i*12*DPR); MX.lineTo(-r+24*DPR, i*12*DPR); } MX.stroke(); }
+    MX.restore();
+  }
+
+  function meter(bar, valEl, v, max, suffix){
+    const pct=Math.max(0,Math.min(1,v/max));
+    bar.style.width=(pct*100)+'%';
+    const warn=pct<0.3?'danger':(pct>0.7?'ok':'');
+    valEl.textContent=`${Math.round(v)}/${max}${suffix? ' '+suffix:''}`;
+    valEl.className='val '+warn;
+  }
+
+  /* ===== Flags ===== */
+  function plantFlag(){
+    const x=W*0.25+rand(-6,6), y=H*0.72+rand(-4,4);
+    S.art.flags.push({x,y}); if(S.art.flags.length>24) S.art.flags.shift();
+    S.stats.flags++;
+  }
+
+  /* ===== Loop ===== */
+  let last=performance.now();
+  function tick(now){
+    const dt=Math.min(0.05, (now-last)/1000);
+    last=now;
+    if(!S.paused && !S.ended){ sim(dt); }
+    draw();
+    requestAnimationFrame(tick);
+  }
+
+  /* ===== Boot ===== */
+  log(`Provisions tallied. The Barrier is a hymn of white.`);
+  log(`This fiction keeps close to Scott in mood, not quotation. The compass and the map will lie. The sky will not.`);
+  setTimeout(()=>{ setChoices('Camp Routine', [
+    {text:'Haul at first light.', onpick:()=>{S.hauling=true; el.btnHaul.classList.add('toggled'); clearChoices();}},
+    {text:'Plant a flag at the depot.', onpick:()=>{plantFlag(); clearChoices();}},
+    {text:'Melt snow, mend fingers.', onpick:()=>{S.meters.w=clamp(S.meters.w+6,0,100); S.meters.h=clamp(S.meters.h+3,0,100); clearChoices();}},
+  ]);
+  flash('Press Space or click Haul. Keep the needle near 0°.');
+}, 600);
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
