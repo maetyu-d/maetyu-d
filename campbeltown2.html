@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Campbeltown Whisky — Generative Modular</title>
+  <style>
+    html, body { margin:0; padding:0; height:100%; background:#0b0e11; color:#e6e6e6; font-family:system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji', 'Segoe UI Emoji'; }
+    #ui { position:fixed; top:8px; left:8px; right:8px; display:flex; flex-wrap:wrap; gap:8px; z-index:5; pointer-events:none; }
+    .card { pointer-events:auto; background:rgba(20,24,28,.9); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:10px 12px; box-shadow:0 10px 30px rgba(0,0,0,.25); }
+    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    button, select { background:#1a2027; color:#e6e6e6; border:1px solid rgba(255,255,255,.12); border-radius:10px; padding:6px 10px; cursor:pointer; }
+    button:hover { background:#232a33; }
+    .kpi { display:grid; grid-template-columns:repeat(6,auto); gap:8px 16px; font-size:12px; }
+    .kpi b { font-size:13px; color:#fff; }
+    #log { position:fixed; bottom:8px; left:8px; right:8px; max-height:30vh; overflow:auto; font-size:12px; line-height:1.35; }
+    #log .entry { opacity:.9; padding:4px 8px; border-left:3px solid #3c8dbc; margin:4px 0; background:rgba(255,255,255,.04); border-radius:8px; }
+    #help { max-width: 980px; }
+    .badge { background:#0f1720; border:1px solid rgba(255,255,255,.1); border-radius:999px; padding:2px 8px; font-size:11px; opacity:.9; }
+    label { font-size:12px; opacity:.9; }
+    #tideCard { min-width: 280px; }
+    #clock { position:fixed; top:8px; right:8px; z-index:10; pointer-events:none; }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <div class="card" id="help">
+      <div class="row" style="gap:12px;">
+        <span class="badge">Campbeltown Whisky — v1.7.2</span>
+        <span class="badge">Tide cache + clock · Port capacity & tides · Contracts · Rail/Road leg</span>
+        <span class="badge">Critics & awards · Weather deep-dive · Water source · Sustainability</span>
+        <span class="badge">Mouse: interact · Space: pause · 1/2/3: time</span>
+      </div>
+      <div style="margin-top:6px; font-size:12px; opacity:.9;">Harbour has berth limits and tide windows; departures queue until a berth is free <i>and</i> the tide is open. Contracts inject scheduled fixed-price routes. Pre-harbour carts move cases from distilleries to the pier, with small weather spoilage. Single Cask anniversary releases, warehousing/ageing, manual recipes & SKUs, sustainability, and maintenance are all in. Tide timetable now recomputes once per in-game day; top-right clock shows Day + HH:MM.</div>
+    </div>
+    <div class="card">
+      <div class="kpi" id="kpi"></div>
+      <div class="row" style="margin-top:6px;">
+        <button id="btnBatch">Start Batch</button>
+        <button id="btnBuyCasks">Buy 50 Casks (£5k)</button>
+        <button id="btnBuildPier">Build Small Pier (£15k)</button>
+        <button id="btnShip">Queue Ship</button>
+        <button id="btnMaint">Schedule Maintenance</button>
+        <button id="btnContract">Sign Contract</button>
+        <select id="speed">
+          <option value="0.5">Half</option>
+          <option value="1" selected>Normal</option>
+          <option value="2">×2</option>
+          <option value="6">×6</option>
+        </select>
+      </div>
+    </div>
+    <div class="card" id="criticsCard">
+      <div style="font-weight:600;">Critics & Awards</div>
+      <div id="criticsSummary" style="font-size:12px; opacity:.9; margin-top:4px;">No competitions yet.</div>
+    </div>
+    <div class="card" id="sustCard">
+      <div style="font-weight:600;">Sustainability</div>
+      <div id="sustSummary" style="font-size:12px; opacity:.9; margin-top:4px;">Score: 0 · Upgrades: none</div>
+      <div class="row" style="margin-top:6px;">
+        <button id="btnBiomass">Fit Biomass Boiler (£25k)</button>
+        <button id="btnRecycle">Add Water Recycling (£12k)</button>
+        <button id="btnSwitchWater">Switch Water Source</button>
+      </div>
+    </div>
+    <div class="card" id="weatherCard">
+      <div style="font-weight:600;">Weather Deep-Dive</div>
+      <div id="weatherSummary" style="font-size:12px; opacity:.9; margin-top:4px;"></div>
+    </div>
+    <div class="card" id="tideCard">
+      <div style="font-weight:600; margin-bottom:4px;">Tide Timetable</div>
+      <div id="tideSummary" style="font-size:12px; opacity:.9"></div>
+      <div id="tideBar" style="font-family:monospace; font-size:12px; margin-top:4px; white-space:pre;"></div>
+    </div>
+    <div class="card" id="recipeCard">
+      <div class="row">
+        <label for="selBarley">Barley</label>
+        <select id="selBarley"></select>
+        <label for="selYeast">Yeast</label>
+        <select id="selYeast"></select>
+        <label for="selCuts">Cuts</label>
+        <select id="selCuts"></select>
+        <label for="selSku">SKU</label>
+        <select id="selSku"></select>
+        <button id="btnRandomise">Randomise</button>
+      </div>
+      <div style="margin-top:6px;font-size:12px;opacity:.85" id="recipePreview"></div>
+    </div>
+  </div>
+  <div id="log"></div>
+  <div id="clock" class="card">--:--</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
+  <script>
+/********************** UTILITIES *************************/
+const RNG = (seed=1234567) => { let t = seed >>> 0; return () => (t = t + 0x6D2B79F5 | 0, ((t ^ t >>> 15) * (1 | t)) >>> 0) / 4294967296; };
+function clamp(x,a,b){ return Math.max(a, Math.min(b,x)); }
+function fmtMoney(n){ return '£' + Math.round(n).toLocaleString('en-GB'); }
+function pick(r, arr){ return arr[Math.floor(r()*arr.length)]; }
+function chance(r, p){ return r() < p; }
+function shuffle(arr){ const a=[...arr]; for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+/********************** SKUs *************************/
+const SKUS = [
+  {key:'NAS', name:'NAS', minAgeDays:365*3, priceMult:1.0, rep:+0.03},
+  {key:'10-year', name:'10-year', minAgeDays:365*10, priceMult:1.35, rep:+0.08},
+  {key:'12-year', name:'12-year', minAgeDays:365*12, priceMult:1.5, rep:+0.09},
+  {key:'15-year', name:'15-year', minAgeDays:365*15, priceMult:1.70, rep:+0.12},
+  {key:'18-year', name:'18-year', minAgeDays:365*18, priceMult:2.0, rep:+0.15},
+  {key:'single-cask', name:'Single Cask', minAgeDays:365*10, priceMult:2.5, rep:+0.30, special:true}
+];
+function skuByKey(k){ return SKUS.find(s=>s.key===k)||SKUS[0]; }
+
+/********************** HISTORICAL FOUNDING YEARS *************************/
+const HISTORICAL_FOUNDING = {
+  'Springbank': 1828,
+  'Glen Scotia': 1832,
+  'Glengyle': 1872,
+  'Hazelburn': 1825,
+  'Longrow': 1824,
+  'Dalaruan': 1825,
+  'Dalintober': 1832,
+  'Albyn': 1830,
+  'Ardlussa': 1879,
+  'Argyll': 1844,
+  'Benmore': 1868,
+  'Burnside': 1825,
+  'Caledonian': 1823,
+  'Campbeltown': 1815,
+  'Broombrae': 1833,
+  'Lochruan': 1835,
+  'Rieclachan': 1825
+};
+
+/********************** ENGINE *************************/
+class Engine {
+  constructor(seed){ this.r=RNG(seed); this.t=0; this.speed=1; this.systems=[]; this.messages=[]; this.paused=false; this.yearLen=365; this.world=this.weather=this.econ=this.dm=this.harbour=this.events=this.warehouse=this.maintenance=this.transport=this.contracts=null; }
+  addSystem(sys){ sys.engine=this; this.systems.push(sys); sys.onAdd && sys.onAdd(); }
+  update(dt){ if(this.paused) return; const days=dt*this.speed; this.t+=days; for(const s of this.systems){ s.update && s.update(days); } }
+  draw(){ for(const s of this.systems){ s.draw && s.draw(); } }
+  y(){ return Math.floor(1820 + this.t/this.yearLen); }
+  dayOfYear(){ return Math.floor(this.t % this.yearLen); }
+  season(){ const d=this.dayOfYear(); return d<90?'Winter':d<180?'Spring':d<270?'Summer':'Autumn'; }
+  log(msg){ this.messages.push({msg, t:performance.now()}); renderLog(); }
+}
+
+/********************** WORLD *************************/
+class World { constructor(){ this.w=1400; this.h=900; this.land=[]; this.noiseScale=0.0025; this.labels=[]; this.harbour=null; }
+  onAdd(){ this.generate(); }
+  generate(){ this.land=[]; const nx=(x,y)=>noise(x*this.noiseScale,y*this.noiseScale); for(let y=0;y<this.h;y++){ for(let x=0;x<this.w;x++){ const gx=x/this.w, gy=y/this.h; let base=nx(x,y)*1.2 + (0.65 - Math.hypot(gx-0.60, gy-0.55)); this.land.push(base>0.15?1:0);} } this.labels=[{x:this.w*0.62,y:this.h*0.58,text:'Campbeltown'},{x:this.w*0.63,y:this.h*0.67,text:'Campbeltown Loch'},{x:this.w*0.50,y:this.h*0.45,text:'Kintyre'}]; this.harbour={x:this.w*0.66,y:this.h*0.62,radius:30,piers:0,ships:[]}; }
+  isLand(x,y){ if(x<0||y<0||x>=this.w||y>=this.h) return false; return this.land[(y|0)*this.w + (x|0)]===1; }
+  randomLand(r){ let x,y,tries=0; do{ x=this.w*r(); y=this.h*r(); tries++; } while(!this.isLand(x,y) && tries<2000); return {x,y}; }
+  draw(){ for(let y=0;y<height;y++){ const t=y/height; strokeWeight(1); stroke(10+30*t,18+40*t,30+60*t); line(0,y,width,y);} noStroke(); for(let y=0;y<this.h;y+=2){ for(let x=0;x<this.w;x+=2){ if(this.land[y*this.w+x]){ fill(38,60,45); rect(x,y,2,2);} } } stroke(120,160,140,120); strokeWeight(1); for(let y=2;y<this.h-2;y+=4){ for(let x=2;x<this.w-2;x+=4){ const c=this.isLand(x,y); const n=this.isLand(x+2,y)+this.isLand(x-2,y)+this.isLand(x,y+2)+this.isLand(x,y-2); if(c && n<4) point(x,y);} } const H=this.harbour; noFill(); stroke(180,220,255,180); strokeWeight(2); circle(H.x,H.y,H.radius*2); fill(200,230,255,20); noStroke(); circle(H.x,H.y,H.radius*2.6); noStroke(); fill(230,230,230,170); textAlign(CENTER,CENTER); textSize(14); for(const L of this.labels){ text(L.text, L.x, L.y);} }
+}
+
+/********************** ECONOMY *************************/
+class Economy { constructor(){ this.cash=120000; this.reputation=10; this.stock={barley:200, peat:100, water:1000, casks:100}; this.whisky=0; this.price=60; this.taxes=0.15; this.history=[]; this.inventory={}; SKUS.forEach(s=>this.inventory[s.key]=0); }
+  totalInventory(){ return Object.values(this.inventory).reduce((a,b)=>a+b,0); }
+  update(dt){ const r=this.engine.r; this.price=clamp(this.price+(r()-0.5)*2,40,120); if(chance(r,0.002*dt)){ const dir=chance(r,0.5)?1:-1; this.price=clamp(this.price + dir*10*(0.5+r()),35,150); this.engine.log(dir>0?"Demand surge boosts prices":"Buyers hesitant; prices soften"); } }
+}
+
+/********************** WEATHER *************************/
+class Weather { constructor(){ this.wind=0; this.rain=0; this.fog=0; this.seaState=0; this.temp=0.5; this.humidity=0.6; }
+  update(dt){ const r=this.engine.r; const seasonal=this.engine.season(); this.wind=clamp(this.wind+(r()-0.5)*0.2,0,1); this.rain=clamp(this.rain+(r()-0.5)*0.25 + ((seasonal==='Autumn'||seasonal==='Winter')?0.05:0),0,1); this.fog=clamp(this.fog+(r()-0.5)*0.2 + (seasonal==='Spring'?0.05:0),0,1); this.seaState=clamp(0.3*this.wind+0.4*this.rain+(r()*0.2),0,1); this.temp=clamp(this.temp+(r()-0.5)*0.04 + (seasonal==='Summer'?0.02:(seasonal==='Winter'?-0.02:0)),0,1); this.humidity=clamp(this.humidity+(r()-0.5)*0.05 + 0.02*this.rain,0,1); }
+  shippingRisk(){ return clamp(0.2+0.8*this.seaState,0,1); }
+  draw(){ noStroke(); fill(200,220,255,30*this.fog); rect(0,0,width,height); fill(120,160,210,40*this.rain); rect(0,0,width,height); const w=this; push(); textAlign(LEFT,TOP); textSize(12); fill(230); const s=`Weather — wind ${(w.wind*10).toFixed(1)} · rain ${(w.rain*10).toFixed(1)} · fog ${(w.fog*10).toFixed(1)} · sea ${(w.seaState*10).toFixed(1)} · temp ${(w.temp*30+2|0)}°C · hum ${(w.humidity*100|0)}%`; drawBadge(10,height-24,s); pop(); }
+}
+
+/********************** RECIPES *************************/
+const BARLEYS=[{name:'Golden Promise', q:+0.10, y:-0.05},{name:'Concerto', q:-0.05, y:+0.08},{name:'Laureate', q:+0.02, y:+0.02},{name:'Local Heritage', q:+0.12, y:-0.10}];
+const YEASTS=[{name:'House', q:+0.08, speed:-0.05},{name:'M1', q:0, speed:+0.10},{name:'Neutral', q:-0.04, speed:+0.15}];
+const CUTS=[{name:'Narrow cuts', q:+0.10, y:-0.10},{name:'Balanced cuts', q:0, y:0},{name:'Wide cuts', q:-0.10, y:+0.10}];
+function generateRecipe(r){ return {barley:pick(r,BARLEYS), yeast:pick(r,YEASTS), cuts:pick(r,CUTS)}; }
+
+/********************** DISTILLERIES *************************/
+class Distillery { constructor(name,x,y, foundingYear=null){ this.name=name; this.pos=createVector(x,y); this.queue=[]; this.active=null; this.output=0; this.level=1; this.foundingYear=foundingYear; }
+  startBatch(econ, recipe, targetSku){ const need={barley:30*this.level, peat:8, water:120, casks:10}; for(const k in need){ if((econ.stock[k]||0)<need[k]) return false; } econ.stock.barley-=need.barley; econ.stock.peat-=need.peat; econ.stock.water-=need.water; econ.stock.casks-=need.casks; econ.cash-=6000*this.level; const r=recipe||generateRecipe(this.engine.r); this.queue.push({stage:0,t:0,quality:1+r.barley.q+r.yeast.q+r.cuts.q,yield:1+r.barley.y+r.cuts.y,speed:1+(r.yeast.speed||0),recipe:r,targetSku:targetSku||'NAS'}); return true; }
+  update(dt){ const w=this.engine.weather; const maint=this.engine.maintenance; const speedMod=maint?maint.speedModifier(this):1; if(!this.active && this.queue.length>0) this.active=this.queue.shift(); if(this.active){ const s=this.active; const envSpeed=1 + (0.1 - 0.2*w.fog) + (0.05 - 0.05*w.rain) + (w.temp-0.5)*0.1; const totalSpeed=clamp(s.speed*envSpeed*speedMod,0.05,3); s.t+=dt*totalSpeed; if(s.stage===0 && s.t>4){ s.stage=1; } if(s.stage===1 && s.t>10){ s.stage=2; } if(s.stage===2 && s.t>20){ s.stage=3; } if(s.stage===3 && s.t>30){ const baseCases=Math.round(120*s.quality*this.level*(0.9+0.2*(1-w.rain))*s.yield); const casks=clamp(Math.floor(baseCases/12), 1, 30); this.engine.warehouse.addCasks({n:casks, quality:s.quality, distillery:this.name, targetSku:s.targetSku}); this.output+=casks; this.active=null; this.engine.log(`${this.name} filled ${casks} casks towards ${s.targetSku}.`);} }
+  }
+  draw(){ push(); const p=this.pos; const r=18+4*this.level; stroke(255,220,120,220); strokeWeight(2); fill(60,70,50,220); circle(p.x,p.y,r*2); const qn=this.queue.length + (this.active?1:0); for(let i=0;i<qn;i++){ fill(255,200,80,200); noStroke(); circle(p.x - r + 6 + i*6, p.y+r+6, 4);} noStroke(); fill(240); textAlign(CENTER,TOP); textSize(12); text(this.name + (this.foundingYear?` (${this.foundingYear})`:''), p.x, p.y-r-14); pop(); }
+  contains(mx,my){ return dist(mx,my,this.pos.x,this.pos.y) < 22+4*this.level; }
+}
+
+class DistilleryManager { constructor(world){ this.world=world; this.dist=[]; }
+  onAdd(){ const r=this.engine.r; const W=this.world; const base=[
+      {name:'Springbank', pos:{x:W.w*0.605,y:W.h*0.575}, year:HISTORICAL_FOUNDING['Springbank']},
+      {name:'Glen Scotia', pos:{x:W.w*0.635,y:W.h*0.565}, year:HISTORICAL_FOUNDING['Glen Scotia']},
+      {name:'Glengyle', pos:{x:W.w*0.590,y:W.h*0.610}, year:HISTORICAL_FOUNDING['Glengyle']},
+    ];
+    for(const b of base){ this.dist.push(new Distillery(b.name, b.pos.x+(r()-0.5)*20, b.pos.y+(r()-0.5)*20, b.year)); }
+    const extraNames = shuffle(['Dal Riata','Long Road','Lochside','Hazelburn','Crosshill','Mull of Kintyre','Davaar','Dalaruan','Dalintober','Argyll','Benmore','Burnside','Lochruan']);
+    for(const n of extraNames){ const pos = this.world.randomLand(r); const yr = HISTORICAL_FOUNDING[n] || (1820 + Math.floor(r()*50)); this.dist.push(new Distillery(n, pos.x, pos.y, yr)); if(this.dist.length>10) break; }
+  }
+  update(dt){ for(const d of this.dist){ d.engine=this.engine; d.update(dt);} }
+  draw(){ for(const d of this.dist) d.draw(); }
+  distilleryAt(x,y){ return this.dist.find(d=>d.contains(x,y)); }
+}
+
+/********************** WAREHOUSE *************************/
+class WarehouseSystem{ constructor(){ this.casks=[]; }
+  addCasks({n, quality, distillery, targetSku}){ const r=this.engine.r; const sku=skuByKey(targetSku); if(sku.special){ n = Math.max(1, Math.min(2, Math.floor(1 + r()*2))); }
+    for(let i=0;i<n;i++){ const location=chance(r,0.6)?'dunnage':'racked'; const volume = sku.special ? (40 + Math.floor(r()*20)) : (200 + Math.floor(r()*50)); const abv=0.63; this.casks.push({distillery, quality, ageDays:0, location, volume, abv, targetSku}); }
+    this.engine.log(`${distillery} filled ${n} casks for ${sku.name}.`);
+  }
+  update(dt){ const w=this.engine.weather; const daily=dt; for(const c of this.casks){ const baseEvap=0.02/365; const tempF=0.8+0.4*(w.temp-0.5); const humF=0.9+0.3*(w.humidity-0.5); const locF=(c.location==='dunnage'?0.85:1.1); const evapRate=baseEvap*tempF*humF*locF; c.volume=Math.max(0, c.volume*(1-evapRate*daily)); c.ageDays+=daily; const matBonus=(c.location==='dunnage'?0.00025:0.00018)*daily; c.quality+=matBonus; }
+    const remaining=[]; for(const c of this.casks){ const sku=skuByKey(c.targetSku); if(c.ageDays>=sku.minAgeDays && c.volume>= (sku.special?15:40)){ let cases = Math.floor(c.volume/9); if(sku.special){ cases = Math.max(10, Math.min(20, cases)); } this.engine.econ.whisky += cases; this.engine.econ.inventory[sku.key] += cases; this.engine.econ.reputation += sku.rep * (sku.special?1.6:1.0) * c.quality; this.engine.log(`Bottled ${cases} cases: ${sku.name} from ${c.distillery} (${c.location}).`); } else { remaining.push(c); } } this.casks=remaining; }
+  draw(){}
+}
+
+/********************** MAINTENANCE *************************/
+class MaintenanceSystem{ constructor(dm){ this.status=new Map(); this.dm=dm; }
+  onAdd(){ for(const d of this.dm.dist){ this.status.set(d.name,{active:false, daysLeft:0, breakdownRisk:0.02}); } }
+  schedule(d, days=5){ const s=this.status.get(d.name); if(s.active){ this.engine.log(`${d.name} already in maintenance.`); return false; } const cost=2000*days; if(this.engine.econ.cash<cost){ this.engine.log('Insufficient cash for maintenance.'); return false; } this.engine.econ.cash-=cost; s.active=true; s.daysLeft=days; this.engine.log(`Maintenance scheduled at ${d.name} for ${days} days.`); return true; }
+  update(dt){ for(const d of this.dm.dist){ const s=this.status.get(d.name); if(s.active){ s.daysLeft-=dt; if(s.daysLeft<=0){ s.active=false; s.daysLeft=0; s.breakdownRisk=Math.max(0.005, s.breakdownRisk*0.6); this.engine.log(`${d.name} maintenance complete.`);} } else { if(chance(this.engine.r, s.breakdownRisk*dt)){ s.active=true; s.daysLeft=2+Math.floor(this.engine.r()*4); this.engine.log(`${d.name} breakdown! Repairs underway (${s.daysLeft.toFixed(0)} days).`); s.breakdownRisk=Math.min(0.08, s.breakdownRisk*1.3); } } } }
+  speedModifier(d){ const s=this.status.get(d.name); return s?.active ? 0.35 : 1.0; }
+}
+
+/********************** TRANSPORT: RAIL/ROAD PRE-HARBOUR *************************/
+class Cart{ constructor(from,to,cases){ this.from=from.copy(); this.to=to.copy(); this.pos=from.copy(); this.t=0; this.speed=0.06 + Math.random()*0.04; this.cases=cases; this.arrived=false; this.spoilage=0; }
+  update(dt, weather){ if(this.arrived) return; const slow = 1 - 0.25*weather.rain - 0.15*weather.fog; const step = clamp(this.speed * dt * slow, 0.005, 0.2); this.t = Math.min(1, this.t + step/2); this.pos = p5.Vector.lerp(this.from, this.to, this.t); if(this.t>=1){ const risk = clamp(0.01 + 0.05*weather.rain + 0.03*weather.wind, 0, 0.2); this.spoilage = Math.round(this.cases * (Math.random()*risk)); this.arrived=true; }
+  }
+  draw(){ push(); noStroke(); fill(220,190,120,200); rect(this.pos.x-4, this.pos.y-2, 8, 4, 2); fill(200); circle(this.pos.x-3,this.pos.y+2,2); circle(this.pos.x+3,this.pos.y+2,2); pop(); }
+}
+class TransportSystem{ constructor(){ this.carts=[]; this.jobs=new Set(); }
+  onAdd(){ }
+  dispatch(job){ const order=['single-cask','18-year','15-year','12-year','10-year','NAS']; const inv=this.engine.econ.inventory; let remaining=job.cargoTarget; job.reserved={}; for(const k of order){ if(remaining<=0) break; const take=Math.min(inv[k]||0, remaining); inv[k]=(inv[k]||0)-take; this.engine.econ.whisky=Math.max(0,this.engine.econ.whisky - take); job.reserved[k]=take; remaining-=take; }
+    const reservedTotal = Object.values(job.reserved).reduce((a,b)=>a+(b||0),0); if(reservedTotal<=0){ this.engine.log('No inventory to reserve for shipment.'); return; }
+    const H=this.engine.world.harbour; const dm=this.engine.dm; let left=reservedTotal; while(left>0){ const batch=Math.min(10, left); const from = pick(this.engine.r, dm.dist).pos; const to=createVector(H.x + (Math.random()*20-10), H.y + (Math.random()*20-10)); this.carts.push(new Cart(createVector(from.x,from.y), to, batch)); left-=batch; }
+    this.jobs.add(job);
+  }
+  update(dt){ for(const c of this.carts){ c.update(dt, this.engine.weather); }
+    const arrived=this.carts.filter(c=>c.arrived); for(const c of arrived){ let targetJob=null; for(const j of this.jobs){ if(j.readyCargo < j.cargoTarget) { targetJob=j; break; } } if(targetJob){ const delivered = Math.max(0, c.cases - c.spoilage); targetJob.readyCargo += delivered; if(c.spoilage>0) this.engine.log(`Pre-harbour spoilage: ${c.spoilage} cases lost in rain.`); } }
+    this.carts = this.carts.filter(c=>!c.arrived);
+    for(const j of Array.from(this.jobs)){ if(j.readyCargo>=j.cargoTarget){ this.jobs.delete(j); } }
+  }
+  draw(){ for(const c of this.carts) c.draw(); }
+}
+
+/********************** HARBOUR & SHIPPING *************************/
+class HarbourSystem{ constructor(world){ this.world=world; this.routes=[]; this.cooldown=0; this.queue=[]; this.berthsBase=1; this.tideOffset=Math.random()*24; this.berthsUsed=0; }
+  totalBerths(){ return this.berthsBase + (this.world.harbour.piers||0); }
+  localHour(){ const dayFrac = this.engine.t % 1; return (dayFrac*24); }
+  _isOpenAt(h){ const hh=(h+this.tideOffset)%24; return (hh>=5 && hh<8) || (hh>=17 && hh<20); }
+  tideOpen(){ return this._isOpenAt(this.localHour()); }
+  tideSummary(){ const h=this.localHour(); const open=this.tideOpen(); const windows=[{s:(24+5 - this.tideOffset)%24,e:(24+8 - this.tideOffset)%24},{s:(24+17 - this.tideOffset)%24,e:(24+20 - this.tideOffset)%24}];
+    const len=3; let nextOpen=0; if(!open){ const cands=windows.map(w=> (24 + w.s - h)%24); nextOpen=Math.min(...cands); }
+    let nextClose=null; if(open){ const inFirst = this._isOpenAt(h) && ((h - windows[0].s + 24)%24) < len; const end = inFirst? windows[0].e : windows[1].e; nextClose=(24 + end - h)%24; } else { nextClose=nextOpen + len; }
+    const bar=[]; for(let i=0;i<24;i++){ bar.push(this._isOpenAt(i)?'▮':'▯'); }
+    return {h, open, nextOpen, nextClose, windows, bar:bar.join('')}; }
+  scheduleShip(target, opts={}){ const H=this.world.harbour; const legend = opts.legend || pick(Math.random.bind(Math),['Glasgow','Islay','Dublin','Belfast','Liverpool','Bristol','London','Bordeaux','Hamburg','New York']); const cargo = opts.cargo || (240 + Math.floor(Math.random()*180)); const job = {target:target.copy(), legend, cargoTarget:cargo, readyCargo:0, contract:opts.contract||null, reserved:null, createdAt:this.engine.t}; this.engine.transport.dispatch(job); this.queue.push(job); this.engine.log(`Queued departure to ${legend} (target ${cargo} cases).`); }
+  tryDispatch(){ while(this.berthsUsed < this.totalBerths() && this.tideOpen() && this.queue.length>0){ const job=this.queue[0]; if(job.readyCargo<=0) break; const r=new Route(createVector(this.world.harbour.x,this.world.harbour.y), job.target); r.engine=this.engine; r.legend=job.legend; r.cargo=job.readyCargo; r.contract=job.contract; r.onComplete=()=>{ this.berthsUsed=Math.max(0,this.berthsUsed-1); }; this.routes.push(r); this.berthsUsed++; this.queue.shift(); this.engine.log(`Departed for ${job.legend} with ${job.readyCargo} cases.`); }
+  }
+  update(dt){ this.cooldown=Math.max(0,this.cooldown-dt); for(const r of this.routes){ r.update(dt);} this.routes=this.routes.filter(r=>!r.done); this.tryDispatch(); }
+  draw(){ const H=this.world.harbour; push(); stroke(190,210,230,220); strokeWeight(3+(H.piers||0)); line(H.x-12,H.y,H.x+12,H.y); pop(); for(const r of this.routes) r.draw(); noStroke(); fill(210); textSize(12); textAlign(LEFT,TOP); const tideTxt=this.tideOpen()? 'Tide: OPEN':'Tide: closed'; text(`Harbour  • Berths ${this.berthsUsed}/${this.totalBerths()} • Queue ${this.queue.length} • ${tideTxt}`, H.x+16, H.y-6); }
+}
+
+class Route{ constructor(a,b){ this.a=a; this.b=b; this.t=0; this.speed=0.012; this.cargo=0; this.done=false; this.directionOut=true; this.legend=''; this.contract=null; this.onComplete=null; }
+  update(dt){ if(this.done) return; const risk=this.engine.weather.shippingRisk(); this.t += dt*this.speed*(1 - 0.5*risk); if(this.directionOut && this.t>=1){ let revenue=0; const base= this.contract? this.contract.pricePerCase : this.engine.econ.price; revenue = this.cargo * base; if(!this.contract){ if(chance(this.engine.r, 0.10)){ const bonus=Math.round(revenue*(0.03+0.07*(1-risk))); revenue += bonus; this.engine.log(`Premium buyers paid a bonus of ${fmtMoney(bonus)}.`);} } this.engine.econ.cash += revenue; this.engine.log(`Sold ${this.cargo} cases in ${this.legend} for ${fmtMoney(revenue)}${this.contract? ' (contract)':''}.`); this.directionOut=false; this.t=0; if(chance(this.engine.r, 0.15*risk)){ const loss=Math.round(this.cargo*(0.05+0.25*risk)); this.engine.log(`Storm damage en route! Lost ${loss} cases (post-sale insured).`);} } else if(!this.directionOut && this.t>=1){ this.done=true; this.engine.log(`Ship returned from ${this.legend}.`); if(this.onComplete) this.onComplete(); } }
+  draw(){ const pos=p5.Vector.lerp(this.directionOut?this.a:this.b, this.directionOut?this.b:this.a, this.t); push(); stroke(220,240,255,160); strokeWeight(1.5); line(this.a.x,this.a.y,this.b.x,this.b.y); noStroke(); fill(230,240,255,220); circle(pos.x,pos.y,8); textAlign(CENTER,BOTTOM); textSize(11); fill(220); text(this.legend, this.b.x, this.b.y-8); pop(); }
+}
+
+/********************** EVENTS *************************/
+class EventSystem{ constructor(){ this.cooldown=10; }
+  update(dt){ this.cooldown-=dt; if(this.cooldown<=0){ this.cooldown=20+40*this.engine.r(); this.trigger(); } }
+  trigger(){ const r=this.engine.r; const econ=this.engine.econ; const weather=this.engine.weather; const dm=this.engine.dm; const year=this.engine.y(); const pool=[
+      ()=>{ const add=80+Math.floor(r()*120); econ.stock.barley+=add; this.engine.log(`Good barley harvest: +${add} barley.`); },
+      ()=>{ const rise=0.03+0.07*r(); econ.taxes=clamp(econ.taxes+rise,0.05,0.40); this.engine.log(`Excise duty rises. Taxes now ${(econ.taxes*100).toFixed(0)}%.`); },
+      ()=>{ const drop=5+Math.floor(r()*20); econ.stock.casks+=drop; econ.cash-=drop*100; this.engine.log(`Cooper offers deal: bought ${drop} extra casks.`); },
+      ()=>{ weather.fog=clamp(weather.fog+0.4,0,1); this.engine.log('Sea haar blankets the loch; shipping slows.'); },
+      ()=>{ const hit=Math.round(2000+8000*r()); econ.cash-=hit; this.engine.log(`Customs inspection fines you ${fmtMoney(hit)} for record-keeping errors.`); },
+      ()=>{ const boost=2+Math.floor(4*r()); econ.price+=boost; this.engine.log('Campbeltown buzz: critics praise a release. Demand ticks up.'); },
+      ()=>{ const dmg=20+Math.floor(40*r()); econ.stock.water=Math.max(0, econ.stock.water-dmg); this.engine.log('Drought lowers burn flow. Water stores dip.'); },
+      ()=>{ const d = pick(r, dm.dist); if(!d.foundingYear){ d.foundingYear = HISTORICAL_FOUNDING[d.name] || (1820 + Math.floor(r()*50)); } if((year - d.foundingYear) % 25 === 0 && year >= d.foundingYear){ this.engine.warehouse.casks.push({distillery:d.name, quality:1.5, ageDays:365*12+Math.floor(r()*365*6), location:'dunnage', volume:50, abv:0.63, targetSku:'single-cask'}); this.engine.log(`Anniversary release! ${d.name} celebrates ${(year-d.foundingYear)} years with a Single Cask bottling.`);} else { const alt=[0,1,2,3,4,5,6]; pick(r, alt.map(i=>pool[i]))(); } }
+    ]; pick(r,pool)(); }
+}
+
+/********************** CONTRACTS *************************/
+class ContractsSystem{ constructor(){ this.list=[]; this._booted=false; }
+  onAdd(){ const W=this.engine.world; if(!W||!W.harbour){ this._booted=false; return; } const H=W.harbour; this._booted=true; this.addContract({city:'Glasgow', target=createVector(H.x+220,H.y-140), pricePerCase:75, volume:300, periodDays:35}); this.addContract({city:'London', target=createVector(H.x+320,H.y-200), pricePerCase:90, volume:380, periodDays:55}); }
+  addContract({city,target,pricePerCase,volume,periodDays}){ this.list.push({city,target,pricePerCase,volume,periodDays,last:this.engine.t}); }
+  update(dt){ if(!this._booted){ this.onAdd(); if(!this._booted) return; } for(const c of this.list){ if(this.engine.t - c.last >= c.periodDays){ this.engine.harbour.scheduleShip(c.target, {legend:c.city, cargo:c.volume, contract:{pricePerCase:c.pricePerCase}}); c.last=this.engine.t; this.engine.log(`Contract shipment queued: ${c.city} (${c.volume} cases @ £${c.pricePerCase}/case).`); } } }
+  draw(){}
+}
+
+/********************** UI HELPERS *************************/
+function drawBadge(x,y,txt){ const pad=6; const tw=textWidth(txt)+pad*2; noStroke(); fill(20,24,28,220); rect(x,y,tw,18,9); fill(230); textAlign(LEFT,TOP); textSize(12); text(txt,x+pad,y+2); }
+function renderKPI(){ if(!game||!game.engine||!game.econ) return; const e=game.engine, econ=game.econ, k=document.getElementById('kpi'); const ws=game.warehouse; const hs=game.harbour; const cs=game.contracts; const cD=ws?.casks?.filter(c=>c.location==='dunnage').length||0; const cR=ws?.casks?.filter(c=>c.location==='racked').length||0; const invRows = Object.keys(econ.inventory).map(key=>`<div><b>${key}</b><div>${econ.inventory[key]}</div></div>`).join(''); const tideTxt = hs.tideOpen()? 'OPEN':'closed'; k.innerHTML = `
+    <div><b>Year</b><div>${e.y()}</div></div>
+    <div><b>Season</b><div>${e.season()}</div></div>
+    <div><b>Cash</b><div>${fmtMoney(econ.cash)}</div></div>
+    <div><b>Total Whisky</b><div>${econ.whisky} cases</div></div>
+    ${invRows}
+    <div><b>Reputation</b><div>${econ.reputation.toFixed(1)}</div></div>
+    <div><b>Barley</b><div>${econ.stock.barley}</div></div>
+    <div><b>Peat</b><div>${econ.stock.peat}</div></div>
+    <div><b>Water</b><div>${econ.stock.water}</div></div>
+    <div><b>Casks</b><div>${econ.stock.casks}</div></div>
+    <div><b>Base Price</b><div>£${econ.price.toFixed(0)}/case</div></div>
+    <div><b>Harbour</b><div>Berths ${hs.berthsUsed}/${hs.totalBerths()} · Queue ${hs.queue.length} · Tide ${tideTxt}</div></div>
+    <div><b>Contracts</b><div>${cs.list.length} active</div></div>
+    <div><b>Casks ageing</b><div>D ${cD} · R ${cR}</div></div>`; }
+function renderLog(){ const log=document.getElementById('log'); const arr=(game?.engine?.messages||[]).slice(-10); log.innerHTML = arr.map(e=>`<div class="entry">${e.msg}</div>`).join(''); }
+
+/* Tide timetable cache & overlay (compute once/day) */
+let __tideCache = { day:-1, summary:'', bar:'' };
+function renderTides(){
+  if(!game) return;
+  const hs=game.harbour; const tEl=document.getElementById('tideSummary'); const bEl=document.getElementById('tideBar');
+  if(!hs||!tEl||!bEl) return;
+
+  const day=Math.floor(game.engine.t);
+
+  // Recompute only once per in-game day
+  if(__tideCache.day!==day){
+    // Build daily open windows by scanning each hour
+    const windows=[]; let open=false, start=0;
+    for(let i=0;i<=24;i++){
+      const isOpen = hs._isOpenAt(i%24);
+      if(isOpen && !open){ open=true; start=i; }
+      if((!isOpen || i===24) && open){ open=false; windows.push({s:start, e:i}); }
+    }
+    const fmt=h=>`${String(h).padStart(2,'0')}:00`;
+    const label = windows.length? windows.map(w=>`${fmt(w.s)}–${fmt(w.e)}`).join(', ') : 'No open windows';
+    // Static 24h bar for the day
+    const bar=[]; for(let i=0;i<24;i++){ bar.push(hs._isOpenAt(i)?'▮':'▯'); }
+    __tideCache = { day, summary:`Open windows today: ${label}`, bar:bar.join('') };
+  }
+  // Live local clock string (but we don't recompute windows every frame)
+  const hourNow=hs.localHour();
+  const hh=Math.floor(hourNow);
+  const mm=Math.floor((hourNow%1)*60);
+  const hStr = `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+  tEl.innerText = `Local time ${hStr} • ${__tideCache.summary}`;
+  // caret for current time over today's static bar
+  const caret = ' '.repeat(hh%24) + '^';
+  bEl.innerText = __tideCache.bar + '\n' + caret;
+  // Update clock badge
+  const clock=document.getElementById('clock');
+  if(clock) clock.textContent = `Day ${day}  ${hStr}`;
+}
+
+function updateRecipePreview(){ const r=currentRecipe(); const sku=currentSku(); const q=(1+r.barley.q+r.yeast.q+r.cuts.q); const y=(1+r.barley.y+r.cuts.y); const lines=[`SKU: ${sku.name}`,`Quality factor: ${(q).toFixed(2)}`,`Yield factor: ${(y).toFixed(2)}`,`Yeast speed: ${(1+(r.yeast.speed||0)).toFixed(2)}`]; document.getElementById('recipePreview').innerText=lines.join(' · '); }
+
+/********************** GAME BOOT *************************/
+class Game {
+  constructor(seed){
+    this.engine=new Engine(seed);
+    this.world=new World();
+    this.weather=new Weather();
+    this.econ=new Economy();
+    this.dm=new DistilleryManager(this.world);
+    this.harbour=new HarbourSystem(this.world);
+    this.events=new EventSystem();
+    this.warehouse=new WarehouseSystem();
+    this.maintenance=new MaintenanceSystem(this.dm);
+    this.transport=new TransportSystem();
+    this.contracts=new ContractsSystem();
+
+    // expose BEFORE registering so onAdd hooks can access
+    this.engine.world=this.world;
+    this.engine.weather=this.weather;
+    this.engine.econ=this.econ;
+    this.engine.dm=this.dm;
+    this.engine.harbour=this.harbour;
+    this.engine.events=this.events;
+    this.engine.warehouse=this.warehouse;
+    this.engine.maintenance=this.maintenance;
+    this.engine.transport=this.transport;
+    this.engine.contracts=this.contracts;
+
+    // register systems
+    this.engine.addSystem(this.world);
+    this.engine.addSystem(this.weather);
+    this.engine.addSystem(this.econ);
+    this.engine.addSystem(this.dm);
+    this.engine.addSystem(this.harbour);
+    this.engine.addSystem(this.events);
+    this.engine.addSystem(this.warehouse);
+    this.engine.addSystem(this.maintenance);
+    this.engine.addSystem(this.transport);
+    this.engine.addSystem(this.contracts);
+  }
+  update(dt){ this.engine.update(dt); }
+  draw(){ this.engine.draw(); }
+}
+
+let game; let last=0; let hovered=null; let pendingShip=false; let contractCities=['Glasgow','London','New York','Hamburg','Bordeaux'];
+
+function setup(){ const seed=Math.floor(Math.random()*1e9); noiseSeed(seed); randomSeed(seed); createCanvas(window.innerWidth, window.innerHeight); game=new Game(seed); last=millis(); registerUI(); runSelfTests(); }
+function windowResized(){ resizeCanvas(window.innerWidth, window.innerHeight); }
+function draw(){ const now=millis(); const dt=(now-last)/1000; last=now; background(14,16,20); if(game) game.engine.speed=parseFloat(document.getElementById('speed').value); game.update(dt); game.draw(); renderKPI(); renderTides(); if(game.dm){ const d=game.dm.distilleryAt(mouseX,mouseY); hovered=d; if(d){ push(); noFill(); stroke(255,210,120,200); strokeWeight(2.5); circle(d.pos.x,d.pos.y,40+8*d.level); pop(); } } push(); textAlign(LEFT,TOP); textSize(18); fill(240,240,240,20); text('Campbeltown Whisky', 10, 10); pop(); __EXT.tick(dt); __EXT.renderCritics(); __EXT.renderSust(); __EXT.renderWeatherDeep(); }
+
+function mousePressed(){ if(!game||!game.dm||!game.world||!game.harbour) return; const d=game.dm.distilleryAt(mouseX,mouseY); if(d){ const rec=currentRecipe(); const sku=currentSku().key; const ok=d.startBatch(game.econ, rec, sku); game.engine.log(ok?`${d.name} started a batch for ${sku}.`:'Not enough resources to start a batch.'); return; } const H=game.world.harbour; const distHar=dist(mouseX,mouseY,H.x,H.y); if(pendingShip && distHar>H.radius){ game.harbour.scheduleShip(createVector(mouseX,mouseY)); pendingShip=false; } }
+
+function currentRecipe(){ const bi=document.getElementById('selBarley').selectedIndex; const yi=document.getElementById('selYeast').selectedIndex; const ci=document.getElementById('selCuts').selectedIndex; return {barley:BARLEYS[bi], yeast:YEASTS[yi], cuts:CUTS[ci]}; }
+function currentSku(){ return SKUS[document.getElementById('selSku').selectedIndex]; }
+
+function registerUI(){ const sb=document.getElementById('selBarley'); BARLEYS.forEach((b,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=b.name; sb.appendChild(o); }); const sy=document.getElementById('selYeast'); YEASTS.forEach((b,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=b.name; sy.appendChild(o); }); const sc=document.getElementById('selCuts'); CUTS.forEach((b,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=b.name; sc.appendChild(o); }); const ss=document.getElementById('selSku'); SKUS.forEach((b,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=b.name; ss.appendChild(o); }); [sb,sy,sc,ss].forEach(el=> el.addEventListener('change', updateRecipePreview)); document.getElementById('btnRandomise').onclick=()=>{ sb.selectedIndex=Math.floor(Math.random()*BARLEYS.length); sy.selectedIndex=Math.floor(Math.random()*YEASTS.length); sc.selectedIndex=Math.floor(Math.random()*CUTS.length); ss.selectedIndex=Math.floor(Math.random()*SKUS.length); updateRecipePreview(); }; sb.selectedIndex=0; sy.selectedIndex=0; sc.selectedIndex=1; ss.selectedIndex=0; updateRecipePreview(); document.getElementById('btnBatch').onclick=()=>{ const dm=game.dm; const best=dm.dist.reduce((a,b)=> (dist(b.pos.x,b.pos.y,mouseX,mouseY) < (a?.d??1e9)) ? {d:dist(b.pos.x,b.pos.y,mouseX,mouseY), o:b} : a, null)?.o; if(best){ const ok=best.startBatch(game.econ, currentRecipe(), currentSku().key); game.engine.log(ok?`${best.name} started a batch for ${currentSku().key}.`:'Not enough resources.'); } }; document.getElementById('btnBuyCasks').onclick=()=>{ if(game.econ.cash>=5000){ game.econ.cash-=5000; game.econ.stock.casks+=50; game.engine.log('Bought 50 casks.'); } else game.engine.log('Insufficient cash.'); }; document.getElementById('btnBuildPier').onclick=()=>{ const H=game.world.harbour; if(H.piers>=3){ game.engine.log('Harbour is at maximum capacity.'); return; } const cost=15000*(H.piers+1); if(game.econ.cash>=cost){ game.econ.cash-=cost; H.piers++; game.engine.log('Built a new pier. Shipping speed improves and adds a berth.'); } else game.engine.log('Insufficient cash.'); }; document.getElementById('btnShip').onclick=()=>{ pendingShip=true; game.engine.log('Click a sea location to queue a ship (waits for tide & berth).'); }; document.getElementById('btnMaint').onclick=()=>{ const dm=game.dm; const d = dm.dist.reduce((a,b)=> (dist(b.pos.x,b.pos.y,mouseX,mouseY) < (a?.d??1e9)) ? {d:dist(b.pos.x,b.pos.y,mouseX,mouseY), o:b} : a, null)?.o; if(d){ game.maintenance.schedule(d, 4); } else { game.engine.log('Hover a distillery to schedule maintenance there.'); } }; document.getElementById('btnContract').onclick=()=>{ const city = pick(Math.random.bind(Math), contractCities); const H=game.world.harbour; const target = createVector(H.x + (Math.random()*400+200), H.y + (Math.random()*-300-80)); const pricePerCase = Math.round(70 + Math.random()*50); const volume = 300 + Math.floor(Math.random()*200); const periodDays = 30 + Math.floor(Math.random()*40); game.contracts.addContract({city, target, pricePerCase, volume, periodDays}); game.engine.log(`Signed contract with ${city}: ${volume} cases every ~${periodDays} days at £${pricePerCase}/case.`); };
+
+  // wire overlay UI
+  __EXT.wireUI();
+}
+
+function keyPressed(){ if(key===' '){ game.engine.paused=!game.engine.paused; } if(key==='1'){ document.getElementById('speed').value='0.5'; } if(key==='2'){ document.getElementById('speed').value='1'; } if(key==='3'){ document.getElementById('speed').value='2'; } }
+
+/********************** SELF-TESTS *************************/
+function runSelfTests(){ const add=(name,pass,info='')=>{ const pref=pass?'PASS':'FAIL'; const msg=`[${pref}] ${name}${info?': '+info:''}`; game.engine.log(msg); (pass?console.log:console.error)(msg); };
+  try{ add('Engine exposes warehouse', !!game.engine.warehouse);}catch(e){ add('Engine exposes warehouse', false, e.message);} 
+  try{ const d=game.dm.dist[0]; const cash0=game.econ.cash; const ok=d.startBatch(game.econ, {barley:BARLEYS[0], yeast:YEASTS[1], cuts:CUTS[1]}, 'NAS'); add('Start batch subtracts cash (manual recipe)', ok && game.econ.cash<cash0);}catch(e){ add('Start batch subtracts cash (manual recipe)', false, e.message);} 
+  try{ const d=game.dm.dist[0]; d.active={stage:3,t:29,quality:1,yield:1,speed:1,recipe:generateRecipe(Math.random), targetSku:'10-year'}; const before=game.warehouse.casks.length; d.update(2); add('Distillation creates casks w/ target SKU', game.warehouse.casks.length>before);}catch(e){ add('Distillation creates casks w/ target SKU', false, e.message);} 
+  try{ const ws=game.warehouse; const w0=game.econ.inventory['10-year']; ws.casks.push({distillery:'Test',quality:1.2,ageDays:365*10+1,location:'dunnage',volume:90,abv:0.63,targetSku:'10-year'}); ws.update(1); add('Warehouse bottles into 10-year SKU', game.econ.inventory['10-year']>w0);}catch(e){ add('Warehouse bottles into 10-year SKU', false, e.message);} 
+  try{ const H=game.world.harbour; game.econ.inventory['NAS']=(game.econ.inventory['NAS']||0)+50; game.econ.whisky += 50; game.harbour.scheduleShip(createVector(H.x+200,H.y-100)); add('Harbour enqueues a ship', game.harbour.queue.length>=1 || game.harbour.routes.length>=1);
+  }catch(e){ add('Harbour enqueues a ship', false, e.message);} 
+  try{ const names=['Springbank','Glen Scotia','Glengyle']; const ok=names.every(n=> game.dm.dist.find(d=>d.name===n && d.foundingYear===HISTORICAL_FOUNDING[n])); add('Seeded founding years set', ok);
+  }catch(e){ add('Seeded founding years set', false, e.message);} }
+
+/********************** OVERLAY SYSTEMS (CRITICS, WEATHER DEEP-DIVE, WATER SOURCE, SUSTAINABILITY) *************************/
+const __EXT = (function(){
+  const S = { weather:{windDir:180,seaSalt:0.2,front:'none',tempC:12}, water:{type:'spring',minerality:0.6,flow:1.0}, sust:{score:0,biomass:false,recycle:false,peatUse:0}, critics:{seasonBoost:0,endsAt:0,lastScore:null} };
+  const clamp2=(x,a,b)=>Math.max(a,Math.min(b,x));
+  function log(m){ try{ window.game.engine.log(m); }catch(e){ console.log('[log]',m);} }
+
+  function updateWeatherDeep(dt){ const eng=game?.engine, w=game?.weather; if(!eng||!w) return; const season=eng.season(); const hour=(eng.t%1)*24; const base={Winter:4,Spring:9,Summer:16,Autumn:10}[season]||10; S.weather.tempC = base + 4*Math.sin((hour/24)*Math.PI*2 - Math.PI/2); if(Math.random()<0.002*dt){ const dirs=[45,90,135,180,225,270,315]; S.weather.windDir = dirs[Math.floor(Math.random()*dirs.length)]; } if(Math.random()<0.0008*dt){ S.weather.front = ['none','warm','cold','storm'][Math.floor(Math.random()*4)]; } S.weather.seaSalt = (w.wind||0.4)*0.6 + (S.weather.windDir>160&&S.weather.windDir<220?0.3:0); w.seaState = clamp2((w.seaState||0)*0.8 + (S.weather.front==='storm'?0.9:0) + (w.wind||0)*0.2, 0, 1); }
+
+  function updateWater(dt){ const eng=game?.engine, w=game?.weather; if(!eng) return; const season=eng.season(); const rain=(w?.rain)||0.4; const base=S.water.type==='spring'?0.9:0.6; const seasonal={Winter:1.0,Spring:0.9,Summer:0.6,Autumn:0.8}[season]||0.8; S.water.flow = clamp2(base*seasonal + (rain-0.5)*0.4, 0.2, 1.2); }
+
+  function batchHook(params){ const out={...params}; const peatBase=out.need?.peat??0; const waterBase=out.need?.water??0; const peatSave=S.sust.biomass?0.3:0; const waterSave=S.sust.recycle?0.25:0; out.need={...out.need, peat:Math.max(0,Math.round(peatBase*(1-peatSave))), water:Math.max(0,Math.round(waterBase*(1-waterSave)))}; S.sust.peatUse += peatBase - out.need.peat; return out; }
+
+  function patchStartBatch(){ const dman=game?.dm; if(!dman||!dman.dist) return; for(const d of dman.dist){ if(d.__patched_v172) continue; const orig=d.startBatch?.bind(d); if(typeof orig!=="function") continue; d.startBatch=function(econ,recipe,targetSku){ if(S.water.flow<0.35){ log(`Water level too low for ${d.name}. Batch delayed.`); return false; } const w=game?.weather; const temp=(w?(w.temp*30+2):12); const yeastAdj=clamp2((temp-12)/40,-0.1,0.2); const rec=recipe? {...recipe}:recipe; if(rec&&rec.yeast){ rec.yeast={...rec.yeast, speed:(rec.yeast.speed||0)+yeastAdj}; } const params=batchHook({need:{barley:30*this.level, peat:8, water:120, casks:10}}); const ok=orig(econ,rec,targetSku); if(!ok) return ok; if(econ&&econ.stock){ econ.stock.peat += (8-params.need.peat); econ.stock.water += (120-params.need.water); } return ok; }; d.__patched_v172=true; }
+  }
+
+  function runCompetition(){ const wh=game?.warehouse, econ=game?.econ, eng=game?.engine; if(!wh||!econ||!eng) return; const sample=(wh.casks||[]).filter(c=>c.ageDays>365*3).slice(0,6); const salt=S.weather.seaSalt||0; const waterM=S.water.minerality||0.5; const baseScore= sample.reduce((a,c)=>a+(c.quality||1),0)/Math.max(1,sample.length); const terroir=5*salt+3*waterM; const noise=(Math.random()*1-0.5)*1.5; const score=clamp2(80 + baseScore*8 + terroir + noise, 70, 98); S.critics.lastScore=score.toFixed(1); const boost= score>=95?18: score>=92?12: score>=90?8: score>=88?5:3; econ.price += boost; econ.reputation += (score-85)*0.05; S.critics.seasonBoost=boost; S.critics.endsAt=eng.t+80; log(`Competition results: score ${S.critics.lastScore}. Seasonal price boost +£${boost}/case active.`); }
+
+  function renderCritics(){ const el=document.getElementById('criticsSummary'); if(!el) return; const c=S.critics; el.textContent = c.seasonBoost>0? `Last score ${c.lastScore}. Seasonal +£${c.seasonBoost}/case active.` : (c.lastScore? `Last score ${c.lastScore}. No active boost.` : 'No competitions yet.'); }
+  function renderSust(){ const el=document.getElementById('sustSummary'); if(!el) return; const s=S.sust; const up=[]; if(s.biomass) up.push('Biomass'); if(s.recycle) up.push('Recycling'); el.textContent=`Score: ${s.score|0} · Upgrades: ${up.length?up.join(', '):'none'}`; }
+  function renderWeatherDeep(){ const el=document.getElementById('weatherSummary'); if(!el) return; const w=S.weather; el.textContent = `Wind ${w.windDir}° · Front ${w.front} · Sea-salt ${(w.seaSalt*100|0)}% · Temp ${w.tempC.toFixed(1)}°C`; }
+
+  function wireUI(){ const b1=document.getElementById('btnBiomass'); if(b1) b1.onclick=()=>{ const econ=game?.econ; if(!econ||econ.cash<25000){ log('Not enough cash for Biomass Boiler.'); return; } econ.cash-=25000; S.sust.biomass=true; S.sust.score+=15; renderSust(); log('Biomass boiler fitted. Peat usage reduced.'); };
+    const b2=document.getElementById('btnRecycle'); if(b2) b2.onclick=()=>{ const econ=game?.econ; if(!econ||econ.cash<12000){ log('Not enough cash for Water Recycling.'); return; } econ.cash-=12000; S.sust.recycle=true; S.sust.score+=10; renderSust(); log('Water recycling installed.'); };
+    const b3=document.getElementById('btnSwitchWater'); if(b3) b3.onclick=()=>{ S.water.type=(S.water.type==='spring'?'river':'spring'); S.water.minerality=(S.water.type==='spring'?0.7:0.3); log(`Water source switched to ${S.water.type} (minerality ${(S.water.minerality*100|0)}%).`); renderSust(); };
+  }
+
+  let lastCompT=0;
+  function tick(dt){ updateWeatherDeep(dt); updateWater(dt); // critics season expiry
+    const eng=game?.engine, econ=game?.econ; if(eng&&econ){ if(S.critics.endsAt && eng.t>S.critics.endsAt){ econ.price=Math.max(30,econ.price - S.critics.seasonBoost); S.critics.seasonBoost=0; S.critics.endsAt=0; log('Seasonal critics boost expired.'); }
+      if(eng.t - lastCompT > 120){ lastCompT = eng.t; runCompetition(); }
+    }
+    patchStartBatch();
+  }
+
+  return {wireUI, tick, renderCritics, renderSust, renderWeatherDeep};
+})();
+  </script>
+</body>
+</html>
