@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Concrete FM — a strict roguelike</title>
+<style>
+  :root{
+    --bg:#0b0d10;            /* deep asphalt */
+    --fg:#f1e9c7;            /* parchment UI */
+    --sodium:#f0b94a;        /* sodium lamp amber */
+    --amber:#f5c266;         
+    --concrete:#191b1e;      /* dark concrete */
+    --concrete2:#24282c;     
+    --grime:#111214;         
+    --accent:#78d0ff;        /* light-blue bins */
+    --danger:#ff705a;        /* carriers / alerts */
+    --heat:#ff9a3c;          
+    --smoke:#6f829066;       /* semi */
+    --dim:#4a4f55;           
+    --road:#2a2e33;          
+    --under:#202329;         
+    --alley:#2c3036;         
+    --green:#79f19a;         
+  }
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);} 
+  body{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; letter-spacing: 0.25px;}
+  *{box-sizing:border-box}
+  .shell{display:grid;grid-template-columns: 1fr 360px; height:100vh;}
+  #wrap{position:relative; background: radial-gradient(1200px 800px at 10% 20%, #111 0%, var(--bg) 60%)}
+  #game{display:block; image-rendering: pixelated;} /* no CSS scaling */
+  #overlay-ui{position:absolute; top:0; left:0; pointer-events:none}
+
+  /* Sidebar */
+  aside{background:linear-gradient(180deg, #0b0d10, #0a0b0d 70%, #07080b); border-left:1px solid #1a1e22; padding:14px 14px 10px 14px; display:flex; flex-direction:column; gap:10px}
+  .hud{display:grid; grid-template-columns: 1fr 1fr; grid-auto-rows:min-content; gap:6px 10px; align-items:center;}
+  .hud .lab{opacity:0.8; font-size:12px}
+  .hud .val{justify-self:end; font-variant-numeric: tabular-nums;}
+  .bar{height:7px; background:#0f1114; border:1px solid #1c2228; border-radius:2px; position:relative;}
+  .bar>i{position:absolute; inset:0; display:block; width:0%; background:linear-gradient(90deg, #3a3, #6f3, #fa3);} 
+  .statline{display:flex; gap:8px; align-items:center; font-size:12px}
+  .pill{padding:2px 6px; border-radius:100px; background:#13161a; border:1px solid #22262c;}
+  .meter{height:6px; width:100px; background:#0d0f12; border:1px solid #1b2026; position:relative}
+  .meter>i{position:absolute; inset:0; width:0; background:linear-gradient(90deg, #394bff, #ff5a43)}
+
+  /* Log */
+  #log{flex:1; overflow:auto; border-top:1px solid #1a1e22; padding-top:10px; font-size:12px; line-height:1.35;}
+  #log b{color:var(--amber)}
+  .log-entry{opacity:0.95; margin-bottom:6px;}
+  .log-entry .t{opacity:0.5; margin-right:6px}
+
+  /* Help overlay */
+  .help{position:absolute; inset:30px 30px auto auto; width:min(680px, 80vw); max-height:80vh; overflow:auto; background:#0d0f12f5; border:1px solid #2a2e33; box-shadow: 0 10px 40px #0008; padding:14px 16px; border-radius:8px; pointer-events:auto}
+  .help h2{margin:4px 0 10px 0; font-size:16px}
+  .help code{background:#0b0d10; padding:1px 4px; border-radius:3px; border:1px solid #1a1e22}
+  .help small{opacity:0.7}
+
+  /* Minigames */
+  .modal{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:#0009; backdrop-filter: blur(2px); pointer-events:auto}
+  .panel{background:#0d0f12; border:1px solid #2a2e33; padding:14px; border-radius:8px; width:min(720px, 90vw)}
+  .panel h3{margin:0 0 10px 0}
+  .slots{display:grid; grid-template-columns: repeat(4, 1fr); gap:8px}
+  .slot{border:1px dashed #2a2e33; padding:12px; text-align:center; min-height:54px; display:flex; align-items:center; justify-content:center; background:#0a0c0f}
+  .parts{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px}
+  .part{padding:4px 8px; border:1px solid #2a2e33; border-radius:6px; background:#0b0d10; cursor:pointer}
+  .tuner{display:flex; gap:12px; align-items:center}
+  .dial{flex:1; height:44px; background:linear-gradient(180deg, #0b0d10, #0a0c10); border:1px solid #2a2e33; border-radius:8px; position:relative}
+  .dial .tick{position:absolute; top:0; bottom:0; width:2px; background:#2a2e33}
+  .dial .target{position:absolute; top:0; bottom:0; width:2px; background:var(--green)}
+  .dial .carrier{position:absolute; top:0; bottom:0; background:var(--danger)}
+  .dial .cursor{position:absolute; top:-6px; bottom:-6px; width:2px; background:var(--amber)}
+
+  /* Mood & grit overlays */
+  .grit{position:absolute; inset:0; pointer-events:none; mix-blend-mode:overlay; opacity:0.25; background-image:
+      radial-gradient(1px 1px at 10% 20%, #fff2 0, #0000 100%),
+      radial-gradient(1px 1px at 80% 60%, #fff1 0, #0000 100%),
+      radial-gradient(2px 2px at 40% 80%, #0003 0, #0000 100%),
+      radial-gradient(2px 2px at 60% 10%, #0004 0, #0000 100%);
+    background-size: 120px 120px, 140px 140px, 200px 200px, 260px 260px;
+    filter: contrast(120%) saturate(90%);
+  }
+  .mood-0{} /* off */
+  .mood-1 #wrap{filter:contrast(110%) saturate(85%)}
+  .mood-2 #wrap{filter:contrast(125%) saturate(75%) brightness(90%)}
+
+  /* Psychedelic OVERDRIVE */
+  .trip #wrap{ animation: tripHue 5s linear infinite; }
+  .trip .grit{opacity:0.6; mix-blend-mode:screen;}
+  .tripfx{position:absolute; inset:0; pointer-events:none; z-index:2; background: conic-gradient(from 0deg at 50% 50%, #ff00ff20, #00ffff20, #ffff0020, #ff00ff20); mix-blend-mode:difference; opacity:0; filter: blur(2px);}
+  .trip #tripfx{opacity:0.9; animation: acidSpin 6s linear infinite, acidPulse 2.6s ease-in-out infinite alternate;}
+  @keyframes tripHue { 0% { filter:hue-rotate(0deg) saturate(260%) contrast(150%) brightness(115%) } 100% { filter:hue-rotate(360deg) saturate(360%) contrast(165%) brightness(125%) } }
+  @keyframes acidSpin { to { transform: rotate(360deg); } }
+  @keyframes acidPulse { 0% { filter: blur(2px) saturate(180%);} 100% { filter: blur(5px) saturate(280%);} }
+
+  /* Tiny arrow to nearest vantage */
+  #pointer{position:absolute; width:0; height:0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-bottom: 14px solid var(--amber); transform: translate(-50%, -50%);} 
+
+  /* Pixel-crisp */
+  canvas{image-rendering: pixelated;}
+
+  a, button{color:var(--fg)}
+</style>
+</head>
+<body class="mood-1">
+  <div class="shell">
+    <div id="wrap">
+      <canvas id="game" width="960" height="720"></canvas>
+      <div id="overlay-ui"></div>
+      <div id="pointer" hidden></div>
+      <div id="grit" class="grit" hidden></div>
+      <div id="tripfx" class="tripfx"></div>
+    </div>
+
+    <aside>
+      <div class="hud">
+        <div class="lab">Turn</div><div class="val" id="turnVal">0</div>
+        <div class="lab">Listeners</div><div class="val" id="scoreVal">0</div>
+        <div class="lab">Frequency</div><div class="val" id="freqVal">—</div>
+        <div class="lab">Power</div><div class="val" id="powerVal">1.0</div>
+        <div class="lab">Broadcast</div><div class="val" id="liveVal">OFF</div>
+        <div class="lab">Heat</div><div class="val"><div class="meter"><i id="heatBar"></i></div></div>
+        <div class="lab">Fuel</div><div class="val" id="fuelVal">3L</div>
+        <div class="lab">Tapes</div><div class="val" id="tapesVal">100%</div>
+        <div class="lab">Decoys</div><div class="val" id="decoyVal">2</div>
+        <div class="lab">Pills</div><div class="val" id="pillVal">1</div>
+      </div>
+
+      <div class="statline"><span class="pill">G toggles grit</span> <span class="pill">M cycles mood</span> <span class="pill">? help</span></div>
+      <div id="log"></div>
+    </aside>
+  </div>
+
+  <!-- Modals injected here -->
+
+<script>
+(function(){
+  // ======= Utilities & RNG =======
+  const TAU = Math.PI*2;
+  const clamp = (v, a, b)=>Math.max(a, Math.min(b, v));
+  const lerp = (a,b,t)=>a+(b-a)*t;
+  const rand = (seed)=>{ let t = seed>>>0; return ()=>{ t+=0x6D2B79F5; let r = Math.imul(t ^ t>>>15, 1 | t); r ^= r + Math.imul(r ^ r>>>7, 61 | r); return ((r ^ r>>>14) >>> 0) / 4294967296; } }
+  const hash2 = (x,y)=>{ let h = x*374761393 + y*668265263; h = (h ^ (h>>13))>>>0; h = Math.imul(h, 1274126177)>>>0; return h>>>0; }
+  const DIRS = [ [1,0],[-1,0],[0,1],[0,-1] ];
+  const key = (x,y)=>x+","+y;
+
+  // ======= World / Modules =======
+  const TILE = { WALL:'#', ALLEY:'.', ROAD:'=', UNDER:'_', STEPS:'^', RIDGE:'R', PLAYER:'◎', VAN:'V', PATROL:'P', BIN:'b' };
+  const WALKABLE = new Set([TILE.ALLEY, TILE.ROAD, TILE.UNDER, TILE.STEPS, TILE.RIDGE, TILE.BIN]);
+  const VANTAGE = new Set([TILE.STEPS, TILE.RIDGE]);
+  const OPAQUE = new Set([TILE.WALL]); // smoke handled separately
+
+  const MOD = 24; // 24x24 modules
+  const OPEN_TYPES = ['alley','road','under'];
+
+  const state = {
+    seed: (Date.now() & 0xffffffff) ^ 0xC0FEEFAD,
+    px:0, py:0,
+    turn:0,
+    seen: new Map(),
+    visible: new Map(),
+    mood:1, grit:false,
+    // Broadcast & score
+    score:0, live:false, freq:null, targetFreq:null, clarity:0, power:1.0, heat:0,
+    fuel:3, fuelTick:0, tapes:100, decoys:2, pills:1, tripping:0,
+    lastRig:null, // heat source
+    aiming:null, hidden:false,
+    patrols:[], vans:[],
+    modules:new Map(),
+    bombs:new Map(), // key-> {x,y, stage: 'idle'|'fuse'|'bloom', t}
+    smokes:[], // {x,y,r,t}
+    pillsOnMap:new Map(), // key-> {x,y}
+    log:[]
+  };
+
+  function log(msg){ const t = String(state.turn).padStart(4,'0'); state.log.unshift({t,msg}); if(state.log.length>200) state.log.pop(); renderLog(); }
+
+  function getModule(mx,my){
+    const k = key(mx,my);
+    if(state.modules.has(k)) return state.modules.get(k);
+
+    const mod = { mx,my, tiles: new Array(MOD*MOD).fill(TILE.WALL), edges: {N:null,S:null,W:null,E:null}, primed:false,
+      spawns: {vantage:[], bins:[], patrols:[], vans:[], bombs:[], pills:[]} };
+
+    const nN = state.modules.get(key(mx, my-1));
+    const nS = state.modules.get(key(mx, my+1));
+    const nW = state.modules.get(key(mx-1, my));
+    const nE = state.modules.get(key(mx+1, my));
+
+    const r = rand(state.seed ^ hash2(mx,my));
+    const anyOpen = ()=>OPEN_TYPES[Math.floor(r()*OPEN_TYPES.length)];
+    mod.edges.N = nN ? nN.edges.S : (r()<0.75? anyOpen() : 'solid');
+    mod.edges.S = nS ? nS.edges.N : (r()<0.75? anyOpen() : 'solid');
+    mod.edges.W = nW ? nW.edges.E : (r()<0.75? anyOpen() : 'solid');
+    mod.edges.E = nE ? nE.edges.W : (r()<0.75? anyOpen() : 'solid');
+
+    // Fill with concrete
+    for(let y=0;y<MOD;y++) for(let x=0;x<MOD;x++) setMod(mod,x,y,TILE.WALL);
+
+    // Carve blended yards
+    const carve = (t)=>{ for(let y=2;y<MOD-2;y++){ for(let x=2;x<MOD-2;x++){ if(r()<0.55) setMod(mod,x,y,t); } } };
+    carve(TILE.ALLEY);
+    // Lay thicker road/under strokes
+    for(let i=0;i<3;i++){
+      const horiz = r()<0.5;
+      const y = Math.floor(lerp(3, MOD-4, r()));
+      const x = Math.floor(lerp(3, MOD-4, r()));
+      const len = Math.floor(lerp(8, MOD-4, r()));
+      const tt = (r()<0.6? TILE.ROAD : TILE.UNDER);
+      for(let j=0;j<len;j++){
+        const xx = clamp(horiz? x+j : x, 1, MOD-2);
+        const yy = clamp(horiz? y : y+j, 1, MOD-2);
+        setMod(mod,xx,yy, tt);
+        if(horiz && yy+1<MOD-1) setMod(mod,xx,yy+1, tt);
+        if(!horiz && xx+1<MOD-1) setMod(mod,xx+1,yy, tt);
+      }
+    }
+
+    // Place vantages
+    for(let i=0;i<4;i++){
+      const vx = Math.floor(r()*MOD), vy = Math.floor(r()*MOD);
+      if(WALKABLE.has(getMod(mod,vx,vy))) setMod(mod,vx,vy, r()<0.6? TILE.STEPS : TILE.RIDGE);
+    }
+    // Place bins
+    for(let i=0;i<3;i++){
+      const bx = Math.floor(r()*MOD), by = Math.floor(r()*MOD);
+      if(WALKABLE.has(getMod(mod,bx,by))) setMod(mod,bx,by, TILE.BIN);
+    }
+    // Smoke bombs
+    for(let i=0;i<3;i++){
+      const sx = Math.floor(r()*MOD), sy = Math.floor(r()*MOD);
+      if(WALKABLE.has(getMod(mod,sx,sy))) mod.spawns.bombs.push({x:mx*MOD+sx, y:my*MOD+sy});
+    }
+    // Pills (occasional)
+    if(r()<0.25){
+      const px = Math.floor(r()*MOD), py = Math.floor(r()*MOD);
+      if(WALKABLE.has(getMod(mod,px,py))) mod.spawns.pills.push({x:mx*MOD+px, y:my*MOD+py});
+    }
+
+    // Start-area enemies mild
+    if(Math.abs(mx)+Math.abs(my) <= 1){
+      if(r()<0.6) mod.spawns.patrols.push(worldPos(mx,my, Math.floor(r()*MOD), Math.floor(r()*MOD)));
+      if(r()<0.4) mod.spawns.vans.push(worldPos(mx,my, Math.floor(r()*MOD), Math.floor(r()*MOD)));
+    }
+
+    // Seams
+    carveEdge(mod, 'N'); carveEdge(mod,'S'); carveEdge(mod,'W'); carveEdge(mod,'E');
+    // Fix diagonal-only choke points
+    fixDiagonalChokes(mod);
+
+    state.modules.set(k, mod);
+    return mod;
+  }
+
+  function worldPos(mx,my,x,y){ return {x: mx*MOD + x, y: my*MOD + y}; }
+  function getMod(mod,x,y){ return mod.tiles[y*MOD + x]; }
+  function setMod(mod,x,y,t){ mod.tiles[y*MOD + x] = t; }
+
+  // Deterministic seam RNG shared by both sides of a boundary so gates align
+  function seamRNG(mx,my,side){
+    let ax=mx, ay=my, t=0; // t encodes orientation
+    if(side==='N'){ t=1; ay=my-1; }
+    else if(side==='S'){ t=1; ay=my; }
+    else if(side==='W'){ t=2; ax=mx-1; }
+    else if(side==='E'){ t=2; ax=mx; }
+    const seed = state.seed ^ hash2(ax*92837111 + t*1337, ay*689287499 + t*733);
+    return rand(seed);
+  }
+
+  function carveEdge(mod, side){
+    const edgeType = mod.edges[side];
+    if(edgeType==='solid') return; 
+    const r = seamRNG(mod.mx, mod.my, side);
+    const band = (r()<0.6); 
+    const walkTile = edgeType==='road'? TILE.ROAD : (edgeType==='under'? TILE.UNDER : TILE.ALLEY);
+    const DEPTH = 6; // full-band depth and gate depth
+
+    if(side==='N'){
+      if(band){ for(let y=0;y<DEPTH;y++) for(let x=0;x<MOD;x++) setMod(mod,x,y,walkTile); }
+      else{ const w=2; const cx = clamp(2 + Math.floor(r()*(MOD-4-w)), 2, MOD-2-w); for(let x=cx; x<cx+w; x++) for(let y=0;y<DEPTH;y++) setMod(mod,x,y,walkTile); }
+    } else if(side==='S'){
+      if(band){ for(let y=MOD-DEPTH;y<MOD;y++) for(let x=0;x<MOD;x++) setMod(mod,x,y,walkTile); }
+      else{ const w=2; const cx = clamp(2 + Math.floor(r()*(MOD-4-w)), 2, MOD-2-w); for(let x=cx; x<cx+w; x++) for(let y=MOD-DEPTH;y<MOD;y++) setMod(mod,x,y,walkTile); }
+    } else if(side==='W'){
+      if(band){ for(let x=0;x<DEPTH;x++) for(let y=0;y<MOD;y++) setMod(mod,x,y,walkTile); }
+      else{ const w=2; const cy = clamp(2 + Math.floor(r()*(MOD-4-w)), 2, MOD-2-w); for(let y=cy; y<cy+w; y++) for(let x=0;x<DEPTH;x++) setMod(mod,x,y,walkTile); }
+    } else if(side==='E'){
+      if(band){ for(let x=MOD-DEPTH;x<MOD;x++) for(let y=0;y<MOD;y++) setMod(mod,x,y,walkTile); }
+      else{ const w=2; const cy = clamp(2 + Math.floor(r()*(MOD-4-w)), 2, MOD-2-w); for(let y=cy; y<cy+w; y++) for(let x=MOD-DEPTH;x<MOD;x++) setMod(mod,x,y,walkTile); }
+    }
+  }
+
+  function fixDiagonalChokes(mod){
+    const isWalk = (t)=>t!==TILE.WALL;
+    for(let y=1;y<MOD-1;y++){
+      for(let x=1;x<MOD-1;x++){
+        const a = getMod(mod,x,y); if(!isWalk(a)) continue;
+        const SE = isWalk(getMod(mod,x+1,y+1));
+        const SW = isWalk(getMod(mod,x-1,y+1));
+        const NE = isWalk(getMod(mod,x+1,y-1));
+        const NW = isWalk(getMod(mod,x-1,y-1));
+        // For each diagonal pair: if both orthogonals are walls, open one
+        const chooseOpen = (ox1,oy1, ox2,oy2)=>{
+          const o1=getMod(mod,ox1,oy1), o2=getMod(mod,ox2,oy2);
+          if(o1===TILE.WALL && o2===TILE.WALL){
+            // inherit type preference
+            let t=a; const b=getMod(mod,ox1,oy1); if(a===TILE.ROAD||b===TILE.ROAD) t=TILE.ROAD; else if(a===TILE.UNDER||b===TILE.UNDER) t=TILE.UNDER; else t=TILE.ALLEY;
+            const pick = (hash2(mod.mx*MOD+x, mod.my*MOD+y) & 1);
+            if(pick===0) setMod(mod,ox1,oy1,t); else setMod(mod,ox2,oy2,t);
+          }
+        };
+        if(SE) chooseOpen(x+1,y, x,y+1);
+        if(SW) chooseOpen(x-1,y, x,y+1);
+        if(NE) chooseOpen(x+1,y, x,y-1);
+        if(NW) chooseOpen(x-1,y, x,y-1);
+      }
+    }
+  }
+
+  function getTile(x,y){
+    const mx = Math.floor(x/MOD), my = Math.floor(y/MOD);
+    const lx = ((x%MOD)+MOD)%MOD, ly=((y%MOD)+MOD)%MOD;
+    const mod = getModule(mx,my);
+    return getMod(mod,lx,ly);
+  }
+  function setTile(x,y,t){
+    const mx = Math.floor(x/MOD), my = Math.floor(y/MOD);
+    const lx = ((x%MOD)+MOD)%MOD, ly=((y%MOD)+MOD)%MOD;
+    const mod = getModule(mx,my);
+    setMod(mod,lx,ly,t);
+  }
+
+  function spawnFromModulesAround(px,py){
+    const mx = Math.floor(px/MOD), my = Math.floor(py/MOD);
+    for(let j=-1;j<=1;j++) for(let i=-1;i<=1;i++){
+      const mod = getModule(mx+i,my+j);
+      if(!mod.primed){
+        mod.primed = true;
+        for(const p of mod.spawns.patrols){ if(walkable(p.x,p.y)) state.patrols.push({x:p.x,y:p.y}); }
+        for(const v of mod.spawns.vans){ if(walkable(v.x,v.y)) state.vans.push({x:v.x,y:v.y}); }
+        for(const b of mod.spawns.bombs){ if(!state.bombs.has(key(b.x,b.y))) state.bombs.set(key(b.x,b.y), {x:b.x,y:b.y,stage:'idle',t:0}); }
+        for(const p of mod.spawns.pills){ const kk=key(p.x,p.y); if(walkable(p.x,p.y) && !state.pillsOnMap.has(kk)) state.pillsOnMap.set(kk, {x:p.x,y:p.y}); }
+      }
+    }
+  }
+
+  function walkable(x,y){ return WALKABLE.has(getTile(x,y)); }
+
+  // ======= Field of View =======
+  function inSmoke(x,y){ for(const s of state.smokes){ const dx=s.x-x, dy=s.y-y; if(dx*dx+dy*dy<=s.r*s.r) return true; } return false; }
+  function los(x0,y0,x1,y1){
+    let dx = Math.abs(x1-x0), dy = Math.abs(y1-y0);
+    let sx = x0<x1?1:-1, sy = y0<y1?1:-1, err = dx-dy;
+    let x=x0, y=y0;
+    while(true){
+      if(x===x1 && y===y1) return true;
+      if(!(x===x0 && y===y0)){
+        if(OPAQUE.has(getTile(x,y))) return false;
+        if(inSmoke(x,y)) return false;
+      }
+      const e2 = 2*err; if(e2> -dy){ err -= dy; x += sx; } if(e2< dx){ err += dx; y += sy; }
+    }
+  }
+  function recomputeFOV(){
+    state.visible.clear();
+    const R = 14; 
+    for(let y=state.py-R; y<=state.py+R; y++){
+      for(let x=state.px-R; x<=state.px+R; x++){
+        const dx=x-state.px, dy=y-state.py; if(dx*dx+dy*dy>R*R) continue;
+        if(los(state.px,state.py,x,y)){ state.visible.set(key(x,y), true); state.seen.set(key(x,y), true); }
+      }
+    }
+  }
+
+  // ======= Rendering =======
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const TILE_SIZE = 24; // tile pixels
+  let VIEW_W = 0, VIEW_H = 0;
+  function resize(){
+    const wrap = document.getElementById('wrap');
+    const w = wrap.clientWidth; const h = wrap.clientHeight;
+    VIEW_W = Math.max(1, Math.floor(w / TILE_SIZE));
+    VIEW_H = Math.max(1, Math.floor(h / TILE_SIZE));
+    canvas.width  = VIEW_W * TILE_SIZE; canvas.height = VIEW_H * TILE_SIZE;
+    const ov = document.getElementById('overlay-ui');
+    ov.style.width = canvas.width + 'px'; ov.style.height = canvas.height + 'px';
+  }
+
+  function camOrigin(){ return { ox: state.px - Math.floor(VIEW_W/2), oy: state.py - Math.floor(VIEW_H/2) }; }
+
+  function colorForTile(t){
+    switch(t){
+      case TILE.WALL: return '#1a1c1f';
+      case TILE.ALLEY: return '#2b2f34';
+      case TILE.ROAD: return '#353b42';
+      case TILE.UNDER: return '#24292f';
+      case TILE.STEPS: return '#3e443e';
+      case TILE.RIDGE: return '#45423a';
+      case TILE.BIN: return '#2b3f4d';
+      default: return '#222';
+    }
+  }
+
+  function draw(){
+    ctx.fillStyle = '#0b0d10'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.save(); ctx.font = '16px monospace'; ctx.textBaseline='top'; ctx.imageSmoothingEnabled = false;
+    const {ox, oy} = camOrigin();
+
+    for(let j=0;j<VIEW_H;j++){
+      for(let i=0;i<VIEW_W;i++){
+        const x = ox+i, y=oy+j; const kxy = key(x,y);
+        const seen = state.seen.has(kxy); if(!seen) continue;
+        const vis = state.visible.has(kxy); const t = getTile(x,y);
+        const base = colorForTile(t); const bx=i*TILE_SIZE, by=j*TILE_SIZE;
+        ctx.fillStyle= base; ctx.fillRect(bx,by,TILE_SIZE,TILE_SIZE);
+        if(!vis){ ctx.fillStyle = '#0008'; ctx.fillRect(bx,by,TILE_SIZE,TILE_SIZE); }
+        if(inSmoke(x,y)){ ctx.fillStyle = 'rgba(111,130,144,0.45)'; ctx.fillRect(bx,by,TILE_SIZE,TILE_SIZE); }
+        if(t===TILE.STEPS || t===TILE.RIDGE){ ctx.fillStyle = '#f0b94a'; ctx.fillRect(bx+6,by+6,12,12); ctx.fillStyle = '#0006'; ctx.fillRect(bx+8,by+8,8,8); }
+        if(t===TILE.BIN){ ctx.fillStyle = '#78d0ff'; ctx.fillRect(bx+5,by+5,14,14); ctx.strokeStyle = '#a7e1ff'; ctx.strokeRect(bx+5,by+5,14,14); }
+        // Pills pickup
+        if(state.pillsOnMap.has(kxy) && vis){ ctx.fillStyle = '#c86cff'; ctx.beginPath(); ctx.arc(bx+12, by+12, 5, 0, TAU); ctx.fill(); ctx.strokeStyle='#f3d1ff'; ctx.lineWidth=2; ctx.stroke(); }
+      }
+    }
+
+    function onScreen(x,y){ const {ox,oy}=camOrigin(); return x>=ox && y>=oy && x<ox+VIEW_W && y<oy+VIEW_H; }
+    function drawEntity(x,y,fill,stroke){ const {ox,oy}=camOrigin(); const i = x-ox, j = y-oy; if(!onScreen(x,y)) return; if(!state.visible.has(key(x,y))) return; const bx=i*TILE_SIZE, by=j*TILE_SIZE; ctx.fillStyle=fill; ctx.strokeStyle=stroke; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(bx+12,by+12,9,0,TAU); ctx.fill(); ctx.stroke(); }
+
+    for(const p of state.patrols) drawEntity(p.x,p.y,'#2e5','#9f9');
+    for(const v of state.vans) drawEntity(v.x,v.y,'#444','#ddd');
+    drawEntity(state.px,state.py,'#f0b94a','#fff');
+
+    ctx.restore();
+    updatePointer();
+  }
+
+  function updatePointer(){
+    const el = document.getElementById('pointer');
+    const R=30; let best=null, bestD=1e9;
+    for(let y=state.py-R;y<=state.py+R;y++){
+      for(let x=state.px-R;x<=state.px+R;x++){
+        const t = getTile(x,y); if(!VANTAGE.has(t)) continue; const dx=x-state.px, dy=y-state.py; const d= Math.abs(dx)+Math.abs(dy); if(d<bestD){ bestD=d; best={x,y}; }
+      }
+    }
+    if(!best){ el.hidden=true; return; }
+    const {ox,oy} = camOrigin();
+    const bx = (state.px-ox)*TILE_SIZE + 12; const by = (state.py-oy)*TILE_SIZE + 12; const ang = Math.atan2(best.y-state.py, best.x-state.px); const pxoff = Math.cos(ang)*18, pyoff = Math.sin(ang)*18; el.style.left = (bx+pxoff) + 'px'; el.style.top = (by+pyoff) + 'px'; el.style.transform = `translate(-50%,-50%) rotate(${ang+Math.PI/2}rad)`; el.hidden=false;
+  }
+
+  // ======= UI =======
+  function renderHUD(){
+    document.getElementById('turnVal').textContent = state.turn;
+    document.getElementById('scoreVal').textContent = Math.floor(state.score);
+    document.getElementById('freqVal').textContent = state.freq? state.freq.toFixed(1)+" MHz" : '—';
+    document.getElementById('powerVal').textContent = state.power.toFixed(1);
+    document.getElementById('liveVal').textContent = state.live? 'ON' : 'OFF';
+    document.getElementById('fuelVal').textContent = state.fuel + 'L';
+    document.getElementById('tapesVal').textContent = Math.round(state.tapes) + '%';
+    document.getElementById('decoyVal').textContent = state.decoys;
+    document.getElementById('pillVal').textContent = state.pills;
+    document.getElementById('heatBar').style.width = clamp(state.heat,0,100) + '%';
+  }
+  function renderLog(){ const logEl = document.getElementById('log'); logEl.innerHTML = state.log.slice(0,80).map(e=>`<div class="log-entry"><span class="t">${e.t}</span>${e.msg}</div>`).join(''); logEl.scrollTop = 0; }
+  function toggleGrit(){ state.grit = !state.grit; document.getElementById('grit').hidden = !state.grit; log(state.grit? 'grit overlay ON' : 'grit overlay OFF'); }
+  function cycleMood(){ state.mood = (state.mood+1)%3; document.body.className='mood-'+state.mood + (state.tripping>0? ' trip' : ''); log(['mood OFF','mood moody','mood grim'][state.mood]); }
+  function updateTripVisual(){ document.body.classList.toggle('trip', state.tripping>0); }
+
+  function showHelp(){
+    const ov = document.getElementById('overlay-ui'); const el = document.createElement('div'); el.className='help';
+    el.innerHTML = `
+      <h2>Concrete FM — controls</h2>
+      <div><small>Strictly turn-based: you act, the city responds.</small></div>
+      <p><b>Move:</b> ← ↑ → ↓ &nbsp; <b>Wait:</b> <code>.</code></p>
+      <p><b>B</b> build rig on a vantage (^ or R): randomized, timed assembly → tune → go live. <b>F</b> retune. <b>R</b> refuel (spend 1L, +power).</p>
+      <p><b>D</b> aim/throw decoy (1–3 tiles). <b>H</b> hide/unhide in a bin (stand on it). <b>I</b> inventory ping. <b>P</b> take pill.</p>
+      <p><b>G</b> grit overlay. <b>M</b> mood intensity. <b>?</b> help.</p>
+      <p><button id="closeHelp">Close</button></p>`;
+    ov.appendChild(el); document.getElementById('closeHelp').onclick=()=>el.remove();
+  }
+
+  // ======= Build minigame =======
+  function openBuilder(){
+    const ov = document.getElementById('overlay-ui'); const modal = document.createElement('div'); modal.className='modal';
+    const panel = document.createElement('div'); panel.className='panel';
+
+    // Randomized sequence & pool
+    const r = rand(state.seed ^ (state.turn<<1) ^ hash2(state.px,state.py));
+    const pool = ['OSC','PRE','MIX','AMP','BPF','LPF','MATCH'];
+    const len = 3 + Math.floor(r()*3); // 3–5 stages
+    const poolCopy = pool.slice();
+    const needed = [];
+    while(needed.length < len && poolCopy.length){ const idx=(r()*poolCopy.length)|0; needed.push(poolCopy.splice(idx,1)[0]); }
+
+    // ----- Clues: up to 67% revealed (unordered + ordered), with ghosted slot suggestions -----
+    // Choose which positions to reveal in-order
+    const idxs = Array.from({length: needed.length}, (_,i)=>i);
+    for(let i=idxs.length-1;i>0;i--){ const j=(r()*(i+1))|0; const t=idxs[i]; idxs[i]=idxs[j]; idxs[j]=t; }
+    const revealCount = Math.max(1, Math.floor(needed.length*0.67));
+    const revealIdx = idxs.slice(0, revealCount).sort((a,b)=>a-b);
+    const orderedHint = needed.map((p,i)=> revealIdx.includes(i)? p : '?');
+
+    // Unordered hints set for palette highlighting
+    const hints = new Set(revealIdx.map(i=>needed[i]));
+
+    // Ghosted prefill: show up to 2 correct parts in-place (visual only)
+    const ghost = new Array(needed.length).fill(null);
+    const ghostCount = Math.min(2, revealIdx.length);
+    for(let i=0;i<ghostCount;i++){ const gi = revealIdx[i]; ghost[gi] = needed[gi]; }
+
+    // Build parts palette: needed + distractors + dummies
+    let allParts = needed.slice();
+    while(allParts.length < needed.length + 3){ const p = pool[(r()*pool.length)|0]; allParts.push(p); }
+    allParts.push('DUMMY','DUMMY','DUMMY');
+
+    // Slots
+    const slots = new Array(needed.length).fill(null);
+    let idx=0; let cur=0;
+
+    // Timer budget measured in operations (not real-time), keeping it turn-friendly
+    let timeBudget = 18 + Math.floor(r()*10); // 18–27 ops
+
+    panel.innerHTML = `<h3>Assemble the rig — ${needed.length} stages</h3>
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px; font-size:12px; opacity:0.9">
+        <div>Time budget: <b id="buildTime">${timeBudget}</b> ops</div>
+        <div style="opacity:0.7">←/→ slot • [/]/Q/E part • Space place • Backspace remove • Enter build</div>
+      </div>
+      <div id="clueLine" style="margin:4px 0 0 0; font-size:12px; opacity:0.85">Clues (~67%): <b>${Array.from(hints).join(', ')}</b></div>
+      <div id="orderedLine" style="margin:2px 0 8px 0; font-size:12px; opacity:0.9">Ordered hint: <b>${orderedHint.join(' → ')}</b></div>
+      <div class="slots" id="slots" style="grid-template-columns: repeat(${needed.length}, 1fr)"></div>
+      <div class="parts" id="parts"></div>`;
+    modal.appendChild(panel); ov.appendChild(modal);
+
+    const slotsEl = panel.querySelector('#slots');
+    const partsEl = panel.querySelector('#parts');
+    const timeEl  = panel.querySelector('#buildTime');
+
+    function render(){
+      slotsEl.innerHTML = slots.map((p,i)=>{
+        const active = (i===idx);
+        const outline = active? 'outline:2px solid var(--amber);' : '';
+        const content = p ? p : (ghost[i]? `<span class="ghost" style="opacity:.55;color:#9ab;border:1px dashed #2a2e33;padding:2px 6px;border-radius:6px">${ghost[i]}</span>` : '—');
+        return `<div class="slot" style="${outline}">${content}</div>`;
+      }).join('');
+
+      const chip = (p, active)=>{
+        const hinted = hints.has(p);
+        const outline = active ? 'outline:2px solid var(--amber);' : '';
+        const hintStyle = hinted ? 'border-color:#6aa8ff; box-shadow:0 0 0 1px #6aa8ff inset;' : '';
+        return `<span class="part" style="${outline}${hintStyle}">${p}</span>`;
+      };
+      partsEl.innerHTML = chip(allParts[cur], true) + allParts.map((p,i)=> i===cur? '' : chip(p,false)).join('');
+    }
+
+    function spend(n=1){ timeBudget -= n; timeEl.textContent = Math.max(0,timeBudget); if(timeBudget<=0){ penalty(); } }
+
+    function place(){ slots[idx]=allParts[cur]; render(); }
+    function remove(){ slots[idx]=null; render(); }
+
+    function attempt(){
+      if(slots.join(',')===needed.join(',')){
+        log('<b>rig built</b>');
+        modal.remove();
+        state.lastRig = {x:state.px,y:state.py, t: state.turn};
+        openTuner(true);
+      } else { log('assembly looks wrong'); }
+    }
+
+    function penalty(){
+      log('over time on the rig — RF leaks raise heat');
+      state.heat = Math.min(100, state.heat + 20);
+      // spawn a van nearby as added pressure
+      (function spawnVanNear(){ const rr = rand(state.seed ^ state.turn ^ 0x5151); for(let t=0;t<20;t++){ const ang=rr()*Math.PI*2, dist=6+Math.floor(rr()*8); const vx=state.px+Math.round(Math.cos(ang)*dist), vy=state.py+Math.round(Math.sin(ang)*dist); if(walkable(vx,vy)){ state.vans.push({x:vx,y:vy}); break; } } })();
+      renderHUD(); modal.remove();
+    }
+
+    function onKey(e){
+      if(e.key==='ArrowLeft'){ idx=(idx+slots.length-1)%slots.length; render(); spend(); }
+      else if(e.key==='ArrowRight'){ idx=(idx+1)%slots.length; render(); spend(); }
+      else if(e.key==='[' || e.key==='q' || e.key==='Q'){ cur=(cur+allParts.length-1)%allParts.length; render(); spend(); }
+      else if(e.key===']' || e.key==='e' || e.key==='E'){ cur=(cur+1)%allParts.length; render(); spend(); }
+      else if(e.key===' '){ place(); spend(); }
+      else if(e.key==='Backspace' || e.key==='Delete'){ remove(); spend(); }
+      else if(e.key==='Enter'){ attempt(); spend(); }
+      else if(e.key==='Escape'){ modal.remove(); }
+      e.preventDefault();
+    }
+
+    render(); window.addEventListener('keydown', onKey); modal.addEventListener('remove', ()=>window.removeEventListener('keydown', onKey), {once:true});
+  }
+
+  // ======= Tuner =======
+  const tuner = {carriers:[]};
+  function openTuner(fromBuild=false){
+    // Always randomize target frequency & carrier blocks each time
+    const r = rand((state.seed ^ (state.turn*2654435761)) ^ hash2(state.px,state.py) ^ (fromBuild?0xB1:0x7F));
+    state.targetFreq = 87.5 + r()*20.5; // new hidden optimum every session
+    tuner.carriers = []; const n = 8 + Math.floor(r()*6);
+    for(let i=0;i<n;i++){ const a = 87.5 + r()*20.5; const w = 0.08 + r()*0.34; tuner.carriers.push({a,w}); }
+
+    const ov = document.getElementById('overlay-ui'); const modal = document.createElement('div'); modal.className='modal';
+    const panel = document.createElement('div'); panel.className='panel';
+    panel.innerHTML = `<h3>Dial in the FM</h3>
+      <div class="tuner">
+        <div class="dial" id="dial"></div>
+        <div style="width:90px">
+          <div>Freq: <b id="curF">${state.freq?state.freq.toFixed(1):'—'}</b> MHz</div>
+          <div>Clarity: <b id="clarB">${(state.clarity*100|0)}%</b></div>
+          <div style="margin-top:8px"><button id="lockBtn">Lock</button></div>
+        </div>
+      </div>
+      <div style="margin-top:6px; font-size:12px; opacity:0.8">←/→ to tune; Space/Enter lock.</div>`;
+    modal.appendChild(panel); ov.appendChild(modal);
+
+    const dial = panel.querySelector('#dial'); const curF = panel.querySelector('#curF'); const clarB = panel.querySelector('#clarB');
+    const minF=87.5, maxF=108.0; let f = minF + r()*(maxF-minF);
+
+    function renderDial(){
+      dial.innerHTML='';
+      for(let i=0;i<=20;i++){ const x = (i/20)*100; const d = document.createElement('div'); d.className='tick'; d.style.left=x+'%'; dial.appendChild(d); }
+      for(const c of tuner.carriers){ const l = (c.a-minF)/(maxF-minF)*100; const w = (c.w/(maxF-minF))*100; const el = document.createElement('div'); el.className='carrier'; el.style.left=l+'%'; el.style.width=w+'%'; el.style.opacity='0.6'; dial.appendChild(el); }
+      if(state.tripping>0){ const tx = (state.targetFreq-minF)/(maxF-minF)*100; const t = document.createElement('div'); t.className='target'; t.style.left=tx+'%'; dial.appendChild(t); }
+      const cx = (f-minF)/(maxF-minF)*100; const cur = document.createElement('div'); cur.className='cursor'; cur.style.left=cx+'%'; dial.appendChild(cur);
+      curF.textContent = f.toFixed(1); clarB.textContent = (calcClarity(f)*100|0)+'%';
+    }
+    function calcClarity(freq){ const dist = Math.abs(freq - state.targetFreq); let c = Math.max(0, 1 - dist/0.6); for(const cr of tuner.carriers){ if(freq>cr.a && freq<cr.a+cr.w) c *= 0.5; } return clamp(c, 0, 1); }
+    function lock(){ state.freq = f; state.clarity = calcClarity(f); state.live = true; log(`<b>on-air</b> @ ${state.freq.toFixed(1)} MHz`); modal.remove(); }
+    function onKey(e){ if(e.key==='ArrowLeft'){ f = Math.max(minF, f-0.05); renderDial(); } else if(e.key==='ArrowRight'){ f = Math.min(maxF, f+0.05); renderDial(); } else if(e.key===' ' || e.key==='Enter'){ lock(); } else if(e.key==='Escape'){ modal.remove(); } e.preventDefault(); }
+    panel.querySelector('#lockBtn').onclick=lock; renderDial(); window.addEventListener('keydown', onKey); modal.addEventListener('remove', ()=>window.removeEventListener('keydown', onKey), {once:true});
+  }
+
+  // ======= Gameplay loop =======
+  const decoys = []; // {x,y,t}
+  function start(){
+    // Find a walkable start near 0,0
+    for(let y=-10;y<=10;y++){ for(let x=-10;x<=10;x++){ if(walkable(x,y)){ state.px=x; state.py=y; y=9999; break; } } }
+    spawnFromModulesAround(state.px,state.py); resize(); recomputeFOV(); renderHUD(); draw(); updatePointer(); drawAim();
+    log('late-80s sodium hum. rig in bag.'); log('find a vantage (^ or R) and <b>B</b> to build'); showHelp();
+  }
+
+  function activeDecoy(){ return decoys.some(d=>d.t>0); }
+
+  function advanceTurn(){
+    state.turn++;
+
+    // Bombs
+    for(const [k,b] of state.bombs){
+      if(b.stage==='fuse'){ b.t--; if(b.t<=0){ b.stage='bloom'; b.t=30; state.smokes.push({x:b.x,y:b.y,r:4,t:30}); log('smoke blooms'); }}
+      else if(b.stage==='bloom'){ b.t--; if(b.t<=0){ b.stage='spent'; }}
+      else if(b.stage==='idle'){
+        if(Math.abs(b.x-state.px)+Math.abs(b.y-state.py) <= 3){ b.stage='fuse'; b.t=10; log('smoke fuse lit'); }
+      }
+      if(b.stage==='spent'){ state.bombs.delete(k); }
+    }
+    // Smokes
+    for(let i=state.smokes.length-1;i>=0;i--){ const s=state.smokes[i]; s.t--; if(s.t<=0) state.smokes.splice(i,1); }
+
+    // Decoys tick
+    for(let i=decoys.length-1;i>=0;i--){ decoys[i].t--; if(decoys[i].t<=0) decoys.splice(i,1); }
+
+    // Broadcast
+    if(state.live){
+      const radius = 2 + state.power*3*state.clarity; const gain = Math.max(0, (radius*radius) * (0.6 + 0.4*state.clarity) * (state.tapes/100));
+      state.score += gain; state.heat = clamp(state.heat + 0.9 + (1.8*state.clarity), 0, 100);
+      state.fuelTick++; if(state.fuelTick>=100){ if(state.fuel>0){ state.fuel--; state.fuelTick=0; log('gennie gulps 1L'); } else { state.live=false; log('fuel dry; signal dies'); }}
+      state.tapes = Math.max(0, state.tapes - 0.35);
+    } else { let cool = 0.3; if(activeDecoy()) cool += 0.4; state.heat = Math.max(0, state.heat - cool); }
+
+    // Pill effect
+    if(state.tripping>0){ state.tripping--; updateTripVisual(); }
+
+    // Enemies move (every other turn when tripping)
+    const enemiesAct = !(state.tripping>0 && (state.turn%2===1));
+    if(enemiesAct){
+      for(const p of state.patrols){
+        const sees = !state.hidden && los(p.x,p.y,state.px,state.py);
+        if(sees){ stepToward(p, state.px,state.py, 1.0); } else { randomStep(p); }
+        if(p.x===state.px && p.y===state.py){ gameOver('grabbed by patrol'); return; }
+      }
+      const target = heatTarget();
+      for(const v of state.vans){
+        const tx = target? target.x : state.px, ty = target? target.y : state.py;
+        stepToward(v, tx,ty, 2.0, true);
+        if(Math.abs(v.x-state.px)+Math.abs(v.y-state.py) <= 1){ gameOver('boxed by DTI van'); return; }
+      }
+    }
+
+    // Rising heat spawns vans
+    if(state.heat>40 && state.turn%10===0){
+      const r = rand(state.seed ^ state.turn); let ang = r()*TAU; let dist = 10 + Math.floor(r()*10); const vx = state.px + Math.round(Math.cos(ang)*dist); const vy = state.py + Math.round(Math.sin(ang)*dist); if(walkable(vx,vy)) state.vans.push({x:vx,y:vy});
+    }
+
+    recomputeFOV(); renderHUD(); draw();
+  }
+
+  function stepToward(ent, tx,ty, stepWeight=1.0, preferRoads=false){
+    let best = {dx:0,dy:0, cost: 1e9};
+    for(const [dx,dy] of DIRS){ const nx=ent.x+dx, ny=ent.y+dy; if(!walkable(nx,ny)) continue; const d = Math.abs(tx-nx)+Math.abs(ty-ny); let cost=d; if(preferRoads){ const t=getTile(nx,ny); if(t===TILE.ROAD) cost -= 0.7; else if(t===TILE.ALLEY) cost -= 0.2; else if(t===TILE.UNDER) cost += 0.3; } if(cost<best.cost){ best={dx,dy,cost}; } }
+    if(best.cost<1e9){ ent.x+=best.dx; ent.y+=best.dy; }
+  }
+  function randomStep(ent){ const dirs = DIRS.slice(); const r = rand(state.seed ^ (ent.x*31+ent.y*17) ^ state.turn); for(let i=dirs.length-1;i>0;i--){ const j=(r()*(i+1))|0; const t=dirs[i]; dirs[i]=dirs[j]; dirs[j]=t; } for(const [dx,dy] of dirs){ const nx=ent.x+dx, ny=ent.y+dy; if(walkable(nx,ny)){ ent.x=nx; ent.y=ny; break; } } }
+
+  function heatTarget(){
+    let best=null, bestScore=-1; if(state.live && state.lastRig){ const s = 1.0 * (0.7 + 0.3*state.clarity); best={x:state.lastRig.x,y:state.lastRig.y,score:s}; bestScore=s; } else if(state.lastRig){ best={x:state.lastRig.x,y:state.lastRig.y,score:0.4}; bestScore=0.4; }
+    for(const d of decoys){ if(d.t>0){ const s=0.6; if(s>bestScore){ best={x:d.x,y:d.y,score:s}; bestScore=s; } } } return best;
+  }
+
+  // ======= Input =======
+  window.addEventListener('keydown', (e)=>{
+    if(document.querySelector('.modal') || document.querySelector('.help')){ if(e.key==='?'){ document.querySelector('.help')?.remove(); e.preventDefault(); } return; }
+    const K=e.key;
+    if(K==='ArrowLeft'||K==='ArrowRight'||K==='ArrowUp'||K==='ArrowDown'){
+      let dx=0,dy=0; if(K==='ArrowLeft')dx=-1; if(K==='ArrowRight')dx=1; if(K==='ArrowUp')dy=-1; if(K==='ArrowDown')dy=1;
+      if(state.aiming){ state.aiming.dx = clamp(state.aiming.dx+dx, -1, 1); state.aiming.dy = clamp(state.aiming.dy+dy, -1, 1); state.aiming.dist = clamp(state.aiming.dist + (dx!==0||dy!==0?1:0), 1, 3); draw(); drawAim(); }
+      else { tryMove(dx,dy); }
+      e.preventDefault(); return;
+    }
+    if(K==='.'||K==='>'){ log('wait'); advanceTurn(); e.preventDefault(); return; }
+    if(K==='B'||K==='b'){
+      if(VANTAGE.has(getTile(state.px,state.py))){ if(!state.live){ openBuilder(); } else { state.live=false; log('rig killed'); } }
+      else { log('need a vantage (^ or R)'); }
+      e.preventDefault(); return; }
+    if(K==='F'||K==='f'){ if(state.live){ state.freq = clamp((state.freq||98)+ (Math.random()<0.5?-0.05:0.05), 87.5,108.0); state.clarity = clamp(state.clarity + (Math.random()*0.1-0.05), 0,1); log('nudged dial'); } else { openTuner(); } e.preventDefault(); return; }
+    if(K==='R'||K==='r'){ if(state.fuel>0){ state.fuel--; state.power = clamp(state.power+0.3, 0.5, 3.0); log('refuel + power bump'); renderHUD(); } else { log('no fuel'); } e.preventDefault(); return; }
+    if(K==='D'||K==='d'){ if(state.decoys>0 && !state.aiming){ state.aiming={dx:1,dy:0,dist:1}; drawAim(); log('aim decoy (arrows), Space to throw'); } e.preventDefault(); return; }
+    if(K===' '||K==='Enter'){ if(state.aiming){ const t = state.aiming; const tx = state.px + t.dx*t.dist, ty = state.py + t.dy*t.dist; if(walkable(tx,ty)){ decoys.push({x:tx,y:ty,t: 40 + Math.floor(Math.random()*30)}); state.decoys--; state.aiming=null; draw(); log('decoy thrown'); } else { log('blocked throw'); } e.preventDefault(); return; } }
+    if(K==='H'||K==='h'){ if(getTile(state.px,state.py)===TILE.BIN){ state.hidden=!state.hidden; log(state.hidden? 'in the bin' : 'out of the bin'); draw(); } else { log('no bin here'); } e.preventDefault(); return; }
+    if(K==='I'||K==='i'){ log(`inv: ${state.decoys} decoys, ${state.pills} pills, ${state.fuel}L fuel`); e.preventDefault(); return; }
+    if(K==='G'||K==='g'){ toggleGrit(); e.preventDefault(); return; }
+    if(K==='M'||K==='m'){ cycleMood(); e.preventDefault(); return; }
+    if(K==='?'){ showHelp(); e.preventDefault(); return; }
+    if(K==='P'||K==='p'){ if(state.pills>0){ state.pills--; state.tripping=60; updateTripVisual(); log('time dilates'); renderHUD(); } else { log('no pills'); } e.preventDefault(); return; }
+  });
+
+  function drawAim(){
+    const ov=document.getElementById('overlay-ui');
+    let el=document.getElementById('aim');
+    if(!state.aiming){ el?.remove(); return; }
+    if(!el){
+      el=document.createElement('div');
+      el.id='aim';
+      el.style.position='absolute';
+      el.style.pointerEvents='none';
+      el.style.border='2px solid var(--amber)';
+      el.style.width=(TILE_SIZE-4)+'px';
+      el.style.height=(TILE_SIZE-4)+'px';
+      ov.appendChild(el);
+    }
+    const t=state.aiming;
+    const tx=state.px+t.dx*t.dist, ty=state.py+t.dy*t.dist;
+    const {ox,oy}=camOrigin();
+    const bx=(tx-ox)*TILE_SIZE+2; const by=(ty-oy)*TILE_SIZE+2;
+    el.style.left=bx+'px'; el.style.top=by+'px';
+  }
+
+  function tryMove(dx,dy){
+    const nx = state.px+dx, ny = state.py+dy; if(!walkable(nx,ny)){ log('blocked'); return; }
+    state.px=nx; state.py=ny; if(state.hidden){ state.hidden=false; log('leave bin'); }
+    // Pickup pills
+    const kk = key(state.px,state.py); if(state.pillsOnMap.has(kk)){ state.pillsOnMap.delete(kk); state.pills++; renderHUD(); log('found pills'); }
+
+    spawnFromModulesAround(state.px,state.py);
+    recomputeFOV(); draw(); renderHUD(); log(`${dx===0&&dy===0?'wait':'step'}`); advanceTurn();
+  }
+
+  function gameOver(reason){
+    state.live=false;
+    log(`<b>run over</b> — ${reason}`);
+    const ov=document.getElementById('overlay-ui');
+    const modal=document.createElement('div'); modal.className='modal';
+    const panel=document.createElement('div'); panel.className='panel';
+    panel.innerHTML=`<h3>Run ended</h3><p>Listeners reached: <b>${Math.floor(state.score)}</b></p><p>${reason}</p><p><button id="again">New run</button></p>`;
+    modal.appendChild(panel); ov.appendChild(modal);
+    panel.querySelector('#again').onclick=()=>{ location.reload(); };
+  }
+
+  // ======= Boot =======
+  window.addEventListener('resize', ()=>{ resize(); draw(); updatePointer(); drawAim(); });
+  start();
+})();
+</script>
+</body>
+</html>
