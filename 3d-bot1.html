@@ -52,6 +52,11 @@
       </select>
     </div>
     <div class="row">
+      <label>Trail thickness</label>
+      <input id="trailThickness" type="range" min="1" max="10" step="1" value="2" />
+      <label><input id="togglePulse" type="checkbox" checked /> Bot pulsing</label>
+    </div>
+    <div class="row">
       <label>Left view</label>
       <select id="leftView">
         <option value="side">Side-on</option>
@@ -76,10 +81,10 @@
 
   <script>
     // --- Parameters ---
-    const GRID = 16;            // 16×16 footprint
-    const LEVELS = 16;          // max vertical levels
-    const CELL = 40;            // world units per cell
-    const BRIDGE_THICK = 8;     // bridge thickness
+    const GRID = 16;             // 16×16 footprint
+    const LEVELS = 16;           // max vertical levels
+    const CELL = 40;             // world units per cell
+    const BRIDGE_THICK = 8;
 
     const PALETTE = {
       concrete: [128, 128, 128],
@@ -88,40 +93,37 @@
       sky:      [20, 20, 24]
     };
 
-    // State
+    // --- Global state ---
     let seed = Math.floor(Math.random() * 1e9);
     let towers = [];
     let bridges = [];
+    let navNodes = [];           // {ti, level, x, y, z}
+    let navAdj   = [];
+    let baseIndexByTower = [];
 
-    // Graph for navigation
-    let navNodes = [];          // {ti, level, x, y, z}
-    let navAdj   = [];          // adjacency list
-    let baseIndexByTower = [];  // for (ti, level) -> node index
-
-    // Bots & goal
     let bots = [];
-    let goal = null;            // { node:index }
+    let goal = null;             // { node }
     let scores = { green: 0, orange: 0 };
 
     // Viewports / cameras
-    let leftPG, rightPG;        // WEBGL buffers
+    let leftPG, rightPG;         // WEBGL buffers
     let zoomLeft = 1.0, zoomRight = 1.0;
-    let freeRotX = -35.264 * Math.PI/180;
-    let freeRotY = 45 * Math.PI/180;
+    let freeRotX = -35.264 * Math.PI/180, freeRotY = 45 * Math.PI/180;
 
-    // Wireframe toggles
+    // Toggles
     let wireLeft = false, wireRight = false;
-
-    // Sim speed
     let simSpeed = 1.0;
+    let pulseEnabled = true;
+
+    // Trails
+    let trailThickness = 2;      // default doubled
 
     // Tests
     let SHOW_TESTS = false;
 
-    // UI helper
     const testPanel = () => document.getElementById('tests');
 
-    // -------- Utilities / UI ----------
+    // --- UI helpers ---
     function reseed(val) {
       seed = (val !== undefined) ? val : Math.floor(Math.random() * 1e9);
       randomSeed(seed);
@@ -144,22 +146,26 @@
     }
 
     function setup() {
-      // Main canvas is 2D; we composite two WEBGL buffers onto it
       createCanvas(windowWidth, windowHeight);
       noStroke();
 
       resizePanes();
 
-      // init UI defaults & handlers
+      // init UI defaults
       document.getElementById('density').value = 0.55;
       document.getElementById('height').value = 12;
+      document.getElementById('seedInput').value = seed;
+
       reseed(seed);
 
       document.getElementById('reseat').onclick = () => { reseed(); generateCity(); };
       document.getElementById('regen').onclick  = () => { generateCity(); };
       document.getElementById('seedInput').onchange = (e) => { reseed(parseInt(e.target.value||0,10)); generateCity(); };
       document.getElementById('exportTrails').onclick = () => { exportTrailsLeftHiRes(); };
+
       document.getElementById('simSpeed').onchange = (e) => { simSpeed = parseFloat(e.target.value); updateSimLabel(); };
+      document.getElementById('trailThickness').oninput = (e) => { trailThickness = parseInt(e.target.value,10); };
+      document.getElementById('togglePulse').onchange = (e) => { pulseEnabled = e.target.checked; };
 
       ['density','height','toggleStairs','toggleBridges','toggleGrid','leftView','rightView','wireLeft','wireRight']
         .forEach(id => document.getElementById(id).oninput = () => {
@@ -170,7 +176,7 @@
           generateCity();
         });
 
-      // Mouse wheel zoom into pane under cursor
+      // Mouse wheel zoom per pane
       window.addEventListener('wheel', (e) => {
         const delta = -Math.sign(e.deltaY) * 0.05;
         if (mouseX <= width/2) zoomLeft  = constrain(zoomLeft  + delta, 0.4, 3.0);
@@ -195,7 +201,6 @@
     function keyPressed() {
       if (key === 'R' || key === 'r') generateCity();
       if (key === 'S' || key === 's') {
-        // Save a stitched image of both panes
         const pg = createGraphics(width, height);
         pg.image(leftPG, 0, 0, width/2, height);
         pg.image(rightPG, width/2, 0, width/2, height);
@@ -218,7 +223,6 @@
 
     function mouseDragged() {
       const P = params();
-      // Orbit only when the cursor is in the right pane and right view is Free
       if (mouseX > width/2 && P.rightView === 'free') {
         freeRotY += movedX * 0.01; // yaw
         freeRotX += movedY * 0.01; // pitch
@@ -226,11 +230,12 @@
       }
     }
 
-    // -------- City generation ----------
+    // --- City generation ---
     function generateCity() {
       const P = params();
       randomSeed(seed);
       noiseSeed(seed);
+
       towers = [];
       bridges = [];
       navNodes = [];
@@ -240,46 +245,41 @@
       goal = null;
       scores = { green: 0, orange: 0 };
 
-      // Layout noise fields
-      const freq = 0.08; // spatial frequency for clustering
+      const freq = 0.08;
       for (let gx = 0; gx < GRID; gx++) {
         for (let gz = 0; gz < GRID; gz++) {
           const n = noise(gx * freq, gz * freq);
           const place = n * 0.9 + random(0.1);
           if (place < (1.0 - P.density)) continue;
 
-          // Base footprint (1–3)
           const footprint = random() < 0.2 ? 3 : (random() < 0.5 ? 2 : 1);
           const hNoise = noise(gx * freq * 1.7 + 100, gz * freq * 1.7 + 100);
           const maxH = constrain(Math.floor(map(hNoise, 0, 1, 4, P.maxHeight)), 4, LEVELS);
 
-          // Modular chunking: stack modules of 2–4 levels
           const modules = [];
           let y = 0;
           while (y < maxH) {
             const mh = Math.min(maxH - y, Math.floor(random(2, 5)));
-            const offset = (random() < 0.25) ? (random([-1, 0, 1])) : 0; // brutalist overhangs
-            const extrude = (random() < 0.25) ? (random([0,1])) : 0;     // slight extrusion
+            const offset = (random() < 0.25) ? (random([-1, 0, 1])) : 0;
+            const extrude = (random() < 0.25) ? (random([0,1])) : 0;
             modules.push({ y, h: mh, offset, extrude });
             y += mh;
           }
 
-          // Logical stairs always present; visual toggle controls rendering only
           const stairSide = 1;
           const stairPos = { sx: 0, sz: 0 };
-
           towers.push({ gx, gz, footprint, maxH, modules, hasStairs: true, renderStairs: P.stairsOn, stairSide, stairPos });
         }
       }
 
-      // Sky bridges — ensure at least one per tower by linking to nearest neighbor
+      // Bridges
       if (P.bridgesOn) {
         for (let i = 0; i < towers.length; i++) {
           const a = towers[i];
           let best = null, bestd = 1e9;
           for (let j = 0; j < towers.length; j++) if (i !== j) {
             const b = towers[j];
-            const dx = b.gx - a.gx; const dz = b.gz - a.gz;
+            const dx = b.gx - a.gx, dz = b.gz - a.gz;
             const d2 = dx*dx + dz*dz;
             if (d2 < bestd && d2 > 0) { bestd = d2; best = b; }
           }
@@ -287,7 +287,6 @@
             const y = Math.floor(random(3, Math.min(a.maxH, best.maxH)));
             bridges.push({ a, b: best, y });
           }
-          // occasional extra bridge
           if (random() < 0.3 && towers.length > 3) {
             const b = random(towers);
             if (b && b !== a) {
@@ -298,10 +297,7 @@
         }
       }
 
-      // Ensure full connectivity across towers
       ensureConnectivity();
-
-      // Build navigation graph and deploy bots + goal
       buildNavGraph();
       createBotsAndGoal();
 
@@ -332,7 +328,7 @@
         c++;
       }
       if (c<=1) return;
-      // Connect each nonzero component to component 0 via nearest pair
+      // Connect each non-zero component to component 0 via nearest pair
       for (let k=1;k<c;k++){
         let bestA=-1,bestB=-1,bestD=1e9;
         for (let i=0;i<n;i++) if (comp[i]===0)
@@ -355,20 +351,18 @@
       let base = 0;
       for (let ti=0; ti<towers.length; ti++){
         baseIndexByTower[ti] = base;
-        const t = towers[ti];
         const c = towerCenter(ti);
+        const t = towers[ti];
         for (let lvl=0; lvl<t.maxH; lvl++){
           navNodes.push({ti, level:lvl, x:c.x, y:-lvl*CELL, z:c.z});
           navAdj.push([]);
         }
-        // vertical edges within tower
         for (let lvl=0; lvl<t.maxH-1; lvl++){
           const a = base + lvl, b = base + lvl + 1;
           navAdj[a].push(b); navAdj[b].push(a);
         }
         base += t.maxH;
       }
-      // bridge edges at their level
       function nodeIndex(ti,lvl){ return baseIndexByTower[ti] + lvl; }
       for (const br of bridges){
         const ai = towers.indexOf(br.a), bi = towers.indexOf(br.b);
@@ -398,7 +392,7 @@
       updateScoreLabel();
     }
 
-    // -------- Pathfinding ----------
+    // --- Pathfinding (A*) ---
     function heuristic(a,b){
       const pa = navNodes[a], pb = navNodes[b];
       const dx=pa.x-pb.x, dy=pa.y-pb.y, dz=pa.z-pb.z;
@@ -413,8 +407,7 @@
       const f = Array(N).fill(Infinity); f[bot.node]=heuristic(bot.node, targetIdx);
 
       while (open.size){
-        let current=-1, best=Infinity;
-        for(const n of open){ if(f[n]<best){best=f[n]; current=n;} }
+        let current=-1, best=Infinity; for(const n of open){ if(f[n]<best){best=f[n]; current=n;} }
         if (current===targetIdx) break;
         open.delete(current);
         for (const nb of navAdj[current]){
@@ -427,7 +420,6 @@
           }
         }
       }
-      // reconstruct
       if (!isFinite(g[targetIdx])){ bot.path=[]; bot.segI=0; bot.t=0; return; }
       const nodes=[]; let u=targetIdx; nodes.unshift(u);
       while (u!==bot.node){ u=came.get(u); if (u===undefined) break; nodes.unshift(u); }
@@ -446,7 +438,7 @@
         const speedScale = simSpeed;
         if (!b.path || b.path.length===0){ planPath(b, goal.node); continue; }
         const seg = b.path[b.segI]; if (!seg) continue;
-        const dt = b.speed * speedScale; // distance step per frame
+        const dt = b.speed * speedScale;
         const ax=seg.a.x, ay=seg.a.y, az=seg.a.z; const bx=seg.b.x, by=seg.b.y, bz=seg.b.z;
         const vx = (bx-ax)/seg.len, vy=(by-ay)/seg.len, vz=(bz-az)/seg.len;
         b.t += dt;
@@ -473,94 +465,24 @@
       }
     }
 
-    // -------- UI overlays ----------
+    // --- UI overlays ---
     function updateScoreLabel(){
       const el = document.getElementById('score');
       el.textContent = `🟩 ${scores.green||0} : ${scores.orange||0} 🟧`;
     }
-
     function updateSimLabel(){
       const el = document.getElementById('simLabel');
       if (!el) return;
       el.textContent = ` • speed: ${simSpeed}×`;
     }
 
-    // -------- Rendering ----------
-    function drawGoal(g){
-      if (!goal || !navNodes[goal.node]) return;
-      const p = navNodes[goal.node];
-      g.push();
-      g.translate(p.x, p.y - CELL*0.25, p.z);
-      g.ambientMaterial(200, 220, 255);
-      g.box(CELL*0.4, CELL*0.5, CELL*0.4);
-      g.pop();
-    }
-
-    function drawBots(g, wire){
-      for (const b of bots){
-        // trail
-        if (b.trail && b.trail.length>1){
-          g.push();
-          g.noFill();
-          g.stroke(b.color[0], b.color[1], b.color[2], 150);
-          for (let i=1;i<b.trail.length;i++){
-            const p0=b.trail[i-1], p1=b.trail[i];
-            g.line(p0.x, p0.y - CELL*0.3, p0.z, p1.x, p1.y - CELL*0.3, p1.z);
-          }
-          g.noStroke();
-          g.pop();
-        }
-        // bot body
-        g.push();
-        g.translate(b.pos.x, b.pos.y - CELL*0.3, b.pos.z);
-        if (wire){
-          g.noFill(); g.stroke(b.color[0], b.color[1], b.color[2]);
-          g.box(CELL*0.6, CELL*0.6, CELL*0.6);
-          g.noStroke();
-        } else {
-          g.ambientMaterial(b.color[0], b.color[1], b.color[2]);
-          g.box(CELL*0.6, CELL*0.6, CELL*0.6);
-        }
-        g.pop();
-      }
-    }
-
-    function drawGround(g, wire = false) {
-      g.push();
-      g.translate(0, 2, 0);
-      if (wire) {
-        g.noFill();
-        g.stroke(60);
-        g.box(GRID*CELL*1.6, 4, GRID*CELL*1.6);
-        g.noStroke();
-      } else {
-        g.ambientMaterial(PALETTE.sky[0], PALETTE.sky[1], PALETTE.sky[2]);
-        g.box(GRID*CELL*1.6, 4, GRID*CELL*1.6);
-      }
-      g.pop();
-    }
-
-    function drawGrid(g) {
-      const P = params();
-      if (!P.gridOn) return;
-      g.push();
-      g.stroke(40);
-      g.noFill();
-      const half = GRID * CELL / 2;
-      for (let i = -half; i <= half; i += CELL) {
-        g.line(-half, 0, i, half, 0, i);
-        g.line(i, 0, -half, i, 0, half);
-      }
-      g.noStroke();
-      g.pop();
-    }
-
+    // --- Drawing ---
     function drawModule(g, t, mod, wire = false) {
       const {gx, gz, footprint} = t;
       g.push();
       const baseX = (gx - GRID/2) * CELL;
       const baseZ = (gz - GRID/2) * CELL;
-      const y = -mod.y * CELL; // WEBGL up is -Y
+      const y = -mod.y * CELL;
       g.translate(baseX + mod.offset * 4, y - (mod.h*CELL)/2, baseZ);
 
       const w = footprint * CELL + mod.extrude * 10;
@@ -627,8 +549,122 @@
       g.pop();
     }
 
+    function drawGround(g, wire = false) {
+      g.push();
+      g.translate(0, 2, 0);
+      if (wire) {
+        g.noFill();
+        g.stroke(60);
+        g.box(GRID*CELL*1.6, 4, GRID*CELL*1.6);
+        g.noStroke();
+      } else {
+        g.ambientMaterial(PALETTE.sky[0], PALETTE.sky[1], PALETTE.sky[2]);
+        g.box(GRID*CELL*1.6, 4, GRID*CELL*1.6);
+      }
+      g.pop();
+    }
+
+    function drawGrid(g) {
+      const P = params();
+      if (!P.gridOn) return;
+      g.push();
+      g.stroke(40);
+      g.noFill();
+      const half = GRID * CELL / 2;
+      for (let i = -half; i <= half; i += CELL) {
+        g.line(-half, 0, i, half, 0, i);
+        g.line(i, 0, -half, i, 0, half);
+      }
+      g.noStroke();
+      g.pop();
+    }
+
+    // Goal as bright-blue ripple on the floor
+    function drawGoal(g){
+      if (!goal || !navNodes[goal.node]) return;
+      const p = navNodes[goal.node];
+      const baseY = p.y - CELL * 0.48; // near floor
+
+      const maxR = CELL * 2.5;
+      const speed = 1.2 * simSpeed;
+      const t = (millis() * 0.001 * speed) % 1; // 0..1
+      const rings = 4;
+
+      g.push();
+      g.translate(p.x, baseY, p.z);
+      g.noFill();
+      if (g.strokeWeight) g.strokeWeight(2);
+
+      for (let i = 0; i < rings; i++){
+        const phase = (t + i / rings) % 1;
+        const r = 0.1 * CELL + phase * maxR;
+        const alpha = Math.max(0, 255 * (1 - phase));
+        g.stroke(0, 180, 255, alpha);
+
+        g.push();
+        g.rotateX(Math.PI / 2); // draw circle in XZ plane
+        g.beginShape();
+        const STEPS = 64;
+        for (let a = 0; a <= STEPS; a++){
+          const ang = (a / STEPS) * Math.PI * 2;
+          const x = Math.cos(ang) * r;
+          const y = Math.sin(ang) * r;
+          g.vertex(x, y, 0);
+        }
+        g.endShape();
+        g.pop();
+      }
+      g.pop();
+    }
+
+    function drawBots(g, wire){
+      const t = millis() * 0.001, TAU = Math.PI * 2;
+      for (const b of bots){
+        // trails
+        if (b.trail && b.trail.length>1){
+          g.push();
+          g.noFill();
+          g.stroke(b.color[0], b.color[1], b.color[2], 190);
+          if (g.strokeWeight) g.strokeWeight(trailThickness);
+          for (let i=1;i<b.trail.length;i++){
+            const p0=b.trail[i-1], p1=b.trail[i];
+            g.line(p0.x, p0.y - CELL*0.3, p0.z, p1.x, p1.y - CELL*0.3, p1.z);
+          }
+          g.noStroke();
+          g.pop();
+        }
+
+        // body + halo
+        g.push();
+        g.translate(b.pos.x, b.pos.y - CELL*0.3, b.pos.z);
+
+        // Pulsing parameters (optional)
+        const phase = (b.name === 'green') ? 0 : Math.PI;
+        const sPulse = pulseEnabled ? (1 + 0.15 * Math.sin(t * TAU * 0.8 + phase)) : 1.0;
+        const haloPulse = pulseEnabled ? (0.9 + 0.2 * Math.sin(t * TAU * 0.8 + phase)) : 1.0;
+        const haloAlpha = pulseEnabled ? (140 + 100 * (0.5 + 0.5 * Math.sin(t * TAU * 0.8 + phase))) : 200;
+
+        if (wire){
+          g.noFill();
+          g.stroke(255);
+          g.box(CELL*0.9*sPulse, CELL*0.9*sPulse, CELL*0.9*sPulse);
+          g.noStroke();
+        } else {
+          g.emissiveMaterial(b.color[0], b.color[1], b.color[2]); // glow
+          g.box(CELL*0.9*sPulse, CELL*0.9*sPulse, CELL*0.9*sPulse);
+        }
+
+        g.noFill();
+        g.stroke(b.color[0], b.color[1], b.color[2], haloAlpha);
+        if (g.strokeWeight) g.strokeWeight(2 + (pulseEnabled ? 2 * (0.5 + 0.5 * Math.sin(t * TAU * 0.8 + phase)) : 1));
+        g.sphere(CELL * 0.7 * haloPulse);
+        g.noStroke();
+
+        g.pop();
+      }
+    }
+
     function applyViewTransform(g, which, zoomVal) {
-      // Common centering and zoom
       g.translate(0, 200, -200);
       g.scale(zoomVal);
       if (which === 'iso') {
@@ -667,31 +703,26 @@
       const P = params();
       wireLeft = P.wireLeft; wireRight = P.wireRight;
 
-      // Simulate
       stepBots();
 
-      // Render both panes
       renderPane(leftPG,  P.leftView,  wireLeft,  zoomLeft);
       renderPane(rightPG, P.rightView, wireRight, zoomRight);
 
-      // Composite to main canvas
       background(12);
       image(leftPG,  0,        0, width/2, height);
       image(rightPG, width/2,  0, width/2, height);
 
-      // Divider
       stroke(32);
       line(width/2, 0, width/2, height);
       noStroke();
     }
 
-    // -------- Export (fix projection so it's not tiny) ----------
+    // --- Export (left pane trails only) ---
     function setExportProjection(g, refW, refH){
-      // Keep perceived scale matching the left pane when canvas is 10× larger
       const W = g.width, H = g.height;
-      const fov0 = Math.PI/3;              // p5 default
+      const fov0 = Math.PI/3; // p5 default
       const tan0 = Math.tan(fov0/2);
-      const tanPrime = (H / refH) * tan0;  // scale with height ratio
+      const tanPrime = (H / refH) * tan0;
       const fovPrime = 2 * Math.atan(tanPrime);
       g.perspective(fovPrime, W / H, 0.1, 10000);
     }
@@ -703,17 +734,15 @@
       const H = height * SCALE;
       const g = createGraphics(W, H, WEBGL);
       g.clear();               // transparent PNG
-      g.pixelDensity(1);       // avoid device pixel ratio surprises
+      g.pixelDensity(1);
 
-      // Match projection and model-view to left pane
       setExportProjection(g, leftPG.width, leftPG.height);
       if (g.resetMatrix) g.resetMatrix();
       applyViewTransform(g, P.leftView, zoomLeft);
 
-      // Draw only trails
       g.push();
       g.noFill();
-      if (g.strokeWeight) g.strokeWeight(1 * SCALE); // preserve apparent thickness
+      if (g.strokeWeight) g.strokeWeight(trailThickness * SCALE);
       for (const b of bots){
         if (!b.trail || b.trail.length < 2) continue;
         g.stroke(b.color[0], b.color[1], b.color[2], 255);
@@ -727,12 +756,11 @@
       g.save('trails_left_x10_'+seed+'.png');
     }
 
-    // -------- Tests ----------
+    // --- Tests (optional) ---
     function runTests() {
       const P = params();
       const lines = [];
 
-      // Every tower should have ≥1 incident bridge when bridges are enabled
       let okB = true;
       if (P.bridgesOn) {
         for (const t of towers) {
@@ -742,14 +770,12 @@
       }
       lines.push(`A/bridges: ${P.bridgesOn ? (okB ? '✓ all towers connected' : '✗ some towers unconnected') : '— (disabled)'}`);
 
-      // Grid bounds
       let okC = true;
       for (const t of towers) {
         if (t.gx < 0 || t.gx >= GRID || t.gz < 0 || t.gz >= GRID || t.maxH > LEVELS) okC = false;
       }
       lines.push(`B/grid-bounds: ${okC ? '✓' : '✗ out-of-bounds tower found'}`);
 
-      // Random reachability test
       if (navNodes.length>1){
         const a = pickRandomNode(); const b = pickRandomNode(a);
         const reachable = bfsReachable(a,b);
@@ -769,12 +795,10 @@
 
     function bfsReachable(src,dst){
       const seen=new Set([src]); const q=[src];
-      while(q.length){
-        const u=q.shift(); if(u===dst) return true;
-        for(const v of navAdj[u]) if(!seen.has(v)){ seen.add(v); q.push(v); }
-      }
+      while(q.length){ const u=q.shift(); if(u===dst) return true; for(const v of navAdj[u]) if(!seen.has(v)){ seen.add(v); q.push(v);} }
       return false;
     }
   </script>
 </body>
 </html>
+
