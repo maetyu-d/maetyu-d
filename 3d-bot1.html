@@ -5,75 +5,120 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Procedural Brutalist City Generator — 16×16×16</title>
   <style>
-    html, body { height: 100%; margin: 0; background: #0c0c0c; color: #e6e6e6; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
-    #ui { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.6); padding: 10px 12px; border-radius: 12px; border: 1px solid #2a2a2a; backdrop-filter: blur(4px); z-index: 10; }
-    #ui h1 { margin: 0 0 6px 0; font-size: 14px; letter-spacing: 0.06em; opacity: 0.9; }
-    #ui .row { display: flex; gap: 10px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
-    #ui label { font-size: 12px; opacity: 0.9; }
-    #ui input[type="range"] { width: 140px; }
-    #legend { font-size: 11px; opacity: 0.85; margin-top: 6px; line-height: 1.3; }
-    #tests { font-size: 11px; opacity: 0.9; margin-top: 6px; line-height: 1.3; white-space: pre-line; }
-    a, a:visited { color: #b6f; }
+    :root{
+      --bg:#0c0c0c; --panel:#00000099; --panel-border:#2a2a2a; --text:#e6e6e6; --muted:#a7a7a7;
+      --chip:#1a1a1a; --chip-border:#303030; --accent:#8aa6ff;
+    }
+    html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
     canvas { outline: none; display: block; }
-    #splitLabels { position: absolute; top: 10px; right: 10px; font-size: 11px; opacity: 0.9; background: rgba(0,0,0,0.4); padding: 6px 8px; border-radius: 10px; border: 1px solid #2a2a2a; z-index: 10; }
-    #score { display:inline-block; margin-left:8px; padding:2px 6px; background: rgba(255,255,255,0.06); border-radius:8px; border:1px solid #2a2a2a; }
+
+    /* HUD / UI */
+    #ui { position: absolute; top: 10px; left: 10px; background: var(--panel); padding: 10px 12px; border-radius: 12px; border: 1px solid var(--panel-border); backdrop-filter: blur(4px); z-index: 10; min-width: 320px; }
+    #ui h1 { margin: 0 0 8px 0; font-size: 13px; letter-spacing: 0.06em; opacity: 0.95; }
+
+    .section { margin-top: 6px; border-top: 1px dashed var(--panel-border); padding-top: 8px; }
+    .section:first-of-type{ margin-top: 0; border-top: none; padding-top: 0; }
+    .grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 8px; align-items: center; }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .chips { display:flex; gap:6px; flex-wrap:wrap; }
+    .chip { background: var(--chip); border:1px solid var(--chip-border); padding:4px 8px; border-radius:8px; font-size:12px; cursor:pointer; user-select:none; }
+    .chip input{ margin-right:6px; }
+
+    label { font-size: 12px; opacity: 0.9; }
+    input[type="range"] { width: 140px; }
+    select, input[type="number"], button { background: var(--chip); color: var(--text); border:1px solid var(--chip-border); border-radius:8px; padding:4px 8px; font-size:12px; }
+    button { cursor:pointer; }
+
+    #legend { font-size: 11px; opacity: 0.8; margin-top: 8px; line-height: 1.35; }
+    #tests  { font-size: 11px; opacity: 0.9; margin-top: 6px; line-height: 1.3; white-space: pre-line; }
+
+    /* Split labels HUD */
+    #splitLabels { position: absolute; top: 10px; right: 10px; font-size: 11px; opacity: 0.9; background: rgba(0,0,0,0.4); padding: 6px 8px; border-radius: 10px; border: 1px solid var(--panel-border); z-index: 10; }
+    #score { display:inline-block; margin-left:8px; padding:2px 6px; background: rgba(255,255,255,0.06); border-radius:8px; border:1px solid var(--panel-border); }
+
+    /* HUD hide */
+    #hudHideRow{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px; }
+    #hideHUDBtn{ background: var(--chip); border:1px solid var(--chip-border); border-radius:8px; padding:4px 8px; font-size:12px; cursor:pointer; }
+
+    /* quick hidden flags */
+    .hidden { display: none !important; }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/p5.min.js"></script>
 </head>
 <body>
   <div id="ui">
-    <h1>Brutalist City — 16×16×16</h1>
-    <div class="row">
-      <label>Seed</label>
-      <input id="seedInput" type="number" step="1" />
-      <button id="reseat">Reseed</button>
-      <button id="regen">Regenerate</button>
-      <button id="exportTrails">Export Trails x10 (Left)</button>
+    <div id="hudHideRow">
+      <h1>Brutalist City — 16×16×16</h1>
+      <button id="hideHUDBtn" title="Hide all HUD (press H)">Hide HUD</button>
     </div>
-    <div class="row">
-      <label>Density</label>
-      <input id="density" type="range" min="0" max="1" step="0.01" />
-      <label>Height</label>
-      <input id="height" type="range" min="4" max="16" step="1" />
+
+    <!-- World -->
+    <div class="section">
+      <div class="grid">
+        <label for="seedInput">Seed</label>
+        <div class="row">
+          <input id="seedInput" type="number" step="1" style="width:120px" />
+          <button id="reseat" title="Randomize seed">Reseed</button>
+          <button id="regen" title="Regenerate city">Regenerate</button>
+          <button id="exportTrails" title="Export left trails at 10× (transparent)">Export Trails ×10</button>
+        </div>
+        <label>Density</label>
+        <input id="density" type="range" min="0" max="1" step="0.01" />
+        <label>Height</label>
+        <input id="height" type="range" min="4" max="16" step="1" />
+      </div>
     </div>
-    <div class="row">
-      <label><input id="toggleStairs" type="checkbox" checked /> Stair Shafts</label>
-      <label><input id="toggleBridges" type="checkbox" checked /> Sky Bridges</label>
-      <label><input id="toggleGrid" type="checkbox" /> Grid</label>
-      <label><input id="wireLeft" type="checkbox" /> Wireframe (Left)</label>
-      <label><input id="wireRight" type="checkbox" /> Wireframe (Right)</label>
+
+    <!-- City toggles -->
+    <div class="section">
+      <div class="chips">
+        <label class="chip"><input id="toggleStairs" type="checkbox" checked />Stairs</label>
+        <label class="chip"><input id="toggleBridges" type="checkbox" checked />Bridges</label>
+        <label class="chip"><input id="toggleGrid" type="checkbox" />Grid</label>
+        <label class="chip"><input id="wireLeft" type="checkbox" />Wire L</label>
+        <label class="chip"><input id="wireRight" type="checkbox" />Wire R</label>
+      </div>
     </div>
-    <div class="row">
-      <label>Sim speed</label>
-      <select id="simSpeed">
-        <option value="0.1">0.1×</option>
-        <option value="1" selected>1×</option>
-        <option value="10">10×</option>
-      </select>
+
+    <!-- Views & Sim -->
+    <div class="section">
+      <div class="grid">
+        <label>Left view</label>
+        <select id="leftView">
+          <option value="side">Side</option>
+          <option value="top">Top</option>
+        </select>
+        <label>Right view</label>
+        <select id="rightView">
+          <option value="free">Free</option>
+          <option value="iso">Iso</option>
+        </select>
+        <label>Sim speed</label>
+        <select id="simSpeed">
+          <option value="0.1">0.1×</option>
+          <option value="1" selected>1×</option>
+          <option value="10">10×</option>
+        </select>
+      </div>
     </div>
-    <div class="row">
-      <label>Trail thickness</label>
-      <input id="trailThickness" type="range" min="1" max="10" step="1" value="2" />
-      <label><input id="togglePulse" type="checkbox" checked /> Bot pulsing</label>
+
+    <!-- Bots / Trails -->
+    <div class="section">
+      <div class="grid">
+        <label>Trail thickness</label>
+        <input id="trailThickness" type="range" min="1" max="10" step="1" value="2" />
+        <label>Bot pulsing</label>
+        <label class="chip"><input id="togglePulse" type="checkbox" checked />Enabled</label>
+      </div>
     </div>
-    <div class="row">
-      <label>Left view</label>
-      <select id="leftView">
-        <option value="side">Side-on</option>
-        <option value="top">Top-down</option>
-      </select>
-      <label>Right view</label>
-      <select id="rightView">
-        <option value="free">Free orbit</option>
-        <option value="iso">Isometric</option>
-      </select>
-    </div>
+
     <div id="legend">
-      Drag on the <b>right pane</b> to orbit (when set to Free) • Mouse wheel zooms the pane under the cursor (independent per pane)
-      • R = regenerate • S = save PNG (stitched) • T = run tests
+      Drag on the <b>right pane</b> to orbit (when Right view = Free). Mouse wheel zooms the pane under the cursor.
+      Shortcuts: <b>R</b> regenerate • <b>S</b> save stitched PNG • <b>T</b> tests • <b>[ / ]</b> speed • <b>H</b> HUD.
     </div>
     <div id="tests"></div>
   </div>
+
   <div id="splitLabels">
     Left: <span id="leftLabel">Side-on</span> | Right: <span id="rightLabel">Free orbit</span>
     <span id="score">🟩 0 : 0 🟧</span><span id="simLabel"> • speed: 1×</span>
@@ -81,279 +126,288 @@
 
   <script>
     // --- Parameters ---
-    const GRID = 16, LEVELS = 16, CELL = 40, BRIDGE_THICK = 8;
-    const PALETTE = { concrete:[128,128,128], darker:[98,98,98], accent:[150,150,155], sky:[20,20,24] };
+    const GRID=16, LEVELS=16, CELL=40, BRIDGE_THICK=8;
+    const PALETTE={concrete:[128,128,128], darker:[98,98,98], accent:[150,150,155], sky:[20,20,24]};
 
     // --- State ---
-    let seed = Math.floor(Math.random() * 1e9);
-    let towers = [], bridges = [];
-    let navNodes = [], navAdj = [], baseIndexByTower = [];
-    let bots = [], goal = null, scores = { green:0, orange:0 };
+    let seed=Math.floor(Math.random()*1e9);
+    let towers=[], bridges=[];
+    let navNodes=[], navAdj=[], baseIndexByTower=[];
+    let bots=[], goal=null, scores={green:0, orange:0};
 
-    // Viewports
-    let leftPG, rightPG, zoomLeft = 1.0, zoomRight = 1.0;
-    let freeRotX = -35.264 * Math.PI/180, freeRotY = 45 * Math.PI/180;
+    // Viewports / cameras
+    let leftPG, rightPG, zoomLeft=1.0, zoomRight=1.0;
+    let freeRotX=-35.264*Math.PI/180, freeRotY=45*Math.PI/180;
+
+    // HUD visibility
+    let HUD_VISIBLE = true;     // user can toggle with H
+    let CENTER_ON_HIDE = false; // when HUD hidden, recenter panes
 
     // Toggles
-    let wireLeft = false, wireRight = false, simSpeed = 1.0, pulseEnabled = true;
+    let wireLeft=false, wireRight=false, simSpeed=1.0, pulseEnabled=true;
 
     // Trails
-    let trailThickness = 2; // default doubled
+    let trailThickness=2; // default doubled
 
     // Tests
-    let SHOW_TESTS = false;
-    const testPanel = () => document.getElementById('tests');
+    let SHOW_TESTS=false; const testPanel=()=>document.getElementById('tests');
 
     // --- UI helpers ---
-    function reseed(val){ seed = (val!==undefined)?val:Math.floor(Math.random()*1e9); randomSeed(seed); noiseSeed(seed); document.getElementById('seedInput').value = seed; }
-    function params(){ return {
-      density: parseFloat(document.getElementById('density').value),
-      maxHeight: parseInt(document.getElementById('height').value,10),
-      stairsOn: document.getElementById('toggleStairs').checked,
-      bridgesOn: document.getElementById('toggleBridges').checked,
-      gridOn: document.getElementById('toggleGrid').checked,
-      leftView: document.getElementById('leftView').value,
-      rightView: document.getElementById('rightView').value,
-      wireLeft: document.getElementById('wireLeft').checked,
-      wireRight: document.getElementById('wireRight').checked,
-    };}
+    function reseed(val){ seed=(val!==undefined)?val:Math.floor(Math.random()*1e9); randomSeed(seed); noiseSeed(seed); const inp=document.getElementById('seedInput'); if(inp) inp.value=seed; }
+    function params(){ return { density:parseFloat(document.getElementById('density').value), maxHeight:parseInt(document.getElementById('height').value,10), stairsOn:document.getElementById('toggleStairs').checked, bridgesOn:document.getElementById('toggleBridges').checked, gridOn:document.getElementById('toggleGrid').checked, leftView:document.getElementById('leftView').value, rightView:document.getElementById('rightView').value, wireLeft:document.getElementById('wireLeft').checked, wireRight:document.getElementById('wireRight').checked }; }
+
+    function setHUDVisible(show){
+      HUD_VISIBLE = !!show;
+      document.getElementById('ui').classList.toggle('hidden', !HUD_VISIBLE);
+      document.getElementById('splitLabels').classList.toggle('hidden', !HUD_VISIBLE);
+      CENTER_ON_HIDE = !HUD_VISIBLE; // center when hidden; keep zoom values
+    }
 
     function setup(){
       createCanvas(windowWidth, windowHeight); noStroke();
       resizePanes();
-      document.getElementById('density').value = 0.55;
-      document.getElementById('height').value = 12;
-      document.getElementById('seedInput').value = seed;
-      reseed(seed);
-
-      document.getElementById('reseat').onclick = () => { reseed(); generateCity(); };
-      document.getElementById('regen').onclick  = () => { generateCity(); };
-      document.getElementById('seedInput').onchange = (e)=>{ reseed(parseInt(e.target.value||0,10)); generateCity(); };
-      document.getElementById('exportTrails').onclick = () => { exportTrailsLeftHiRes(); };
-      document.getElementById('simSpeed').onchange = (e)=>{ simSpeed = parseFloat(e.target.value); updateSimLabel(); };
-      document.getElementById('trailThickness').oninput = (e)=>{ trailThickness = parseInt(e.target.value,10); };
-      document.getElementById('togglePulse').onchange = (e)=>{ pulseEnabled = e.target.checked; };
+      document.getElementById('density').value=0.55; document.getElementById('height').value=12; reseed(seed);
+      document.getElementById('reseat').onclick=()=>{reseed(); generateCity();};
+      document.getElementById('regen').onclick=()=>{generateCity();};
+      document.getElementById('seedInput').onchange=(e)=>{reseed(parseInt(e.target.value||0,10)); generateCity();};
+      document.getElementById('exportTrails').onclick=()=>{exportTrailsLeftHiRes();};
+      document.getElementById('simSpeed').onchange=(e)=>{simSpeed=parseFloat(e.target.value); updateSimLabel();};
+      document.getElementById('trailThickness').oninput=(e)=>{trailThickness=parseInt(e.target.value,10);};
+      document.getElementById('togglePulse').onchange=(e)=>{pulseEnabled=e.target.checked;};
+      document.getElementById('hideHUDBtn').onclick=()=>{ setHUDVisible(false); };
 
       ['density','height','toggleStairs','toggleBridges','toggleGrid','leftView','rightView','wireLeft','wireRight']
-        .forEach(id => document.getElementById(id).oninput = () => {
-          const P = params();
-          document.getElementById('leftLabel').textContent = P.leftView === 'side' ? 'Side-on' : 'Top-down';
-          document.getElementById('rightLabel').textContent = P.rightView === 'free' ? 'Free orbit' : 'Isometric';
-          wireLeft = P.wireLeft; wireRight = P.wireRight;
+        .forEach(id=>document.getElementById(id).oninput=()=>{
+          const P=params();
+          document.getElementById('leftLabel').textContent=P.leftView==='side'?'Side-on':'Top-down';
+          document.getElementById('rightLabel').textContent=P.rightView==='free'?'Free orbit':'Isometric';
+          wireLeft=P.wireLeft; wireRight=P.wireRight;
           generateCity();
         });
 
-      window.addEventListener('wheel', (e) => {
-        const delta = -Math.sign(e.deltaY) * 0.05;
-        if (mouseX <= width/2) zoomLeft  = constrain(zoomLeft  + delta, 0.4, 3.0);
-        else                   zoomRight = constrain(zoomRight + delta, 0.4, 3.0);
-      }, { passive: true });
-
-      updateSimLabel();
-      generateCity();
+      window.addEventListener('wheel',(e)=>{const d=-Math.sign(e.deltaY)*0.05; if(mouseX<=width/2) zoomLeft=constrain(zoomLeft+d,0.4,3.0); else zoomRight=constrain(zoomRight+d,0.4,3.0);},{passive:true});
+      updateSimLabel(); generateCity();
     }
 
-    function resizePanes(){ leftPG = createGraphics(Math.floor(width/2), height, WEBGL); rightPG = createGraphics(Math.floor(width/2), height, WEBGL); }
+    function resizePanes(){ leftPG=createGraphics(Math.floor(width/2), height, WEBGL); rightPG=createGraphics(Math.floor(width/2), height, WEBGL); }
     function windowResized(){ resizeCanvas(windowWidth, windowHeight); resizePanes(); redraw(); }
 
     function keyPressed(){
-      if (key==='R'||key==='r') generateCity();
-      if (key==='S'||key==='s'){
-        const pg = createGraphics(width, height);
-        pg.image(leftPG, 0, 0, width/2, height); pg.image(rightPG, width/2, 0, width/2, height);
-        pg.save('brutalist_city_'+seed+'.png');
-      }
-      if (key==='T'||key==='t'){ SHOW_TESTS = !SHOW_TESTS; runTests(); }
-      if (key==='['){ if (simSpeed===10) simSpeed=1; else if (simSpeed===1) simSpeed=0.1; document.getElementById('simSpeed').value = simSpeed.toString(); updateSimLabel(); }
-      if (key===']'){ if (simSpeed===0.1) simSpeed=1; else if (simSpeed===1) simSpeed=10; document.getElementById('simSpeed').value = simSpeed.toString(); updateSimLabel(); }
+      if (key==='H' || key==='h'){ setHUDVisible(!HUD_VISIBLE); return; }
+      if(key==='R'||key==='r') generateCity();
+      if(key==='S'||key==='s'){ const pg=createGraphics(width,height); pg.image(leftPG,0,0,width/2,height); pg.image(rightPG,width/2,0,width/2,height); pg.save('brutalist_city_'+seed+'.png'); }
+      if(key==='T'||key==='t'){ SHOW_TESTS=!SHOW_TESTS; runTests(); }
+      if(key==='['){ if (simSpeed===10) simSpeed=1; else if(simSpeed===1) simSpeed=0.1; document.getElementById('simSpeed').value=simSpeed.toString(); updateSimLabel(); }
+      if(key===']'){ if (simSpeed===0.1) simSpeed=1; else if(simSpeed===1) simSpeed=10; document.getElementById('simSpeed').value=simSpeed.toString(); updateSimLabel(); }
     }
 
-    function mouseDragged(){
-      const P=params();
-      if (mouseX>width/2 && P.rightView==='free'){
-        freeRotY += movedX*0.01; freeRotX += movedY*0.01; freeRotX = constrain(freeRotX, -Math.PI/2, Math.PI/2*0.99);
-      }
-    }
+    function mouseDragged(){ const P=params(); if(mouseX>width/2 && P.rightView==='free'){ freeRotY+=movedX*0.01; freeRotX+=movedY*0.01; freeRotX=constrain(freeRotX,-Math.PI/2,Math.PI/2*0.99);} }
 
     // --- City generation ---
     function generateCity(){
       const P=params(); randomSeed(seed); noiseSeed(seed);
-      towers=[]; bridges=[]; navNodes=[]; navAdj=[]; baseIndexByTower=[]; bots=[]; goal=null; scores={green:0, orange:0};
-
+      towers=[]; bridges=[]; navNodes=[]; navAdj=[]; baseIndexByTower=[]; bots=[]; goal=null; scores={green:0,orange:0};
       const freq=0.08;
-      for (let gx=0; gx<GRID; gx++){
-        for (let gz=0; gz<GRID; gz++){
-          const n=noise(gx*freq, gz*freq);
-          const place = n*0.9 + random(0.1);
-          if (place < (1.0 - P.density)) continue;
-
-          const footprint = random()<0.2 ? 3 : (random()<0.5 ? 2 : 1);
-          const hNoise = noise(gx*freq*1.7+100, gz*freq*1.7+100);
-          const maxH = constrain(Math.floor(map(hNoise,0,1,4,P.maxHeight)), 4, LEVELS);
-
-          const modules=[]; let y=0;
-          while(y<maxH){
-            const mh=Math.min(maxH-y, Math.floor(random(2,5)));
-            const offset = (random()<0.25) ? (random([-1,0,1])) : 0;
-            const extrude = (random()<0.25) ? (random([0,1])) : 0;
-            modules.push({y, h:mh, offset, extrude}); y += mh;
-          }
-
-          towers.push({ gx, gz, footprint, maxH, modules, hasStairs:true, renderStairs:P.stairsOn, stairSide:1, stairPos:{sx:0, sz:0} });
+      for(let gx=0; gx<GRID; gx++){
+        for(let gz=0; gz<GRID; gz++){
+          const n=noise(gx*freq,gz*freq); const place=n*0.9+random(0.1); if(place<(1.0-P.density)) continue;
+          const footprint = random()<0.2?3:(random()<0.5?2:1);
+          const hNoise=noise(gx*freq*1.7+100,gz*freq*1.7+100); const maxH=constrain(Math.floor(map(hNoise,0,1,4,P.maxHeight)),4,LEVELS);
+          const modules=[]; let y=0; while(y<maxH){ const mh=Math.min(maxH-y,Math.floor(random(2,5))); const offset=(random()<0.25)?(random([-1,0,1])):0; const extrude=(random()<0.25)?(random([0,1])):0; modules.push({y,h:mh,offset,extrude}); y+=mh; }
+          towers.push({gx,gz,footprint,maxH,modules,hasStairs:true,renderStairs:P.stairsOn,stairSide:1,stairPos:{sx:0,sz:0}});
         }
       }
-
-      if (P.bridgesOn){
-        for (let i=0;i<towers.length;i++){
-          const a=towers[i]; let best=null, bestd=1e9;
-          for (let j=0;j<towers.length;j++) if(i!==j){
-            const b=towers[j]; const dx=b.gx-a.gx, dz=b.gz-a.gz; const d2=dx*dx+dz*dz;
-            if (d2<bestd && d2>0){ bestd=d2; best=b; }
+      if(P.bridgesOn){
+        for(let i=0;i<towers.length;i++){
+          const a=towers[i]; let best=null,bestd=1e9;
+          for(let j=0;j<towers.length;j++) if(i!==j){
+            const b=towers[j]; const dx=b.gx-a.gx,dz=b.gz-a.gz; const d2=dx*dx+dz*dz;
+            if(d2<bestd && d2>0){bestd=d2; best=b;}
           }
-          if (best){ const y=Math.floor(random(3, Math.min(a.maxH, best.maxH))); bridges.push({a, b:best, y}); }
-          if (random()<0.3 && towers.length>3){
-            const b=random(towers); if (b && b!==a){ const y=Math.floor(random(3, Math.min(a.maxH, b.maxH))); bridges.push({a,b,y}); }
+          if(best){ const y=Math.floor(random(3,Math.min(a.maxH,best.maxH))); bridges.push({a,b:best,y}); }
+          if(random()<0.3 && towers.length>3){
+            const b=random(towers); if(b && b!==a){
+              const y=Math.floor(random(3,Math.min(a.maxH,b.maxH))); bridges.push({a,b,y});
+            }
           }
         }
       }
-
-      ensureConnectivity();
-      buildNavGraph();
-      createBotsAndGoal();
-      if (SHOW_TESTS) runTests();
+      ensureConnectivity(); buildNavGraph(); createBotsAndGoal(); if(SHOW_TESTS) runTests();
     }
 
-    function towerCenter(ti){ const t=towers[ti]; return { x:(t.gx-GRID/2)*CELL, z:(t.gz-GRID/2)*CELL }; }
+    function towerCenter(ti){ const t=towers[ti]; return {x:(t.gx-GRID/2)*CELL, z:(t.gz-GRID/2)*CELL}; }
 
     function ensureConnectivity(){
-      if (towers.length===0) return;
-      const n=towers.length, adj=Array.from({length:n},()=>[]);
-      for (const br of bridges){
-        const ai=towers.indexOf(br.a); const bi=towers.indexOf(br.b);
-        if (ai>=0 && bi>=0){ adj[ai].push(bi); adj[bi].push(ai); }
+      if(towers.length===0) return; const n=towers.length;
+      const adj=Array.from({length:n},()=>[]);
+      for(const br of bridges){
+        const ai=towers.indexOf(br.a), bi=towers.indexOf(br.b);
+        if(ai>=0&&bi>=0){ adj[ai].push(bi); adj[bi].push(ai); }
       }
       const comp=Array(n).fill(-1); let c=0;
-      for (let i=0;i<n;i++) if (comp[i]===-1){
-        const stack=[i]; comp[i]=c;
-        while(stack.length){ const u=stack.pop(); for(const v of adj[u]) if(comp[v]===-1){ comp[v]=c; stack.push(v); } }
+      for(let i=0;i<n;i++) if(comp[i]===-1){
+        const st=[i]; comp[i]=c;
+        while(st.length){ const u=st.pop(); for(const v of adj[u]) if(comp[v]===-1){ comp[v]=c; st.push(v);} }
         c++;
       }
-      if (c<=1) return;
-      for (let k=1;k<c;k++){
+      if(c<=1) return;
+      for(let k=1;k<c;k++){
         let bestA=-1,bestB=-1,bestD=1e9;
-        for (let i=0;i<n;i++) if (comp[i]===0)
-          for (let j=0;j<n;j++) if (comp[j]===k){
-            const ci=towerCenter(i), cj=towerCenter(j); const d=(ci.x-cj.x)**2+(ci.z-cj.z)**2;
-            if (d<bestD){bestD=d; bestA=i; bestB=j;}
+        for(let i=0;i<n;i++) if(comp[i]===0)
+          for(let j=0;j<n;j++) if(comp[j]===k){
+            const ci=towerCenter(i), cj=towerCenter(j);
+            const d=(ci.x-cj.x)**2+(ci.z-cj.z)**2;
+            if(d<bestD){bestD=d; bestA=i; bestB=j;}
           }
-        if (bestA>=0){
-          const a=towers[bestA], b=towers[bestB]; const y=Math.floor(Math.min(a.maxH,b.maxH)/2);
-          bridges.push({a,b,y}); for (let i=0;i<n;i++) if (comp[i]===k) comp[i]=0;
+        if(bestA>=0){
+          const a=towers[bestA], b=towers[bestB];
+          const y=Math.floor(Math.min(a.maxH,b.maxH)/2);
+          bridges.push({a,b,y});
+          for(let i=0;i<n;i++) if(comp[i]===k) comp[i]=0;
         }
       }
     }
 
     function buildNavGraph(){
-      navNodes=[]; navAdj=[]; baseIndexByTower=[]; let base=0;
-      for (let ti=0; ti<towers.length; ti++){
-        baseIndexByTower[ti]=base; const c=towerCenter(ti); const t=towers[ti];
-        for (let lvl=0; lvl<t.maxH; lvl++){ navNodes.push({ti, level:lvl, x:c.x, y:-lvl*CELL, z:c.z}); navAdj.push([]); }
-        for (let lvl=0; lvl<t.maxH-1; lvl++){ const a=base+lvl, b=base+lvl+1; navAdj[a].push(b); navAdj[b].push(a); }
-        base += t.maxH;
+      navNodes=[]; navAdj=[]; baseIndexByTower=[];
+      let base=0;
+      for(let ti=0;ti<towers.length;ti++){
+        baseIndexByTower[ti]=base;
+        const c=towerCenter(ti), t=towers[ti];
+        for(let lvl=0; lvl<t.maxH; lvl++){ navNodes.push({ti,level:lvl,x:c.x,y:-lvl*CELL,z:c.z}); navAdj.push([]); }
+        for(let lvl=0; lvl<t.maxH-1; lvl++){ const a=base+lvl,b=base+lvl+1; navAdj[a].push(b); navAdj[b].push(a); }
+        base+=t.maxH;
       }
-      function idx(ti,lvl){ return baseIndexByTower[ti]+lvl; }
-      for (const br of bridges){
-        const ai=towers.indexOf(br.a), bi=towers.indexOf(br.b); if (ai<0||bi<0) continue;
+      function nodeIndex(ti,lvl){ return baseIndexByTower[ti]+lvl; }
+      for(const br of bridges){
+        const ai=towers.indexOf(br.a), bi=towers.indexOf(br.b);
+        if(ai<0||bi<0) continue;
         const lvl=Math.min(br.y, towers[ai].maxH-1, towers[bi].maxH-1);
-        const a=idx(ai,lvl), b=idx(bi,lvl); navAdj[a].push(b); navAdj[b].push(a);
+        const a=nodeIndex(ai,lvl), b=nodeIndex(bi,lvl);
+        navAdj[a].push(b); navAdj[b].push(a);
       }
     }
 
     function pickRandomNode(exclude=-1){ if(navNodes.length===0) return -1; let idx; do{ idx=Math.floor(random(navNodes.length)); }while(idx===exclude && navNodes.length>1); return idx; }
 
+    // --- Bots (green impaired) & goal ---
     function createBotsAndGoal(){
-      if (navNodes.length===0) return;
-      const gIdx=pickRandomNode(), oIdx=pickRandomNode(gIdx);
+      if(navNodes.length===0) return;
+      const gIdx=pickRandomNode(); const oIdx=pickRandomNode(gIdx);
       bots=[
-        { name:'green',  color:[60,200,100],  node:gIdx, pos:{...navNodes[gIdx]}, path:[], segI:0, t:0, speed:2.0, trail:[{...navNodes[gIdx]}] },
-        { name:'orange', color:[240,150,60], node:oIdx, pos:{...navNodes[oIdx]}, path:[], segI:0, t:0, speed:2.2, trail:[{...navNodes[oIdx]}] }
+        {name:'green', color:[60,200,100], node:gIdx, pos:{...navNodes[gIdx]}, path:[], segI:0, t:0, speed:2.0, trail:[{...navNodes[gIdx]}],
+         gaitPhase: random(Math.PI*2), gaitOmega:(Math.PI*2)/(CELL*0.9), curveBias:0.12, stairSlow:0.6, swayAmp:CELL*0.18, speedAsym:0.22},
+        {name:'orange', color:[240,150,60], node:oIdx, pos:{...navNodes[oIdx]}, path:[], segI:0, t:0, speed:2.2, trail:[{...navNodes[oIdx]}],
+         gaitPhase:0, gaitOmega:(Math.PI*2)/CELL, curveBias:0, stairSlow:1, swayAmp:0, speedAsym:0}
       ];
-      goal={ node: pickRandomNode() };
-      for (const b of bots) planPath(b, goal.node);
+      goal={node:pickRandomNode()};
+      for(const b of bots) planPath(b, goal.node);
       updateScoreLabel();
     }
 
-    // --- A* pathfinding ---
+    // --- Pathfinding (A*) ---
     function heuristic(a,b){ const pa=navNodes[a], pb=navNodes[b]; const dx=pa.x-pb.x, dy=pa.y-pb.y, dz=pa.z-pb.z; return Math.sqrt(dx*dx+dy*dy+dz*dz); }
     function planPath(bot, targetIdx){
-      const N=navNodes.length, open=new Set([bot.node]), came=new Map();
-      const g=Array(N).fill(Infinity); g[bot.node]=0; const f=Array(N).fill(Infinity); f[bot.node]=heuristic(bot.node,targetIdx);
+      const N=navNodes.length; const open=new Set([bot.node]); const came=new Map();
+      const g=Array(N).fill(Infinity); g[bot.node]=0;
+      const f=Array(N).fill(Infinity); f[bot.node]=heuristic(bot.node,targetIdx);
       while(open.size){
-        let cur=-1, best=Infinity; for(const n of open){ if(f[n]<best){best=f[n]; cur=n;} }
-        if (cur===targetIdx) break;
-        open.delete(cur);
-        for (const nb of navAdj[cur]){
-          const cand=g[cur]+heuristic(cur,nb);
-          if (cand<g[nb]){ came.set(nb,cur); g[nb]=cand; f[nb]=cand+heuristic(nb,targetIdx); open.add(nb); }
+        let current=-1,best=Infinity;
+        for(const n of open){ if(f[n]<best){best=f[n]; current=n;} }
+        if(current===targetIdx) break;
+        open.delete(current);
+        for(const nb of navAdj[current]){
+          const tentative=g[current]+heuristic(current,nb);
+          if(tentative<g[nb]){ came.set(nb,current); g[nb]=tentative; f[nb]=tentative+heuristic(nb,targetIdx); open.add(nb); }
         }
       }
-      if (!isFinite(g[targetIdx])){ bot.path=[]; bot.segI=0; bot.t=0; return; }
-      const nodes=[]; let u=targetIdx; nodes.unshift(u); while(u!==bot.node){ u=came.get(u); if(u===undefined) break; nodes.unshift(u); }
-      const segs=[]; for (let i=0;i<nodes.length-1;i++){ const a=navNodes[nodes[i]], b=navNodes[nodes[i+1]]; const len=Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z); segs.push({a,b,len}); }
+      if(!isFinite(g[targetIdx])){ bot.path=[]; bot.segI=0; bot.t=0; return; }
+      const nodes=[]; let u=targetIdx; nodes.unshift(u);
+      while(u!==bot.node){ u=came.get(u); if(u===undefined) break; nodes.unshift(u); }
+      const segs=[];
+      for(let i=0;i<nodes.length-1;i++){
+        const a=navNodes[nodes[i]], b=navNodes[nodes[i+1]];
+        const len=Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z);
+        segs.push({a,b,len});
+      }
       bot.path=segs; bot.segI=0; bot.t=0; bot.node=nodes[0];
     }
 
+    // --- Simulation step (impairment dynamics for green) ---
     function stepBots(){
-      if (!goal || navNodes.length===0) return;
-      for (const b of bots){
+      if(!goal || navNodes.length===0) return;
+      for(const b of bots){
         const speedScale=simSpeed;
-        if (!b.path || b.path.length===0){ planPath(b, goal.node); continue; }
-        const seg=b.path[b.segI]; if (!seg) continue;
-        const dt=b.speed*speedScale;
-        const ax=seg.a.x, ay=seg.a.y, az=seg.a.z, bx=seg.b.x, by=seg.b.y, bz=seg.b.z;
-        const vx=(bx-ax)/seg.len, vy=(by-ay)/seg.len, vz=(bz-az)/seg.len;
-        b.t += dt;
-        if (b.t >= seg.len){
-          b.pos={x:bx,y:by,z:bz}; b.trail.push({x:b.pos.x,y:b.pos.y,z:b.pos.z});
-          b.segI++; b.t=0;
-          if (b.segI >= b.path.length){
-            const gp=navNodes[goal.node]; const d=Math.hypot(b.pos.x-gp.x,b.pos.y-gp.y,b.pos.z-gp.z);
-            if (d < 1e-3){
+        if(!b.path || b.path.length===0){ planPath(b, goal.node); continue; }
+        const seg=b.path[b.segI]; if(!seg) continue;
+        const ax=seg.a.x, ay=seg.a.y, az=seg.a.z;
+        const bx=seg.b.x, by=seg.b.y, bz=seg.b.z;
+        const dx=bx-ax, dy=by-ay, dz=bz-az; const len=seg.len;
+
+        let v=b.speed*speedScale;
+        if(b.name==='green'){
+          const gaitSlow=1 - b.speedAsym * Math.max(0, Math.sin(b.gaitPhase));
+          const isVertical = Math.abs(dy) > Math.max(Math.abs(dx), Math.abs(dz))*0.5;
+          const stairMul = isVertical ? b.stairSlow : 1.0;
+          v *= gaitSlow * stairMul;
+        }
+        const dt=v; b.t+=dt;
+        let s=Math.min(1, b.t/len);
+        let px=ax+dx*s, py=ay+dy*s, pz=az+dz*s;
+
+        if(b.name==='green'){
+          const hlen=Math.hypot(dx,dz)||1;
+          const nx=-dz/hlen, nz=dx/hlen;
+          const sway=b.swayAmp*Math.sin(b.gaitPhase);
+          const curve=b.curveBias*(s*len);
+          px+=nx*(sway+curve); pz+=nz*(sway+curve);
+          b.gaitPhase += dt*b.gaitOmega;
+        }
+
+        b.pos.x=px; b.pos.y=py; b.pos.z=pz;
+        b.trail.push({x:px,y:py,z:pz});
+
+        if(b.t>=len){
+          b.segI++; b.t=0; b.pos={x:bx,y:by,z:bz};
+          b.trail.push({x:bx,y:by,z:bz});
+          if(b.segI>=b.path.length){
+            const gp=navNodes[goal.node];
+            const d=Math.hypot(b.pos.x-gp.x,b.pos.y-gp.y,b.pos.z-gp.z);
+            if(d<1e-3){
               scores[b.name]=(scores[b.name]||0)+1;
-              goal.node = pickRandomNode();
-              for (const bb of bots) planPath(bb, goal.node);
+              goal.node=pickRandomNode();
+              for(const bb of bots) planPath(bb, goal.node);
               updateScoreLabel();
             }
           }
-        } else {
-          b.pos.x = ax + vx*b.t; b.pos.y = ay + vy*b.t; b.pos.z = az + vz*b.t;
-          b.trail.push({x:b.pos.x,y:b.pos.y,z:b.pos.z});
         }
       }
     }
 
-    // --- Overlays ---
-    function updateScoreLabel(){ document.getElementById('score').textContent = `🟩 ${scores.green||0} : ${scores.orange||0} 🟧`; }
-    function updateSimLabel(){ const el=document.getElementById('simLabel'); if (el) el.textContent = ` • speed: ${simSpeed}×`; }
+    // --- UI overlays ---
+    function updateScoreLabel(){ document.getElementById('score').textContent=`🟩 ${scores.green||0} : ${scores.orange||0} 🟧`; }
+    function updateSimLabel(){ const el=document.getElementById('simLabel'); if(el) el.textContent=` • speed: ${simSpeed}×`; }
 
     // --- Drawing helpers ---
     function drawModule(g,t,mod,wire=false){
       const {gx,gz,footprint}=t;
       g.push();
       const baseX=(gx-GRID/2)*CELL, baseZ=(gz-GRID/2)*CELL;
-      const y=-mod.y*CELL; g.translate(baseX+mod.offset*4, y-(mod.h*CELL)/2, baseZ);
+      const y=-mod.y*CELL;
+      g.translate(baseX+mod.offset*4, y-(mod.h*CELL)/2, baseZ);
       const w=footprint*CELL+mod.extrude*10, d=w, h=mod.h*CELL;
-      if (wire){ g.noFill(); g.stroke(200); g.box(w,h,d); g.noStroke(); }
-      else{ const tone=((mod.y/2|0)%2===0)?PALETTE.concrete:PALETTE.darker; g.ambientMaterial(...tone); g.box(w,h,d); }
+      if(wire){ g.noFill(); g.stroke(200); g.box(w,h,d); g.noStroke(); }
+      else { const tone=((mod.y/2|0)%2===0)?PALETTE.concrete:PALETTE.darker; g.ambientMaterial(...tone); g.box(w,h,d); }
       g.pop();
 
-      if (t.renderStairs){
+      if(t.renderStairs){
         g.push();
-        const coreW=Math.max(CELL*0.6, (t.stairSide*CELL)*0.8), coreD=coreW;
-        const baseX2=(t.gx-GRID/2)*CELL, baseZ2=(t.gz-GRID/2)*CELL, y2=-(mod.y*CELL);
+        const coreW=Math.max(CELL*0.6,(t.stairSide*CELL)*0.8), coreD=coreW;
+        const baseX2=(t.gx-GRID/2)*CELL, baseZ2=(t.gz-GRID/2)*CELL;
+        const y2=-(mod.y*CELL);
         g.translate(baseX2, y2-(mod.h*CELL)/2, baseZ2);
-        if (wire){ g.noFill(); g.stroke(180); g.box(coreW,mod.h*CELL*0.95,coreD); g.noStroke(); }
-        else{ g.ambientMaterial(...PALETTE.accent); g.specularMaterial(180); g.box(coreW,mod.h*CELL*0.95,coreD); }
+        if(wire){ g.noFill(); g.stroke(180); g.box(coreW,mod.h*CELL*0.95,coreD); g.noStroke(); }
+        else { g.ambientMaterial(...PALETTE.accent); g.specularMaterial(180); g.box(coreW,mod.h*CELL*0.95,coreD); }
         g.pop();
       }
     }
@@ -363,123 +417,161 @@
       const x1=(a.gx-GRID/2)*CELL, z1=(a.gz-GRID/2)*CELL;
       const x2=(b.gx-GRID/2)*CELL, z2=(b.gz-GRID/2)*CELL;
       const midx=(x1+x2)/2, midz=(z1+z2)/2, len=dist(x1,z1,x2,z2);
-      g.push(); g.translate(midx, -y*CELL, midz); const ang=Math.atan2(x2-x1, z2-z1); g.rotateY(ang);
-      if (wire){ g.noFill(); g.stroke(200); g.box(len,BRIDGE_THICK,BRIDGE_THICK*1.4); g.noStroke(); }
+      g.push();
+      g.translate(midx, -y*CELL, midz);
+      const ang=Math.atan2(x2-x1, z2-z1);
+      g.rotateY(ang);
+      if(wire){ g.noFill(); g.stroke(200); g.box(len,BRIDGE_THICK,BRIDGE_THICK*1.4); g.noStroke(); }
       else { g.ambientMaterial(120,120,120); g.box(len,BRIDGE_THICK,BRIDGE_THICK*1.4); }
       g.pop();
     }
 
     function drawGround(g,wire=false){
-      g.push(); g.translate(0,2,0);
-      if (wire){ g.noFill(); g.stroke(60); g.box(GRID*CELL*1.6,4,GRID*CELL*1.6); g.noStroke(); }
+      g.push();
+      g.translate(0,2,0);
+      if(wire){ g.noFill(); g.stroke(60); g.box(GRID*CELL*1.6,4,GRID*CELL*1.6); g.noStroke(); }
       else { g.ambientMaterial(...PALETTE.sky); g.box(GRID*CELL*1.6,4,GRID*CELL*1.6); }
       g.pop();
     }
 
     function drawGrid(g){
-      if (!params().gridOn) return;
-      g.push(); g.stroke(40); g.noFill(); const half=GRID*CELL/2;
-      for (let i=-half;i<=half;i+=CELL){ g.line(-half,0,i, half,0,i); g.line(i,0,-half, i,0,half); }
-      g.noStroke(); g.pop();
+      if(!params().gridOn) return;
+      g.push();
+      g.stroke(40);
+      g.noFill();
+      const half=GRID*CELL/2;
+      for(let i=-half;i<=half;i+=CELL){
+        g.line(-half,0,i,  half,0,i);
+        g.line(i,0,-half, i,0,half);
+      }
+      g.noStroke();
+      g.pop();
     }
 
-    // Goal as bright-blue ripple around the floor point
+    // Goal as bright-blue ripple
     function drawGoal(g){
-      if (!goal || !navNodes[goal.node]) return;
-      const p=navNodes[goal.node], baseY = p.y - CELL*0.48;
-      const maxR = CELL*2.5, speed = 1.2*simSpeed, t = (millis()*0.001*speed)%1, rings=4;
-      g.push(); g.translate(p.x, baseY, p.z); g.noFill(); if (g.strokeWeight) g.strokeWeight(2);
-      for (let i=0;i<rings;i++){
-        const phase=(t + i/rings)%1, r=0.1*CELL + phase*maxR, alpha=Math.max(0, 255*(1-phase));
+      if(!goal || !navNodes[goal.node]) return;
+      const p=navNodes[goal.node];
+      const baseY=p.y - CELL*0.48;
+      const maxR=CELL*2.5, speed=1.2*simSpeed, t=(millis()*0.001*speed)%1, rings=4;
+      g.push();
+      g.translate(p.x, baseY, p.z);
+      g.noFill();
+      if(g.strokeWeight) g.strokeWeight(2);
+      for(let i=0;i<rings;i++){
+        const phase=(t+i/rings)%1, r=0.1*CELL + phase*maxR, alpha=Math.max(0,255*(1-phase));
         g.stroke(0,180,255,alpha);
-        g.push(); g.rotateX(Math.PI/2); g.beginShape();
-        const STEPS=64; for (let a=0;a<=STEPS;a++){ const ang=(a/STEPS)*Math.PI*2; g.vertex(Math.cos(ang)*r, Math.sin(ang)*r, 0); }
+        g.push(); g.rotateX(Math.PI/2);
+        g.beginShape(); const STEPS=64;
+        for(let a=0;a<=STEPS;a++){ const ang=(a/STEPS)*Math.PI*2; g.vertex(Math.cos(ang)*r, Math.sin(ang)*r, 0); }
         g.endShape(); g.pop();
       }
       g.pop();
     }
 
-    function drawBots(g, wire){
-      const t = millis()*0.001, TAU = Math.PI*2;
-      for (const b of bots){
-        // Trails
-        if (b.trail && b.trail.length>1){
-          g.push(); g.noFill(); g.stroke(b.color[0], b.color[1], b.color[2], 190);
-          if (g.strokeWeight) g.strokeWeight(trailThickness);
-          for (let i=1;i<b.trail.length;i++){ const p0=b.trail[i-1], p1=b.trail[i]; g.line(p0.x,p0.y-CELL*0.3,p0.z, p1.x,p1.y-CELL*0.3,p1.z); }
+    function drawBots(g,wire){
+      const t=millis()*0.001, TWO_PI=Math.PI*2;
+      for(const b of bots){
+        // trails (infinite)
+        if(b.trail && b.trail.length>1){
+          g.push(); g.noFill();
+          let tw=trailThickness;
+          if(b.name==='green') tw=Math.max(1, trailThickness*(1+0.35*Math.sin(b.gaitPhase+Math.PI/2)));
+          if(g.strokeWeight) g.strokeWeight(tw);
+          g.stroke(b.color[0],b.color[1],b.color[2],190);
+          for(let i=1;i<b.trail.length;i++){
+            const p0=b.trail[i-1], p1=b.trail[i];
+            g.line(p0.x,p0.y - CELL*0.3,p0.z, p1.x,p1.y - CELL*0.3,p1.z);
+          }
           g.noStroke(); g.pop();
         }
-        // Body + halo
-        g.push(); g.translate(b.pos.x, b.pos.y - CELL*0.3, b.pos.z);
-        const phase = (b.name==='green') ? 0 : Math.PI;
-        const sPulse    = pulseEnabled ? (1 + 0.15 * Math.sin(t*TAU*0.8 + phase)) : 1.0;
-        const haloPulse = pulseEnabled ? (0.9 + 0.2  * Math.sin(t*TAU*0.8 + phase)) : 1.0;
-        const haloAlpha = pulseEnabled ? (140 + 100 * (0.5 + 0.5*Math.sin(t*TAU*0.8 + phase))) : 200;
 
-        if (wire){ g.noFill(); g.stroke(255); g.box(CELL*0.9*sPulse, CELL*0.9*sPulse, CELL*0.9*sPulse); g.noStroke(); }
-        else { g.emissiveMaterial(...b.color); g.box(CELL*0.9*sPulse, CELL*0.9*sPulse, CELL*0.9*sPulse); }
+        // body + halo
+        g.push();
+        g.translate(b.pos.x, b.pos.y - CELL*0.3, b.pos.z);
+        const basePulse=0.8;
+        const phase=(b.name==='green')?b.gaitPhase:t*TWO_PI*basePulse;
+        const sPulse=(pulseEnabled ? (1 + 0.15*Math.sin(phase)) : 1.0);
+        const haloPulse=(pulseEnabled ? (0.9 + 0.2*Math.sin(phase)) : 1.0);
+        const haloAlpha=pulseEnabled ? (140 + 100*(0.5 + 0.5*Math.sin(phase))) : 200;
+
+        if(b.name==='green' && pulseEnabled){
+          const sx=1.0 - 0.12*Math.sin(phase);
+          const sy=1.0 + 0.08*Math.sin(phase+0.5);
+          const sz=1.0 + 0.06*Math.sin(phase+1.0);
+          g.scale(sx,sy,sz);
+        }
+
+        if(wire){ g.noFill(); g.stroke(255); g.box(CELL*0.9*sPulse, CELL*0.9*sPulse, CELL*0.9*sPulse); g.noStroke(); }
+        else { const k=(b.name==='green') ? (0.7 + 0.3*(0.5 + 0.5*Math.sin(phase))) : 1.0; g.emissiveMaterial(b.color[0]*k, b.color[1]*k, b.color[2]*k); g.box(CELL*0.9*sPulse, CELL*0.9*sPulse, CELL*0.9*sPulse); }
 
         g.noFill(); g.stroke(b.color[0], b.color[1], b.color[2], haloAlpha);
-        if (g.strokeWeight) g.strokeWeight(2 + (pulseEnabled ? 2*(0.5 + 0.5*Math.sin(t*TAU*0.8 + phase)) : 1));
-        g.sphere(CELL*0.7*haloPulse); g.noStroke(); g.pop();
+        if(g.strokeWeight) g.strokeWeight(2 + (pulseEnabled ? 2*(0.5 + 0.5*Math.sin(phase)) : 1));
+        g.sphere(CELL*0.7*haloPulse);
+        g.noStroke();
+        g.pop();
       }
     }
 
-    function applyViewTransform(g, which, zoomVal){
-      g.translate(0, 200, -200);
+    function applyViewTransform(g,which,zoomVal){
+      // When HUD hidden, center both panes exactly at origin; keep user zoom
+      if (CENTER_ON_HIDE) g.translate(0,0,0); else g.translate(0,200,-200);
       g.scale(zoomVal);
-      if (which==='iso'){ g.rotateX(-35.264 * Math.PI/180); g.rotateY(45 * Math.PI/180); }
-      else if (which==='free'){ g.rotateX(freeRotX); g.rotateY(freeRotY); }
-      else if (which==='side'){ g.rotateY(Math.PI/2); }
-      else if (which==='top'){ g.rotateX(Math.PI/2); }
+      if(which==='iso'){ g.rotateX(-35.264*Math.PI/180); g.rotateY(45*Math.PI/180); }
+      else if(which==='free'){ g.rotateX(freeRotX); g.rotateY(freeRotY); }
+      else if(which==='side'){ g.rotateY(Math.PI/2); }
+      else if(which==='top'){ g.rotateX(Math.PI/2); }
     }
 
-    function renderPane(g, whichView, wire, zoomVal){
-      g.push(); g.background(...PALETTE.sky); g.ambientLight(120); g.directionalLight(200,200,200, 0.3,-0.6,-0.2);
-      applyViewTransform(g, whichView, zoomVal);
-      drawGround(g, wire); drawGrid(g);
-      for (const t of towers) for (const m of t.modules) drawModule(g,t,m,wire);
-      for (const br of bridges) drawBridge(g, br, wire);
-      drawGoal(g); drawBots(g, wire);
+    function renderPane(g,whichView,wire,zoomVal){
+      g.push();
+      g.background(...PALETTE.sky);
+      g.ambientLight(120);
+      g.directionalLight(200,200,200, 0.3,-0.6,-0.2);
+      applyViewTransform(g,whichView,zoomVal);
+      drawGround(g,wire);
+      drawGrid(g);
+      for(const t of towers) for(const m of t.modules) drawModule(g,t,m,wire);
+      for(const br of bridges) drawBridge(g,br,wire);
+      drawGoal(g);
+      drawBots(g,wire);
       g.pop();
     }
 
     function draw(){
       const P=params(); wireLeft=P.wireLeft; wireRight=P.wireRight;
       stepBots();
-      renderPane(leftPG,  P.leftView,  wireLeft,  zoomLeft);
-      renderPane(rightPG, P.rightView, wireRight, zoomRight);
-      background(12); image(leftPG, 0, 0, width/2, height); image(rightPG, width/2, 0, width/2, height);
-      stroke(32); line(width/2, 0, width/2, height); noStroke();
+      renderPane(leftPG,P.leftView,wireLeft,zoomLeft);
+      renderPane(rightPG,P.rightView,wireRight,zoomRight);
+      background(12);
+      image(leftPG,0,0,width/2,height);
+      image(rightPG,width/2,0,width/2,height);
+      stroke(32); line(width/2,0,width/2,height); noStroke();
     }
 
-    // --- Export (left pane trails only, 10×, exact camera match) ---
-    function setExportProjection(g, refW, refH){
-      // Match left pane's default camera distance (eyeZ) exactly
-      const fov = Math.PI/3, aspect = g.width/g.height;
-      g.perspective(fov, aspect, 0.1, 10000);
-      const leftEyeZ = (refH/2) / Math.tan(Math.PI/6); // (h/2)/tan(fov/2)
-      g.camera(0, 0, leftEyeZ, 0, 0, 0, 0, 1, 0);
+    // --- Export (left pane trails only, 10×, camera-match, thinner lines) ---
+    function setExportProjection(g,refW,refH){
+      const fov=Math.PI/3, aspect=g.width/g.height;
+      g.perspective(fov,aspect,0.1,10000);
+      const leftEyeZ=(refH/2)/Math.tan(Math.PI/6);
+      g.camera(0,0,leftEyeZ, 0,0,0, 0,1,0);
     }
-
     function exportTrailsLeftHiRes(){
       const P=params(), SCALE=10;
       const W=Math.floor(width/2)*SCALE, H=height*SCALE;
-      const g=createGraphics(W, H, WEBGL);
+      const g=createGraphics(W,H,WEBGL);
       g.clear(); g.pixelDensity(1);
-      // Same projection/camera as left pane regardless of export size
-      setExportProjection(g, leftPG.width, leftPG.height);
-      if (g.resetMatrix) g.resetMatrix();
-      applyViewTransform(g, P.leftView, zoomLeft);
-
-      // Draw only trails
-      g.push(); g.noFill(); if (g.strokeWeight) g.strokeWeight(trailThickness * SCALE);
-      for (const b of bots){
-        if (!b.trail || b.trail.length<2) continue;
-        g.stroke(b.color[0], b.color[1], b.color[2], 255);
-        for (let i=1;i<b.trail.length;i++){
+      setExportProjection(g,leftPG.width,leftPG.height);
+      if(g.resetMatrix) g.resetMatrix();
+      applyViewTransform(g,P.leftView,zoomLeft);
+      g.push(); g.noFill();
+      if(g.strokeWeight) g.strokeWeight(trailThickness * SCALE / 3); // proportionally lighter @10×
+      for(const b of bots){
+        if(!b.trail || b.trail.length<2) continue;
+        g.stroke(b.color[0],b.color[1],b.color[2],255);
+        for(let i=1;i<b.trail.length;i++){
           const p0=b.trail[i-1], p1=b.trail[i];
-          g.line(p0.x, p0.y - CELL*0.3, p0.z, p1.x, p1.y - CELL*0.3, p1.z);
+          g.line(p0.x,p0.y - CELL*0.3,p0.z, p1.x,p1.y - CELL*0.3,p1.z);
         }
       }
       g.pop();
@@ -489,18 +581,30 @@
     // --- Tests (optional) ---
     function runTests(){
       const P=params(), lines=[];
-      let okB=true; if(P.bridgesOn){ for(const t of towers){ const incident=bridges.some(br=>br.a===t||br.b===t); if(!incident) okB=false; } }
-      lines.push(`A/bridges: ${P.bridgesOn ? (okB ? '✓ all towers connected' : '✗ some towers unconnected') : '— (disabled)'}`);
-      let okC=true; for(const t of towers){ if (t.gx<0||t.gx>=GRID||t.gz<0||t.gz>=GRID||t.maxH>LEVELS) okC=false; }
-      lines.push(`B/grid-bounds: ${okC ? '✓' : '✗ out-of-bounds tower found'}`);
-      if (navNodes.length>1){ const a=pickRandomNode(), b=pickRandomNode(a); const reachable=bfsReachable(a,b); lines.push(`C/path(${a}->${b}): ${reachable ? '✓ reachable' : '✗ no path'}`); }
-      const summary=`Tests ${ ((okB||!params().bridgesOn)&&okC) ? 'PASSED':'HAS ISSUES' }`;
-      testPanel().textContent = (SHOW_TESTS ? (summary+'\n'+lines.join('\n')) : '');
-      if (SHOW_TESTS){ console.clear(); console.group('Brutalist City — Tests'); console.log(summary); for(const ln of lines) console.log(ln); console.groupEnd(); }
+      let okB=true;
+      if(P.bridgesOn){
+        for(const t of towers){
+          const inc=bridges.some(br=>br.a===t||br.b===t);
+          if(!inc) okB=false;
+        }
+      }
+      lines.push(`A/bridges: ${P.bridgesOn?(okB?'✓ all towers connected':'✗ some towers unconnected'):'— (disabled)'}`);
+      let okC=true;
+      for(const t of towers){ if(t.gx<0||t.gx>=GRID||t.gz<0||t.gz>=GRID||t.maxH>LEVELS) okC=false; }
+      lines.push(`B/grid-bounds: ${okC?'✓':'✗ out-of-bounds tower found'}`);
+      if(navNodes.length>1){
+        const a=pickRandomNode(), b=pickRandomNode(a);
+        const reachable=bfsReachable(a,b);
+        lines.push(`C/path(${a}->${b}): ${reachable?'✓ reachable':'✗ no path'}`);
+      }
+      const summary=`Tests ${((okB||!params().bridgesOn)&&okC)?'PASSED':'HAS ISSUES'}`;
+      testPanel().textContent=(SHOW_TESTS?(summary+'\n'+lines.join('\n')):'');
+      if(SHOW_TESTS){ console.clear(); console.group('Brutalist City — Tests'); console.log(summary); for(const ln of lines) console.log(ln); console.groupEnd(); }
     }
     function bfsReachable(src,dst){ const seen=new Set([src]); const q=[src]; while(q.length){ const u=q.shift(); if(u===dst) return true; for(const v of navAdj[u]) if(!seen.has(v)){ seen.add(v); q.push(v);} } return false; }
   </script>
 </body>
 </html>
+
 
 
