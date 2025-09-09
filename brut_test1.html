@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Asymmetric Modernism City — Non-module build</title>
+  <title>Asymmetric Modernism City — Final Global Version</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     html, body { margin:0; height:100%; background:#0a0a0a; color:#eaeaea; font-family:system-ui, sans-serif; }
@@ -35,17 +35,21 @@
 </div>
 <canvas id="canvas"></canvas>
 
-<!-- Global (non-module) Three.js + OrbitControls -->
-<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
-<script src="https://unpkg.com/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
+<!-- Load Three.js and OrbitControls from a version that attaches to THREE -->
+<script src="https://unpkg.com/three@0.138.0/build/three.min.js"></script>
+<script src="https://unpkg.com/three@0.138.0/examples/js/controls/OrbitControls.js"></script>
 
 <script>
-/* ----------------------- seeded randomness + tiny noise ----------------------- */
+/* --------------------------------------------------------------------------
+   UTILITIES: seeded RNG + tiny noise
+-------------------------------------------------------------------------- */
 function mulberry32(a){return function(){let t=a+=0x6D2B79F5;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return((t^(t>>>14))>>>0)/4294967296;}}
 function strToSeed(str){let h=2166136261>>>0;for(let i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
 function valueNoise2D(x,y,rand2){const xi=Math.floor(x),yi=Math.floor(y);function h(sx,sy){const key=(xi+sx)*374761393+(yi+sy)*668265263;const r=mulberry32((key^rand2())>>>0)();return r;}const xf=x-xi,yf=y-yi;const v00=h(0,0),v10=h(1,0),v01=h(0,1),v11=h(1,1);const u=xf*xf*(3-2*xf),v=yf*yf*(3-2*yf);const a=v00*(1-u)+v10*u,b=v01*(1-u)+v11*u;return a*(1-v)+b*v;}
 
-/* ----------------------- scene basics ----------------------- */
+/* --------------------------------------------------------------------------
+   SCENE BASICS
+-------------------------------------------------------------------------- */
 const canvas = document.getElementById('canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:false });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -66,7 +70,9 @@ dir.position.set(120, 200, 80);
 dir.castShadow = true;
 scene.add(dir);
 
-/* ----------------------- city params (manifesto encoded) ----------------------- */
+/* --------------------------------------------------------------------------
+   CITY PARAMETERS (manifesto encoded)
+-------------------------------------------------------------------------- */
 let rng, rand2;
 const params = {
   gridCount: 17,
@@ -81,18 +87,21 @@ const params = {
   prostheticDensity: 0.55,
   guidanceVisible: true
 };
-
-/* groups */
 let ground, cityGroup, guidanceGroup, settleAnim = true;
 
-/* ----------------------- generation ----------------------- */
+/* --------------------------------------------------------------------------
+   GENERATION
+-------------------------------------------------------------------------- */
 function clearScene(){
   [ground, cityGroup, guidanceGroup].forEach(g=>{
     if (!g) return;
     scene.remove(g);
     g.traverse?.(o=>{
       if (o.geometry) o.geometry.dispose();
-      if (o.material){ if (Array.isArray(o.material)) o.material.forEach(m=>m.dispose()); else o.material.dispose(); }
+      if (o.material){
+        if (Array.isArray(o.material)) o.material.forEach(m=>m.dispose());
+        else o.material.dispose();
+      }
     });
   });
   ground = new THREE.Group();
@@ -265,8 +274,10 @@ function generate(seedStr="asym-001"){
     }
   });
 
+  // 4) Build ramps
   rampsToBuild.forEach(r=> buildCareRamp(r.a, r.b, r.restEvery, matRail, matGuide));
 
+  // 5) Bridges between roofs
   for (let i=0;i<entrances.length*0.4;i++){
     const aIdx = Math.floor(rng()*entrances.length);
     const bIdx = Math.floor(rng()*entrances.length);
@@ -350,14 +361,16 @@ function buildCareRamp(a,b,restEvery,mat,guideMat,isBridge=false){
   }
 }
 
-/* ----------------------- animation loop ----------------------- */
+/* --------------------------------------------------------------------------
+   ANIMATION
+-------------------------------------------------------------------------- */
 const clock = new THREE.Clock();
 function animate(){
   requestAnimationFrame(animate);
   const t = clock.getElapsedTime();
   controls.update();
   if (settleAnim){
-    cityGroup.traverse(o=>{
+    cityGroup?.traverse(o=>{
       if (o.isMesh && o.geometry && o.geometry.parameters && o.geometry.parameters.width){
         o.rotation.z = (Math.sin((o.id*13.37 + t*0.3)))*0.003;
       }
@@ -367,23 +380,19 @@ function animate(){
 }
 animate();
 
-/* ----------------------- interactions ----------------------- */
+/* --------------------------------------------------------------------------
+   INTERACTIONS
+-------------------------------------------------------------------------- */
 function regen(){
-  const seed = document.getElementById('seedInput').value.trim() || `asym-${Math.floor(Math.random()*9999)}`;
+  const seed=document.getElementById('seedInput').value.trim()||`asym-${Math.floor(Math.random()*9999)}`;
   generate(seed);
 }
-document.getElementById('regenBtn').addEventListener('click', regen);
-window.addEventListener('resize', ()=>{
-  camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
-window.addEventListener('keydown', (e)=>{
-  if (e.key==='r'||e.key==='R') regen();
-  if (e.key==='p'||e.key==='P') settleAnim = !settleAnim;
-  if (e.key==='g'||e.key==='G'){
-    params.guidanceVisible = !params.guidanceVisible;
-    guidanceGroup.visible = params.guidanceVisible;
-  }
+document.getElementById('regenBtn').addEventListener('click',regen);
+window.addEventListener('resize',()=>{ camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth,window.innerHeight); });
+window.addEventListener('keydown',e=>{
+  if(e.key==='r'||e.key==='R') regen();
+  if(e.key==='p'||e.key==='P') settleAnim=!settleAnim;
+  if(e.key==='g'||e.key==='G'){ params.guidanceVisible=!params.guidanceVisible; guidanceGroup.visible=params.guidanceVisible; }
 });
 
 // initial
