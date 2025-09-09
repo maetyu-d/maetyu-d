@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Modular 6000×6000 World (6×6×3 cube module)</title>
+  <style>
+    :root {
+      --bg: #0e0f11;
+      --fg: #e6e6e6;
+      --panel: #17191d;
+      --muted: #9aa2ad;
+      --accent: #6ad2a0;
+    }
+    html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+    #wrap { position: relative; height: 100%; }
+
+    /* Floating control panel (toggle with H) */
+    #panel {
+      position: absolute; top: 12px; left: 12px; width: 320px; max-height: calc(100% - 24px);
+      background: var(--panel); border: 1px solid #23262b; border-radius: 12px; padding: 16px;
+      overflow-y: auto; z-index: 10; box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+      transition: transform 160ms ease-out, opacity 160ms ease-out;
+    }
+    #panel.hidden { transform: translateX(-110%); opacity: 0; pointer-events: none; }
+    #panel h1 { font-size: 18px; margin: 0 0 10px; }
+    #panel .sub { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+    #panel .tiny { font-size: 11px; color: var(--muted); }
+    #panel .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    #panel button { background: var(--accent); color: #0b0c0d; border: 0; border-radius: 10px; padding: 8px 10px; font-weight: 700; cursor: pointer; margin-top: 8px; }
+
+    /* Split view */
+    #viewport { position: absolute; inset: 0; }
+    #split { position: absolute; inset: 0; display: grid; grid-template-columns: 1fr 6px 1fr; }
+    #leftPane, #rightPane { position: relative; overflow: hidden; }
+    #divider { background: #22272e; cursor: col-resize; box-shadow: inset 0 0 0 1px #2f3540; }
+    #divider::after { content: ''; position: absolute; top: 50%; left: 50%; width: 2px; height: 40px; transform: translate(-50%, -50%); background: #3a414d; border-radius: 2px; }
+    .paneCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .paneHud { position: absolute; left: 8px; bottom: 8px; background: rgba(0,0,0,0.5); padding: 6px 8px; border-radius: 8px; font-size: 11px; }
+    .paneToolbar { position: absolute; right: 8px; top: 8px; display: flex; gap: 6px; background: rgba(0,0,0,0.45); padding: 6px; border-radius: 8px; align-items: center; }
+    .paneToolbar button { background: #20242b; border: 1px solid #363c47; color: var(--fg); border-radius: 8px; padding: 4px 8px; font-size: 12px; cursor: pointer; }
+    .paneToolbar button.active { background: var(--accent); color: #0b0c0d; border-color: transparent; }
+
+    /* Iso mini controls */
+    .isoControls { display: none; gap: 4px; align-items: center; margin-left: 8px; }
+    .isoControls .group { display: inline-flex; gap: 4px; }
+    .isoControls .sep { width: 1px; height: 16px; background: rgba(255,255,255,0.12); margin: 0 2px; display: inline-block; }
+    .isoControls button { padding: 2px 6px; font-size: 11px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <aside id="panel">
+      <h1>6000×6000 Modular World</h1>
+      <div class="sub">World built from modules of <b>6×6×3 cubes</b> (each cube is <b>100×100×100 px</b>). Modules can rotate (0/90/180/270°), stack into towers, and connect by skybridges. Left pane: top-down/side-on. Right pane: zoomed top-down/isometric.</div>
+      <p class="tiny">Controls: drag to pan, scroll to zoom, double-click to center. Keys: <span class="mono">H</span> toggle panel, <span class="mono">R</span> regenerate.</p>
+      <button id="regenBtn">Regenerate</button>
+      <hr style="border-color:#23262b; opacity:.5; margin:14px 0;">
+      <div id="botsUI">
+        <label style="display:block; margin-bottom:6px;"><input type="checkbox" id="randomGoals" checked> Random Goals</label>
+        <div style="margin-bottom:8px;">
+          <label for="greenThreshold">Green bot accessibility ≥ <span id="threshLabel">0.50</span></label>
+          <input type="range" id="greenThreshold" min="0" max="1" step="0.05" value="0.5" style="width:100%;">
+        </div>
+        <button id="newGoalBtn">New Goal Now</button>
+      </div>
+    </aside>
+
+    <main id="viewport">
+      <div id="split">
+        <section id="leftPane">
+          <canvas id="leftCanvas" class="paneCanvas"></canvas>
+          <div class="paneToolbar">
+            <button id="leftTopDown" class="active">Top-down</button>
+            <button id="leftSide">Side-on</button>
+          </div>
+          <div id="hudLeft" class="paneHud"></div>
+        </section>
+        <div id="divider" title="Drag to resize"></div>
+        <section id="rightPane">
+          <canvas id="rightCanvas" class="paneCanvas"></canvas>
+          <div class="paneToolbar">
+            <button id="rightTopDown" class="active">Top-down (zoomed)</button>
+            <button id="rightIso">Isometric</button>
+            <div id="isoControls" class="isoControls" title="Isometric controls">
+              <span class="sep"></span>
+              <div class="group">
+                <button id="isoZoomOut" title="Zoom out">−</button>
+                <button id="isoZoomIn" title="Zoom in">+</button>
+              </div>
+              <div class="group">
+                <button id="isoPanLeft" title="Pan left">◀</button>
+                <button id="isoPanUp" title="Pan up">▲</button>
+                <button id="isoPanDown" title="Pan down">▼</button>
+                <button id="isoPanRight" title="Pan right">▶</button>
+              </div>
+              <div class="group">
+                <button id="isoWireBtn" class="active" title="Toggle wireframe">Wire</button>
+              </div>
+            </div>
+          </div>
+          <div id="hudRight" class="paneHud"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script>
+  // ===== Constants =====
+  const WORLD_PX = 6000;
+  const CUBE = 100;                // 100×100 px per cube top
+  const MODULE_SIDE = 6;           // 6×6 cubes footprint
+  const MODULE_LAYERS = 3;         // 3 layers per module
+  const MODULE_PX = MODULE_SIDE * CUBE; // 600 px per module
+  const GRID = WORLD_PX / CUBE;    // 60×60 cubes
+  const MODGRID = GRID / MODULE_SIDE; // 10×10 modules on base
+
+  // ===== RNG & helpers =====
+  function XorShift32(seed){ let x=(seed>>>0)||0xdeadbeef; return function(){ x^=x<<13; x>>>=0; x^=x>>>17; x>>>=0; x^=x<<5; x>>>=0; return (x>>>0)/4294967296; }; }
+  const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+
+  // Accessibility textures (per-cube), plus module-top cache for iso
+  const textureCache = new Map();
+  function cubeRng(seed, gx, gy, h){ const s=((seed>>>0) ^ (gx*73856093) ^ (gy*19349663) ^ (h*83492791))>>>0; return XorShift32(s); }
+  function scoreToColor(score){ const t=clamp(score/10,0,1); const hue=0+140*t; const light=22+40*t; const sat=70-15*t; return `hsl(${hue}, ${sat}%, ${light}%)`; }
+  function makeTexture(score, variant=0){ const key=score+"-"+variant; if(textureCache.has(key)) return textureCache.get(key); const off=document.createElement('canvas'); off.width=off.height=CUBE; const g=off.getContext('2d'); g.fillStyle=scoreToColor(score); g.fillRect(0,0,CUBE,CUBE); g.strokeStyle='rgba(0,0,0,0.25)'; g.lineWidth=1; for(let i=0;i<score+2;i++){ g.beginPath(); g.moveTo(Math.random()*CUBE, Math.random()*CUBE); g.lineTo(Math.random()*CUBE, Math.random()*CUBE); g.stroke(); } textureCache.set(key,off); return off; }
+
+  const moduleTopCache = new Map();
+  function moduleKey(seed,m){ return `${seed}:${m.mx},${m.my}:h${m.height}:r${m.rotation}`; }
+  function buildModuleTop(seed, m){ const key=moduleKey(seed,m); if(moduleTopCache.has(key)) return moduleTopCache.get(key); const off=document.createElement('canvas'); off.width=off.height=MODULE_PX; const g=off.getContext('2d'); const visibleLayerIndex = m.height*MODULE_LAYERS - 1; for(let iy=0; iy<MODULE_SIDE; iy++){ for(let ix=0; ix<MODULE_SIDE; ix++){ let rx=ix, ry=iy; if(m.rotation===90){ rx=MODULE_SIDE-1-iy; ry=ix; } else if(m.rotation===180){ rx=MODULE_SIDE-1-ix; ry=MODULE_SIDE-1-iy; } else if(m.rotation===270){ rx=iy; ry=MODULE_SIDE-1-ix; } const gx=m.mx*MODULE_SIDE+rx, gy=m.my*MODULE_SIDE+ry; const rng=cubeRng(seed,gx,gy,visibleLayerIndex); const score=Math.floor(rng()*11); const variant=Math.floor(rng()*4); const tex=makeTexture(score,variant); g.drawImage(tex, ix*CUBE, iy*CUBE); } } moduleTopCache.set(key, off); return off; }
+
+  // Cached ground-plane (z=0) texture built from per-cube accessibility
+  const groundPlaneCache = new Map();
+  function buildGroundPlane(seed){
+    var key = String(seed);
+    if(groundPlaneCache.has(key)) return groundPlaneCache.get(key);
+    var off = document.createElement('canvas');
+    off.width = WORLD_PX; off.height = WORLD_PX;
+    var g = off.getContext('2d');
+    for(var gy=0; gy<GRID; gy++){
+      for(var gx=0; gx<GRID; gx++){
+        var grng = cubeRng(seed, gx, gy, 0);
+        var score = Math.floor(grng()*11);
+        var variant = Math.floor(grng()*4);
+        var tex = makeTexture(score, variant);
+        g.drawImage(tex, gx*CUBE, gy*CUBE);
+      }
+    }
+    groundPlaneCache.set(key, off);
+    return off;
+  }
+
+  // ===== World generation =====
+  function generateWorld(params={}){
+    // NEW: tallChance adds rare 10–40 module towers from the base layer
+    const seed = params.seed;
+    const coverage = (params.coverage !== undefined) ? params.coverage : 0.8;
+    const stackProb = (params.stackProb !== undefined) ? params.stackProb : 0.35;
+    const towerChance = (params.towerChance !== undefined) ? params.towerChance : 0.6;
+    const maxTower = (params.maxTower !== undefined) ? params.maxTower : 6;
+    const tallChance = (params.tallChance !== undefined) ? params.tallChance : 0.10;
+    const tallMin = (params.tallMin !== undefined) ? params.tallMin : 10;
+    const tallMax = (params.tallMax !== undefined) ? params.tallMax : 40;
+    const finalSeed = (typeof seed !== 'undefined' && seed !== null) ? seed : ((Math.random()*Math.pow(2,32))>>>0);
+    const rand = XorShift32(finalSeed);
+
+    const filled = Array.from({length: MODGRID}, ()=>Array(MODGRID).fill(false));
+    const target = Math.ceil(MODGRID*MODGRID*Math.max(0.75, coverage));
+    let count=0; const order=[];
+    for(let y=0;y<MODGRID;y++) for(let x=0;x<MODGRID;x++) order.push({ x: x, y: y, r: rand() });
+    order.sort((a,b)=>a.r-b.r);
+    for(let i=0;i<order.length && count<target;i++){ const x = order[i].x; const y = order[i].y; filled[y][x]=true; count++; }
+
+    const modules=[];
+    for(let my=0; my<MODGRID; my++){
+      for(let mx=0; mx<MODGRID; mx++){
+        if(!filled[my][mx]) continue;
+        let height=1;
+
+        // 10% chance to become a tall tower: 10–40 modules
+        if(rand() < tallChance) {
+          height = tallMin + Math.floor(rand() * (tallMax - tallMin + 1));
+        } else {
+          // Normal tower formation (up to maxTower)
+          if(rand()<stackProb) height=2+Math.floor(rand()*2);       // 2–3
+          if(height>=2 && rand()<towerChance){
+            const extra=1+Math.floor(rand()*(maxTower-2));
+            height=Math.min(maxTower, height+extra);                // up to maxTower (default 6)
+          }
+        }
+
+        const rotation=[0,90,180,270][Math.floor(rand()*4)];
+        // Per-layer ramps: one random corner per layer, up to next layer
+        const totalLayers = height*MODULE_LAYERS;
+        const ramps=[];
+        if(totalLayers>1){
+          const corners = [[0,0],[5,0],[5,5],[0,5]]; // draw-space corners
+          for(let l=0;l<totalLayers-1;l++){
+            const c = corners[Math.floor(rand()*4)];
+            ramps.push({ z: l, gx: mx*MODULE_SIDE + c[0], gy: my*MODULE_SIDE + c[1] });
+          }
+        }
+        modules.push({ mx: mx, my: my, rotation: rotation, height: height, ramps: ramps });
+      }
+    }
+
+    const towers = modules.filter(m=>m.height>=2);
+    const centers = towers.map(m=>({ x: m.mx*MODULE_PX + MODULE_PX/2, y: m.my*MODULE_PX + MODULE_PX/2 }));
+    const bridges=[]; const used=new Set();
+    for(let i=0;i<towers.length;i++){
+      let best=-1, bestD=Infinity;
+      for(let j=0;j<towers.length;j++){
+        if(i===j) continue;
+        const dx=centers[i].x-centers[j].x, dy=centers[i].y-centers[j].y; const d=dx*dx+dy*dy;
+        if(d<bestD){ bestD=d; best=j; }
+      }
+      if(best>=0){ const key=[i,best].sort().join('-'); if(!used.has(key)){ used.add(key); bridges.push({ aIdx: i, bIdx: best }); } }
+    }
+    return { seed: finalSeed, modules: modules, towers: towers, bridges: bridges };
+  }
+
+  // ===== DOM & state =====
+  const leftCanvas = document.getElementById('leftCanvas');
+  const rightCanvas = document.getElementById('rightCanvas');
+  const leftHud = document.getElementById('hudLeft');
+  const rightHud = document.getElementById('hudRight');
+  const splitEl = document.getElementById('split');
+  const divider = document.getElementById('divider');
+  const panel = document.getElementById('panel');
+  const regenBtn = document.getElementById('regenBtn');
+
+  const leftTopBtn  = document.getElementById('leftTopDown');
+  const leftSideBtn = document.getElementById('leftSide');
+  const rightTopBtn = document.getElementById('rightTopDown');
+  const rightIsoBtn = document.getElementById('rightIso');
+
+  const isoControls = document.getElementById('isoControls');
+  const isoZoomIn = document.getElementById('isoZoomIn');
+  const isoZoomOut = document.getElementById('isoZoomOut');
+  const isoPanUp = document.getElementById('isoPanUp');
+  const isoPanDown = document.getElementById('isoPanDown');
+  const isoPanLeft = document.getElementById('isoPanLeft');
+  const isoPanRight = document.getElementById('isoPanRight');
+  const isoWireBtn = document.getElementById('isoWireBtn');
+
+  const leftCam  = { x: WORLD_PX/2, y: WORLD_PX/2, z: 0.15 };
+  const rightCam = { x: WORLD_PX/2, y: WORLD_PX/2, z: 0.6 };
+  const isoCam = { x: 0, y: 0, z: 1 };
+
+  let leftMode='top';
+  let rightMode='top';
+  let isoWireframe = true;
+
+  // ====== Bots & Goals state ======
+  const randomGoalsChk = document.getElementById('randomGoals');
+  const greenThresholdEl = document.getElementById('greenThreshold');
+  const threshLabel = document.getElementById('threshLabel');
+  const newGoalBtn = document.getElementById('newGoalBtn');
+  let randomGoals = true;
+  let greenThreshold = 0.5; /* 0..1 */
+
+  /* Accessibility grid (ground-plane, z=0) for UI/thresh preview (kept) */
+  let accGrid = null; /* 60x60 values in 0..1 */
+
+  /* Trails: top-down uses a cached bitmap; iso uses projected segments */
+  const trailCanvas = document.createElement('canvas');
+  trailCanvas.width = WORLD_PX; trailCanvas.height = WORLD_PX;
+  const trailCtx = trailCanvas.getContext('2d');
+  trailCtx.lineCap = 'round'; trailCtx.lineJoin = 'round';
+  const trailSegs = []; /* {x1,y1,x2,y2,color,alpha,width} */
+
+  /* Bots */
+  const bots = [];
+  let goal = null; /* {gx, gy, gz} grid cells */
+  const wins = { orange: 0, green: 0 };
+  let pausedUntil = 0;
+  let pendingNewGoal = false;
+  let firstArrived = null;
+  let world = generateWorld({ coverage: 0.8, stackProb: 0.35, towerChance: 0.6, maxTower: 6 /* tallChance defaults to 0.10 */ });
+
+  // ===== Drawing =====
+  function drawTopDown(ctx, cam, hud){
+    ctx.save(); ctx.clearRect(0,0,ctx.canvas.width, ctx.canvas.height);
+    ctx.translate(ctx.canvas.width/2, ctx.canvas.height/2);
+    ctx.scale(cam.z, cam.z); ctx.translate(-cam.x, -cam.y);
+    ctx.fillStyle = '#0a0b0d'; ctx.fillRect(0,0,WORLD_PX,WORLD_PX);
+    // Ground-plane texture pass at z=0
+    var gplane = buildGroundPlane(world.seed);
+    ctx.drawImage(gplane, 0, 0);
+    for (const m of world.modules){
+      const px=m.mx*MODULE_PX, py=m.my*MODULE_PX;
+      const visibleLayerIndex = m.height*MODULE_LAYERS - 1;
+      for(let iy=0; iy<MODULE_SIDE; iy++){
+        for(let ix=0; ix<MODULE_SIDE; ix++){
+          let rx=ix, ry=iy;
+          if(m.rotation===90){ rx=MODULE_SIDE-1-iy; ry=ix; }
+          else if(m.rotation===180){ rx=MODULE_SIDE-1-ix; ry=MODULE_SIDE-1-iy; }
+          else if(m.rotation===270){ rx=iy; ry=MODULE_SIDE-1-ix; }
+          const gx=m.mx*MODULE_SIDE+rx, gy=m.my*MODULE_SIDE+ry;
+          const rng=cubeRng(world.seed,gx,gy,visibleLayerIndex);
+          const score=Math.floor(rng()*11);
+          const variant=Math.floor(rng()*4);
+          const tex=makeTexture(score,variant);
+          ctx.drawImage(tex, px+ix*CUBE, py+iy*CUBE);
+        }
+      }
+      ctx.strokeStyle='rgba(255,255,255,0.08)'; ctx.lineWidth=2; ctx.strokeRect(px,py,MODULE_PX,MODULE_PX);
+    }
+    if(world.towers && world.towers.length>1){
+      ctx.globalAlpha=0.9; ctx.strokeStyle='rgba(255,255,255,0.35)'; ctx.lineWidth=12; ctx.lineCap='round';
+      for (const br of world.bridges){ const a=world.towers[br.aIdx], b=world.towers[br.bIdx]; if(!a||!b) continue; const ax=a.mx*MODULE_PX+MODULE_PX/2, ay=a.my*MODULE_PX+MODULE_PX/2, bx=b.mx*MODULE_PX+MODULE_PX/2, by=b.my*MODULE_PX+MODULE_PX/2; ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(bx,by); ctx.stroke(); }
+    }
+
+    /* --- Trails & bots overlay (top-down) --- */
+    ctx.drawImage(trailCanvas, 0, 0);
+    if(goal){
+      const gx = goal.gx*CUBE + CUBE/2, gy = goal.gy*CUBE + CUBE/2;
+      ctx.save(); ctx.strokeStyle = 'white'; ctx.lineWidth = 3; ctx.globalAlpha = 0.9;
+      ctx.beginPath(); ctx.arc(gx, gy, 14, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(gx-10, gy); ctx.lineTo(gx+10, gy); ctx.moveTo(gx, gy-10); ctx.lineTo(gx, gy+10); ctx.stroke(); ctx.restore();
+    }
+    for(let i=0;i<bots.length;i++){
+      const b=bots[i]; ctx.save(); ctx.fillStyle=b.color; ctx.strokeStyle='#0b0c0d'; ctx.lineWidth=3; ctx.globalAlpha=0.95;
+      ctx.beginPath(); ctx.arc(b.x, b.y, 9, 0, Math.PI*2); ctx.fill(); ctx.stroke(); ctx.restore();
+    }
+
+    ctx.restore();
+    const globalMax = Math.max(1, ...world.modules.map(m=>m.height));
+    if(hud) hud.textContent = `Top-down · Modules ${world.modules.length} · Towers ${(world.towers ? world.towers.length : 0)} · Tallest ${globalMax} · Zoom ${cam.z.toFixed(2)}×` + (goal?` · Goal z ${goal.gz}`:'');
+  }
+
+  function drawSide(ctx, hud){
+    ctx.save(); ctx.clearRect(0,0,ctx.canvas.width, ctx.canvas.height);
+    const w=ctx.canvas.width, h=ctx.canvas.height; ctx.fillStyle='#0a0b0d'; ctx.fillRect(0,0,w,h);
+    const cols = MODGRID; const barW = w/cols; ctx.fillStyle='#6ad2a0';
+    const globalMax = Math.max(1, ...world.modules.map(m=>m.height));
+    for(let x=0;x<MODGRID;x++){
+      let maxH=0; for(let y=0;y<MODGRID;y++){ const m = world.modules.find(mm=>mm.mx===x && mm.my===y); if(m) maxH = Math.max(maxH, m.height); }
+      const bh = (maxH / globalMax) * (h*0.9);
+      ctx.fillRect(x*barW+2, h-bh, barW-4, bh);
+    }
+    if(hud) hud.textContent = `Side-on · Max height ${globalMax}`;
+    ctx.restore();
+  }
+
+  function drawIso(ctx, hud){
+    ctx.save(); ctx.clearRect(0,0,ctx.canvas.width, ctx.canvas.height);
+    const w=ctx.canvas.width, h=ctx.canvas.height;
+    ctx.translate(w/2 + isoCam.x, h*0.6 + isoCam.y);
+    const base = 0.6; const tile = MODULE_PX*0.5*base*isoCam.z;
+    const iso = (ix,iy)=>[(ix-iy)*tile, (ix+iy)*tile*0.5];
+
+    for(let my=0; my<MODGRID; my++){
+      for(let mx=0; mx<MODGRID; mx++){
+        const m = world.modules.find(mm=>mm.mx===mx && mm.my===my); if(!m) continue;
+        const [sx,sy] = iso(mx,my);
+        const hpx = (m.height*18)*isoCam.z; // 18px per module (≈6px per cube-layer)
+        const ty = sy - hpx;               // top y is height above ground
+        // textured top
+        if(!isoWireframe){
+          const tex = buildModuleTop(world.seed, m);
+          ctx.save();
+          const a =  tile / MODULE_PX;          // x = a*u + c*v + e
+          const b =  (tile*0.5) / MODULE_PX;    // y = b*u + d*v + f
+          const c = -tile / MODULE_PX;
+          const d =  (tile*0.5) / MODULE_PX;
+          const e =  sx;
+          const f =  ty;
+          ctx.transform(a, b, c, d, e, f);
+          ctx.drawImage(tex, 0, 0, MODULE_PX, MODULE_PX);
+          ctx.restore();
+        }
+        // outline + sides
+        ctx.beginPath(); ctx.moveTo(sx, ty - tile*0.5); ctx.lineTo(sx + tile, ty); ctx.lineTo(sx, ty + tile*0.5); ctx.lineTo(sx - tile, ty); ctx.closePath();
+        ctx.strokeStyle = isoWireframe ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.12)';
+        ctx.lineWidth = isoWireframe ? 1.2 : 1.0; ctx.stroke();
+
+        // right face
+        ctx.beginPath(); ctx.moveTo(sx, ty + tile*0.5); ctx.lineTo(sx + tile, ty); ctx.lineTo(sx + tile, ty + hpx); ctx.lineTo(sx, ty + tile*0.5 + hpx); ctx.closePath();
+        if(!isoWireframe){ ctx.fillStyle='hsl(210,25%,22%)'; ctx.fill(); } ctx.stroke();
+        // left face
+        ctx.beginPath(); ctx.moveTo(sx, ty + tile*0.5); ctx.lineTo(sx - tile, ty); ctx.lineTo(sx - tile, ty + hpx); ctx.lineTo(sx, ty + tile*0.5 + hpx); ctx.closePath();
+        if(!isoWireframe){ ctx.fillStyle='hsl(210,20%,18%)'; ctx.fill(); } ctx.stroke();
+      }
+    }
+    const globalMax = Math.max(1, ...world.modules.map(m=>m.height));
+    /* --- Iso overlay: trails, goal, bots --- */
+    function isoFromWorld(u,v){ const ix = u / MODULE_PX; const iy = v / MODULE_PX; const X = (ix - iy) * tile; const Y = (ix + iy) * tile * 0.5; return [X, Y]; }
+    function isoFromWorldZ(u,v,z){ const p=isoFromWorld(u,v); p[1] -= z*6*isoCam.z; return p; }
+
+    // trails (projected on ground plane for performance)
+    for(let si=0; si<trailSegs.length; si++){
+      const s=trailSegs[si]; const p1=isoFromWorld(s.x1,s.y1), p2=isoFromWorld(s.x2,s.y2);
+      ctx.save(); ctx.globalAlpha = (s.alpha!=null?s.alpha:0.6); ctx.strokeStyle=s.color; ctx.lineWidth = (s.width!=null?s.width:3);
+      ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.stroke(); ctx.restore();
+    }
+    // goal
+    if(goal){
+      const gu = goal.gx*CUBE + CUBE/2, gv = goal.gy*CUBE + CUBE/2;
+      const gp = isoFromWorldZ(gu, gv, goal.gz);
+      ctx.save(); ctx.strokeStyle='white'; ctx.lineWidth=2; ctx.globalAlpha=0.9; ctx.beginPath(); ctx.arc(gp[0], gp[1], 10, 0, Math.PI*2); ctx.stroke(); ctx.restore();
+    }
+    // bots
+    for(let bi=0; bi<bots.length; bi++){
+      const b=bots[bi]; const bp=isoFromWorldZ(b.x, b.y, b.gz);
+      ctx.save(); ctx.fillStyle=b.color; ctx.strokeStyle='#0b0c0d'; ctx.lineWidth=2; ctx.globalAlpha=0.95;
+      ctx.beginPath(); ctx.arc(bp[0], bp[1], 6, 0, Math.PI*2); ctx.fill(); ctx.stroke(); ctx.restore();
+    }
+
+    if(hud) hud.textContent = `Isometric ${isoWireframe ? '(wireframe)' : ''} · Tallest ${globalMax} · Zoom ${isoCam.z.toFixed(2)}× · Modules ${world.modules.length}` + (goal?` · Goal z ${goal.gz}`:'');
+    ctx.restore();
+  }
+
+  function drawAll(){
+    const lctx=leftCanvas.getContext('2d');
+    const rctx=rightCanvas.getContext('2d');
+    if(leftMode==='top') drawTopDown(lctx,leftCam,leftHud); else drawSide(lctx,leftHud);
+    if(rightMode==='top') drawTopDown(rctx,rightCam,rightHud); else drawIso(rctx,rightHud);
+  }
+
+  // ===== Pathfinding & Bots =====
+  function buildAccGrid(seed){
+    const grid = Array.from({length: GRID}, ()=> Array(GRID).fill(0));
+    for(let y=0;y<GRID;y++){
+      for(let x=0;x<GRID;x++){
+        const r = cubeRng(seed, x, y, 0);
+        const score = Math.floor(r()*11);
+        grid[y][x] = score/10;
+      }
+    }
+    return grid;
+  }
+
+  // 3D nav model (walkable floors + ramps)
+  let occ3D = null;     // Set of 'x|y|z'
+  let rampUpSet = null; // Set of 'x|y|z'
+  let zMax = 1;
+  function key3(x,y,z){ return x+'|'+y+'|'+z; }
+  function rebuildNav3D(){
+    occ3D = new Set(); rampUpSet = new Set(); zMax = 1;
+    // Entire ground plane walkable
+    for(let y=0;y<GRID;y++) for(let x=0;x<GRID;x++) occ3D.add(key3(x,y,0));
+    for(const m of world.modules){
+      const H = m.height*MODULE_LAYERS; zMax = Math.max(zMax, H);
+      const baseX = m.mx*MODULE_SIDE, baseY = m.my*MODULE_SIDE;
+      for(let z=0; z<H; z++){
+        for(let ly=0; ly<MODULE_SIDE; ly++){
+          for(let lx=0; lx<MODULE_SIDE; lx++){
+            occ3D.add(key3(baseX+lx, baseY+ly, z));
+          }
+        }
+      }
+      const ramps = m.ramps || [];
+      for(let i=0;i<ramps.length;i++){
+        rampUpSet.add(key3(ramps[i].gx, ramps[i].gy, ramps[i].z));
+      }
+    }
+  }
+  function hasFloor(x,y,z){ return occ3D && occ3D.has(key3(x,y,z)); }
+  function hasRampUp(x,y,z){ return rampUpSet && rampUpSet.has(key3(x,y,z)); }
+  function accAt(x,y,z){ const r=cubeRng(world.seed,x,y,z); const score=Math.floor(r()*11); return score/10; }
+
+  function idx(x,y){ return y*GRID + x; }
+  function reconstruct(cameFrom, end){ const path=[]; let cur=end; while(cameFrom[cur]!=null){ const x=cur%GRID, y=Math.floor(cur/GRID); path.push({x:x,y:y}); cur=cameFrom[cur]; } path.reverse(); return path; }
+
+  // Keep 2D A* (unused now, but left intact)
+  function aStarRoute(start, goalCell, passFn, stepCostFn){
+    const sx=start.x, sy=start.y, gx=goalCell.x, gy=goalCell.y;
+    const open=[]; const inOpen=new Set();
+    const gScore=new Map(); const fScore=new Map(); const cameFrom={};
+    const sidx=idx(sx,sy), gidx=idx(gx,gy);
+    function h(x,y){ return Math.abs(x-gx)+Math.abs(y-gy); }
+    gScore.set(sidx,0); fScore.set(sidx,h(sx,sy)); open.push(sidx); inOpen.add(sidx);
+    const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+    while(open.length){
+      let besti=0, best=open[0], bestF=(fScore.has(open[0]) ? fScore.get(open[0]) : Infinity);
+      for(let i=1;i<open.length;i++){ const id=open[i]; const f = (fScore.has(id) ? fScore.get(id) : Infinity); if(f<bestF){ bestF=f; best=id; besti=i; } }
+      const current=best; open.splice(besti,1); inOpen.delete(current);
+      if(current===gidx) return reconstruct(cameFrom,current);
+      const cx=current%GRID, cy=Math.floor(current/GRID);
+      for(let d=0; d<dirs.length; d++){
+        const nx=cx+dirs[d][0], ny=cy+dirs[d][1];
+        if(nx<0||ny<0||nx>=GRID||ny>=GRID) continue;
+        if(!passFn(nx,ny)) continue;
+        const nid=idx(nx,ny);
+        const gcur = (gScore.has(current) ? gScore.get(current) : Infinity);
+        const tentative = gcur + stepCostFn(nx,ny);
+        const gold = (gScore.has(nid) ? gScore.get(nid) : Infinity);
+        if(tentative < gold){ cameFrom[nid]=current; gScore.set(nid,tentative); fScore.set(nid, tentative + h(nx,ny)); if(!inOpen.has(nid)){ open.push(nid); inOpen.add(nid); } }
+      }
+    }
+    return null;
+  }
+
+  // 3D A* across floors and ramps
+  function aStar3D(start, goal, passFn, stepCostFn){
+    const sid = key3(start.x,start.y,start.z);
+    const gid = key3(goal.x,goal.y,goal.z);
+    const open=[sid]; const inOpen=new Set([sid]);
+    const gScore=new Map(); const fScore=new Map(); const cameFrom={};
+    function h(x,y,z){ return Math.abs(x-goal.x)+Math.abs(y-goal.y)+Math.abs(z-goal.z); }
+    gScore.set(sid,0); fScore.set(sid,h(start.x,start.y,start.z));
+    while(open.length){
+      let besti=0, curId=open[0], bestF=(fScore.has(open[0]) ? fScore.get(open[0]) : Infinity);
+      for(let i=1;i<open.length;i++){ const id=open[i]; const f=(fScore.has(id)?fScore.get(id):Infinity); if(f<bestF){ bestF=f; curId=id; besti=i; } }
+      open.splice(besti,1); inOpen.delete(curId);
+      if(curId===gid){
+        const path=[]; let c=gid;
+        while(cameFrom[c]!=null){ const p=c.split('|'); path.push({x:parseInt(p[0],10), y:parseInt(p[1],10), z:parseInt(p[2],10)}); c=cameFrom[c]; }
+        path.reverse(); return path;
+      }
+      const p=curId.split('|'); const cx=parseInt(p[0],10), cy=parseInt(p[1],10), cz=parseInt(p[2],10);
+      const neigh=[]; const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+      for(let d=0; d<dirs.length; d++){ const nx=cx+dirs[d][0], ny=cy+dirs[d][1], nz=cz; if(nx<0||ny<0||nx>=GRID||ny>=GRID) continue; if(hasFloor(nx,ny,nz)) neigh.push({x:nx,y:ny,z:nz}); }
+      if(hasRampUp(cx,cy,cz) && hasFloor(cx,cy,cz+1)) neigh.push({x:cx,y:cy,z:cz+1});
+      if(cz>0 && hasRampUp(cx,cy,cz-1) && hasFloor(cx,cy,cz-1)) neigh.push({x:cx,y:cy,z:cz-1});
+      for(let i=0;i<neigh.length;i++){
+        const n=neigh[i]; if(!passFn(n.x,n.y,n.z)) continue; const nid=key3(n.x,n.y,n.z);
+        const gcur = (gScore.has(curId)?gScore.get(curId):Infinity);
+        const step = stepCostFn(cx,cy,cz,n.x,n.y,n.z);
+        const tentative=gcur+step;
+        const goldG=(gScore.has(nid)?gScore.get(nid):Infinity);
+        if(tentative < goldG){ cameFrom[nid]=curId; gScore.set(nid,tentative); fScore.set(nid, tentative + h(n.x,n.y,n.z)); if(!inOpen.has(nid)){ open.push(nid); inOpen.add(nid); } }
+      }
+    }
+    return null;
+  }
+
+  function cellCenter(gx,gy){ return { x: gx*CUBE + CUBE/2, y: gy*CUBE + CUBE/2 }; }
+  function randomCell(){ return { gx: Math.floor(Math.random()*GRID), gy: Math.floor(Math.random()*GRID) }; }
+  function makeBot(name,color){ return { name: name, color: color, gx: 0, gy: 0, gz: 0, x: 0, y: 0, path: [], speed: 200 }; }
+
+  function planForOrange(bot, goalCell){
+    const start={x:bot.gx,y:bot.gy,z:bot.gz}; const end={x:goalCell.gx,y:goalCell.gy,z:goalCell.gz};
+    const pass=function(x,y,z){ return hasFloor(x,y,z); };
+    const step=function(cx,cy,cz,nx,ny,nz){ return 1 + (nz!==cz ? 0.2 : 0); };
+    const path = aStar3D(start,end,pass,step);
+    bot.path = (path||[]).map(p=>{ const c=cellCenter(p.x,p.y); return { gx:p.x, gy:p.y, gz:p.z, x:c.x, y:c.y }; });
+  }
+
+  function planForGreen(bot, goalCell){
+    const start={x:bot.gx,y:bot.gy,z:bot.gz}; const end={x:goalCell.gx,y:goalCell.gy,z:goalCell.gz};
+    const passStrict=(x,y,z)=> hasFloor(x,y,z) && accAt(x,y,z) >= greenThreshold;
+    const step1=(cx,cy,cz,nx,ny,nz)=> 1 + (nz!==cz ? 0.3 : 0);
+    let path = aStar3D(start,end,passStrict,step1);
+    if(!path){
+      const passAll=(x,y,z)=> hasFloor(x,y,z);
+      const step=(cx,cy,cz,nx,ny,nz)=> { const a=accAt(nx,ny,nz); const penalty = Math.max(0, greenThreshold - a)*4; const vpen = (nz!==cz ? 0.3 : 0); return 1 + penalty + vpen; };
+      path = aStar3D(start,end,passAll,step);
+    }
+    bot.path = (path||[]).map(p=>{ const c=cellCenter(p.x,p.y); return { gx:p.x, gy:p.y, gz:p.z, x:c.x, y:c.y }; });
+  }
+
+  function setGoalRandom(){
+    // find a random reachable 3D goal (ensure floors exist and both bots can reach)
+    let attempts=0; let g=null; let pO=null, pG=null;
+    do{
+      attempts++;
+      const gz = Math.floor(Math.random()*Math.max(1,zMax));
+      const ggx = Math.floor(Math.random()*GRID); const ggy = Math.floor(Math.random()*GRID);
+      if(!hasFloor(ggx,ggy,gz)) continue;
+      if((bots[0] && bots[0].gx===ggx && bots[0].gy===ggy && bots[0].gz===gz) || (bots[1] && bots[1].gx===ggx && bots[1].gy===ggy && bots[1].gz===gz)) continue;
+      g = { gx: ggx, gy: ggy, gz: gz };
+      const startO={x:bots[0].gx,y:bots[0].gy,z:bots[0].gz};
+      const startG={x:bots[1].gx,y:bots[1].gy,z:bots[1].gz};
+      pO = aStar3D(startO, g, (x,y,z)=>hasFloor(x,y,z), (cx,cy,cz,nx,ny,nz)=>1+(nz!==cz?0.2:0));
+      if(!pO) continue;
+      pG = aStar3D(startG, g, (x,y,z)=>hasFloor(x,y,z) && accAt(x,y,z)>=Math.min(greenThreshold,1), (cx,cy,cz,nx,ny,nz)=>1+Math.max(0,greenThreshold-accAt(nx,ny,nz))*4+(nz!==cz?0.3:0));
+    } while((!g || !pO || !pG) && attempts<200);
+    if(!g){ g = { gx: Math.floor(Math.random()*GRID), gy: Math.floor(Math.random()*GRID), gz: 0 }; }
+    goal = g; pendingNewGoal=false; planForOrange(bots[0], goal); planForGreen(bots[1], goal);
+  }
+
+  function resetBots(){
+    trailCtx.clearRect(0,0,trailCanvas.width, trailCanvas.height); trailSegs.length=0; wins.orange=0; wins.green=0; bots.length=0;
+    const o=makeBot('orange','#ff9f2e'); const g=makeBot('green','#69f0a2');
+    const s1=randomCell(); const s2=randomCell();
+    o.gx=s1.gx; o.gy=s1.gy; o.gz=0; const c1=cellCenter(o.gx,o.gy); o.x=c1.x; o.y=c1.y;
+    g.gx=s2.gx; g.gy=s2.gy; g.gz=0; const c2=cellCenter(g.gx,g.gy); g.x=c2.x; g.y=c2.y;
+    rightCam.x = g.x; rightCam.y = g.y;
+    bots.push(o); bots.push(g);
+    setGoalRandom();
+  }
+
+  function moveBot(bot, dt){
+    if(!bot.path || bot.path.length===0) return;
+    const target = bot.path[0];
+    const dx = target.x - bot.x; const dy = target.y - bot.y;
+    const dist = Math.hypot(dx,dy);
+    const step = bot.speed * dt;
+    if(dist < 0.001){
+      // vertical step (same x,y, different z)
+      trailCtx.fillStyle = bot.color; trailCtx.globalAlpha = 0.8; trailCtx.beginPath(); trailCtx.arc(bot.x, bot.y, 2.5, 0, Math.PI*2); trailCtx.fill();
+      bot.gz = target.gz; bot.gx = target.gx; bot.gy = target.gy; bot.path.shift();
+      return;
+    }
+    if(dist <= step){
+      trailCtx.strokeStyle = bot.color; trailCtx.lineWidth = 6; trailCtx.globalAlpha = 0.85;
+      trailCtx.beginPath(); trailCtx.moveTo(bot.x, bot.y); trailCtx.lineTo(target.x, target.y); trailCtx.stroke();
+      trailSegs.push({x1:bot.x,y1:bot.y,x2:target.x,y2:target.y,color:bot.color,alpha:0.85,width:4});
+      bot.x = target.x; bot.y = target.y; bot.gx = target.gx; bot.gy = target.gy; bot.gz = target.gz; bot.path.shift();
+    } else {
+      const nx = bot.x + (dx/dist)*step; const ny = bot.y + (dy/dist)*step;
+      trailCtx.strokeStyle = bot.color; trailCtx.lineWidth = 6; trailCtx.globalAlpha = 0.35;
+      trailCtx.beginPath(); trailCtx.moveTo(bot.x, bot.y); trailCtx.lineTo(nx, ny); trailCtx.stroke();
+      trailSegs.push({x1:bot.x,y1:bot.y,x2:nx,y2:ny,color:bot.color,alpha:0.35,width:3});
+      bot.x = nx; bot.y = ny;
+    }
+  }
+
+  function checkArrivals(now){
+    if(!goal) return;
+    for(let i=0;i<bots.length;i++){
+      const b=bots[i];
+      if(b.gx===goal.gx && b.gy===goal.gy && b.gz===goal.gz){
+        if(!b._arrived){ b._arrived=true; b._arriveTime=now; }
+      }
+    }
+    const arrived=bots.filter(b=>b._arrived).sort((a,b)=>a._arriveTime-b._arriveTime);
+    if(arrived.length){
+      if(!firstArrived){
+        const winner=arrived[0]; firstArrived=winner.name;
+        if(winner.name==='orange') wins.orange++; else if(winner.name==='green') wins.green++;
+        pausedUntil=Date.now()+1000; pendingNewGoal=randomGoals;
+      }
+    }
+  }
+
+  function afterPause(){
+    for(let i=0;i<bots.length;i++){ bots[i]._arrived=false; bots[i]._arriveTime=0; }
+    firstArrived = null;
+    if(pendingNewGoal){ setGoalRandom(); }
+    else { planForOrange(bots[0], goal); planForGreen(bots[1], goal); }
+  }
+
+  // ===== Interaction =====
+  function attachNav(canvas, cam, getMode){
+    let dragging=false, lx=0, ly=0;
+    canvas.addEventListener('mousedown', e=>{ dragging=true; lx=e.clientX; ly=e.clientY; });
+    window.addEventListener('mouseup', ()=> dragging=false);
+    window.addEventListener('mousemove', e=>{ if(!dragging || getMode()!=='top') return; cam.x -= (e.clientX-lx)/cam.z; cam.y -= (e.clientY-ly)/cam.z; lx=e.clientX; ly=e.clientY; drawAll(); });
+    canvas.addEventListener('wheel', e=>{ e.preventDefault(); if(getMode()!=='top') return; const scale=Math.exp(-e.deltaY*0.001); const rect=canvas.getBoundingClientRect(); const mx=(e.clientX-rect.left)/cam.z + cam.x - canvas.width/(2*cam.z); const my=(e.clientY-rect.top)/cam.z + cam.y - canvas.height/(2*cam.z); cam.x = mx - (mx-cam.x)*scale; cam.y = my - (my-cam.y)*scale; cam.z = clamp(cam.z*scale, 0.05, 2.0); drawAll(); }, {passive:false});
+    canvas.addEventListener('dblclick', e=>{ if(getMode()!=='top') return; const rect=canvas.getBoundingClientRect(); cam.x = (e.clientX-rect.left)/cam.z + cam.x - canvas.width/(2*cam.z); cam.y = (e.clientY-rect.top)/cam.z + cam.y - canvas.height/(2*cam.z); drawAll(); });
+  }
+  attachNav(leftCanvas, leftCam, ()=>leftMode);
+  attachNav(rightCanvas, rightCam, ()=>rightMode);
+
+  function setActive(onBtn, offBtn){ onBtn.classList.add('active'); offBtn.classList.remove('active'); }
+  leftTopBtn.addEventListener('click', ()=>{ leftMode='top'; setActive(leftTopBtn,leftSideBtn); drawAll(); });
+  leftSideBtn.addEventListener('click', ()=>{ leftMode='side'; setActive(leftSideBtn,leftTopBtn); drawAll(); });
+  rightTopBtn.addEventListener('click', ()=>{ rightMode='top'; setActive(rightTopBtn,rightIsoBtn); isoControls.style.display='none'; drawAll(); });
+  rightIsoBtn.addEventListener('click', ()=>{ rightMode='iso'; setActive(rightIsoBtn,rightTopBtn); isoControls.style.display='inline-flex'; drawAll(); });
+
+  // Divider drag (defaults to 50/50)
+  splitEl.style.gridTemplateColumns='1fr 6px 1fr';
+  let draggingSplit=false;
+  divider.addEventListener('mousedown', ()=>{ draggingSplit=true; document.body.style.cursor='col-resize'; });
+  window.addEventListener('mouseup', ()=>{ draggingSplit=false; document.body.style.cursor=''; });
+  window.addEventListener('mousemove', e=>{
+    if(!draggingSplit) return;
+    const rect = splitEl.getBoundingClientRect();
+    const rel = clamp((e.clientX - rect.left)/rect.width, 0.15, 0.85);
+    splitEl.style.gridTemplateColumns = `${(rel*100).toFixed(2)}% 6px ${(100-rel*100).toFixed(2)}%`;
+    resize();
+  });
+
+  // Iso controls logic (min zoom is 0.2 to be twice as zoomed out as before)
+  function redrawIfIso(){ if(rightMode==='iso'){ drawAll(); } }
+  isoZoomIn.addEventListener('click', ()=>{ isoCam.z = clamp(isoCam.z*1.15, 0.2, 3.0); redrawIfIso(); });
+  isoZoomOut.addEventListener('click', ()=>{ isoCam.z = clamp(isoCam.z/1.15, 0.2, 3.0); redrawIfIso(); });
+  const STEP = 24;
+  isoPanUp.addEventListener('click',   ()=>{ isoCam.y -= STEP; redrawIfIso(); });
+  isoPanDown.addEventListener('click', ()=>{ isoCam.y += STEP; redrawIfIso(); });
+  isoPanLeft.addEventListener('click', ()=>{ isoCam.x -= STEP; redrawIfIso(); });
+  isoPanRight.addEventListener('click',()=>{ isoCam.x += STEP; redrawIfIso(); });
+  isoWireBtn.addEventListener('click', ()=>{ isoWireframe = !isoWireframe; isoWireBtn.classList.toggle('active', isoWireframe); redrawIfIso(); });
+
+  // Panel toggle & regenerate
+  document.addEventListener('keydown', e=>{
+    if(e.key==='h' || e.key==='H'){ panel.classList.toggle('hidden'); }
+    if(e.key==='r' || e.key==='R'){
+      moduleTopCache.clear(); groundPlaneCache.clear();
+      world = generateWorld({ coverage: 0.8, stackProb: 0.35, towerChance: 0.6, maxTower: 6 });
+      accGrid = buildAccGrid(world.seed); rebuildNav3D(); resetBots(); drawAll();
+    }
+  });
+  regenBtn.addEventListener('click', ()=>{
+    moduleTopCache.clear(); groundPlaneCache.clear();
+    world = generateWorld({ coverage: 0.8, stackProb: 0.35, towerChance: 0.6, maxTower: 6 });
+    accGrid = buildAccGrid(world.seed); rebuildNav3D(); resetBots(); drawAll();
+  });
+
+  // ===== Boot =====
+  function resize(){
+    leftCanvas.width = leftCanvas.clientWidth; leftCanvas.height = leftCanvas.clientHeight;
+    rightCanvas.width = rightCanvas.clientWidth; rightCanvas.height = rightCanvas.clientHeight;
+  }
+  window.addEventListener('resize', ()=>{ resize(); drawAll(); });
+  resize();
+  accGrid = buildAccGrid(world.seed);
+  rebuildNav3D();
+  resetBots();
+  drawAll();
+
+  // UI wiring
+  randomGoalsChk.addEventListener('change', ()=>{ randomGoals = randomGoalsChk.checked; });
+  greenThresholdEl.addEventListener('input', function(){
+    greenThreshold = parseFloat(greenThresholdEl.value||'0.5');
+    threshLabel.textContent = greenThreshold.toFixed(2);
+    planForGreen(bots[1], goal);
+  });
+  newGoalBtn.addEventListener('click', function(){ pendingNewGoal=false; setGoalRandom(); drawAll(); });
+
+  // Animation loop
+  let lastT=0;
+  function tick(t){
+    if(!lastT) lastT=t; const dt=(t-lastT)/1000; lastT=t;
+    const now=Date.now();
+    if(now < pausedUntil){ drawAll(); requestAnimationFrame(tick); return; }
+    if(pausedUntil && now>=pausedUntil){ pausedUntil=0; afterPause(); }
+
+    moveBot(bots[0], dt); moveBot(bots[1], dt);
+
+    // Failsafe: if a bot has no path but isn't at the goal, replan
+    for (let i=0;i<bots.length;i++){
+      const b=bots[i];
+      if((!b.path || b.path.length===0) && goal && (b.gx!==goal.gx || b.gy!==goal.gy || b.gz!==goal.gz)){
+        if (b.name==='orange') planForOrange(b, goal); else planForGreen(b, goal);
+      }
+    }
+
+    // Follow green bot in right top-down pane
+    if(rightMode==='top' && bots.length>1){
+      const fx=bots[1].x; const fy=bots[1].y; const a=0.2;
+      rightCam.x += (fx - rightCam.x)*a; rightCam.y += (fy - rightCam.y)*a;
+    }
+
+    checkArrivals(now); drawAll(); requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+  </script>
+</body>
+</html>
