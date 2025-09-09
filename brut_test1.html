@@ -2,10 +2,18 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Asymmetric Modernism City — HUD + Heatmap</title>
+  <title>Asymmetric Modernism City — HUD + Heatmap + Solid Controls</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     html, body { margin:0; height:100%; background:#0a0a0a; color:#eaeaea; font-family:system-ui, sans-serif; }
+    /* Canvas gets a grab cursor for orbiting */
+    #canvas { display:block; width:100%; height:100%; outline:none; cursor: grab; }
+    #canvas.dragging { cursor: grabbing; }
+
+    /* UI/HUD: do not block pointer events except on interactive elements */
+    #ui, #hud, #tooltip { pointer-events: none; }
+    #ui input, #ui button, #ui label { pointer-events: auto; }
+
     #ui {
       position: fixed; top: 12px; left: 12px; z-index: 20;
       background: rgba(10,10,10,0.7); backdrop-filter: blur(6px);
@@ -15,6 +23,7 @@
     #ui .small { font-size: 12px; line-height: 1.4; color:#cbd5e1 }
     #ui kbd { background:#1c1c1c; border:1px solid #333; border-bottom-color:#222; padding:1px 6px; border-radius:6px; font-size:11px }
     .chip { display:inline-block; padding:2px 8px; border:1px solid #3a3a3a; border-radius:999px; margin-right:6px; margin-bottom:4px; font-size:11px; color:#c3f6d4 }
+
     #hud {
       position: fixed; right: 12px; top: 12px; z-index: 20;
       background: rgba(10,10,14,0.75); border:1px solid #2e3440; border-radius:12px; padding:10px 12px; min-width: 260px;
@@ -24,12 +33,12 @@
     #hud .row { display:flex; justify-content:space-between; margin:2px 0 }
     #legend { margin-top:6px; display:flex; align-items:center; gap:8px }
     #grad { width:120px; height:8px; background: linear-gradient(90deg, #62e077 0%, #ffe066 50%, #ff5b5b 100%); border-radius:999px; border:1px solid #2a2a2a }
+
     #tooltip {
       position: fixed; pointer-events: none; z-index: 30;
       background: rgba(15,20,22,0.9); border:1px solid #2e3440; border-radius:8px; padding:6px 8px; font-size:12px; display:none;
       box-shadow: 0 8px 20px rgba(0,0,0,0.35);
     }
-    #canvas { display:block; width:100%; height:100% }
   </style>
 </head>
 <body>
@@ -62,38 +71,31 @@
 </div>
 <div id="tooltip"></div>
 
-<canvas id="canvas"></canvas>
+<!-- tabindex makes sure wheel zoom works even after clicking UI -->
+<canvas id="canvas" tabindex="0"></canvas>
 
-<!-- Three.js (examples attach OrbitControls under THREE.* at this version) -->
+<!-- Three.js + controls (version pins THREE.OrbitControls) -->
 <script src="https://unpkg.com/three@0.138.0/build/three.min.js"></script>
 <script src="https://unpkg.com/three@0.138.0/examples/js/controls/OrbitControls.js"></script>
 
 <script>
-/* ---------------------- utilities ---------------------- */
+/* ======================= utilities ======================= */
 function mulberry32(a){return function(){let t=a+=0x6D2B79F5;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return((t^(t>>>14))>>>0)/4294967296;}}
 function strToSeed(str){let h=2166136261>>>0;for(let i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
 function valueNoise2D(x,y,rand2){const xi=Math.floor(x),yi=Math.floor(y);function h(sx,sy){const key=(xi+sx)*374761393+(yi+sy)*668265263;const r=mulberry32((key^rand2())>>>0)();return r;}const xf=x-xi,yf=y-yi;const v00=h(0,0),v10=h(1,0),v01=h(0,1),v11=h(1,1);const u=xf*xf*(3-2*xf),v=yf*yf*(3-2*yf);const a=v00*(1-u)+v10*u,b=v01*(1-u)+v11*u;return a*(1-v)+b*v;}
 function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
 function lerp(a,b,t){ return a+(b-a)*t; }
-
-/* slope → heat color: 0 = green, limit = yellow, > limit goes to red */
 function slopeToColor(s, limit){
-  const r = s/limit; // 0..1..+
-  let R,G,B;
-  if (r <= 1){
-    // green (0, 0.72, 0.35) → yellow (1, 0.88, 0.4)
-    const g0=[0.0,0.72,0.35], g1=[1.0,0.88,0.40];
+  const r = s/limit; let R,G,B;
+  if (r <= 1){ const g0=[0.0,0.72,0.35], g1=[1.0,0.88,0.40];
     R=lerp(g0[0],g1[0],r); G=lerp(g0[1],g1[1],r); B=lerp(g0[2],g1[2],r);
-  } else {
-    // yellow → red (1,0.36,0.36) as r goes 1→2 (cap)
-    const t=clamp(r-1,0,1);
-    const y=[1.0,0.88,0.40], red=[1.0,0.36,0.36];
+  } else { const t=clamp(r-1,0,1), y=[1.0,0.88,0.40], red=[1.0,0.36,0.36];
     R=lerp(y[0],red[0],t); G=lerp(y[1],red[1],t); B=lerp(y[2],red[2],t);
   }
   return ( (Math.round(R*255)<<16) | (Math.round(G*255)<<8) | Math.round(B*255) );
 }
 
-/* ---------------------- scene ---------------------- */
+/* ======================= scene ======================= */
 const canvas = document.getElementById('canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:false });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -104,8 +106,26 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x07090a);
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.1, 2000);
 camera.position.set(-120, 140, 180);
+
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.rotateSpeed = 0.9;
+controls.zoomSpeed = 1.0;
+controls.panSpeed = 0.8;
+controls.minDistance = 20;
+controls.maxDistance = 600;
+controls.maxPolarAngle = Math.PI * 0.495; // keep horizon visible
+// Touch gestures
+controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+
+// Nice cursor state
+controls.addEventListener('start', ()=> canvas.classList.add('dragging'));
+controls.addEventListener('end',   ()=> canvas.classList.remove('dragging'));
+
+// Make sure wheel zoom works after clicking UI
+canvas.addEventListener('mousedown', ()=> canvas.focus());
+canvas.addEventListener('keydown', ()=> canvas.focus());
 
 const hemi = new THREE.HemisphereLight(0xbcdfff, 0x202020, 0.8);
 scene.add(hemi);
@@ -114,7 +134,7 @@ dir.position.set(120, 200, 80);
 dir.castShadow = true;
 scene.add(dir);
 
-/* ---------------------- params ---------------------- */
+/* ======================= params ======================= */
 let rng, rand2;
 const params = {
   gridCount: 17,
@@ -132,7 +152,7 @@ const params = {
 };
 let ground, cityGroup, guidanceGroup, settleAnim = true;
 
-/* HUD + tooltip elements */
+/* HUD elements */
 const hudSegs = document.getElementById('hudSegs');
 const hudOk   = document.getElementById('hudOk');
 const hudMax  = document.getElementById('hudMax');
@@ -141,15 +161,15 @@ const hudStd  = document.getElementById('hudStd');
 const hudBox  = document.getElementById('hud');
 const tooltip = document.getElementById('tooltip');
 
-/* mouse picking */
+/* picking */
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 
-/* store ramp metadata for HUD/hover */
-let rampSegments = [];        // each: {mesh, slope, run, toNextRestRun}
-let landingSpacings = [];     // horizontal run between rest landings (per chain)
+/* ramp metadata */
+let rampSegments = [];
+let landingSpacings = [];
 
-/* ---------------------- generation ---------------------- */
+/* ======================= generation ======================= */
 function clearScene(){
   [ground, cityGroup, guidanceGroup].forEach(g=>{
     if (!g) return;
@@ -349,7 +369,6 @@ function generate(seedStr="asym-001"){
   updateHUD();
 }
 
-/* build ramp with heatmap + metadata for HUD/hover */
 function buildCareRamp(a,b,restEvery,mat,guideMat,isBridge=false){
   const dir = new THREE.Vector3().subVectors(b,a);
   const horiz = new THREE.Vector3(dir.x,0,dir.z);
@@ -378,13 +397,10 @@ function buildCareRamp(a,b,restEvery,mat,guideMat,isBridge=false){
     points.push(p);
   }
 
-  // compute landing spacing stats along this chain
   let accumRun = 0;
-  let lastRestIndex = 0; // points index
-  const restIndices = new Set(); // indices that are rest landings (all inner points)
+  const restIndices = new Set();
   for (let i=1;i<points.length-1;i++) restIndices.add(i);
 
-  // create segments + landings
   for (let i=0;i<points.length-1;i++){
     const p0=points[i], p1=points[i+1];
     const seg = new THREE.Vector3().subVectors(p1,p0);
@@ -397,7 +413,7 @@ function buildCareRamp(a,b,restEvery,mat,guideMat,isBridge=false){
     const width=isBridge?1.8:2.4;
     const geom=new THREE.BoxGeometry(width, thickness, seg.length());
     const heat = slopeToColor(slope, params.rampMaxSlope);
-    const matSeg = mat.clone(); matSeg.color.setHex(heat); // heatmap color
+    const matSeg = mat.clone(); matSeg.color.setHex(heat);
     const mesh=new THREE.Mesh(geom, matSeg);
     mesh.position.copy(mid);
     const yaw=Math.atan2(seg.x, seg.z);
@@ -421,12 +437,11 @@ function buildCareRamp(a,b,restEvery,mat,guideMat,isBridge=false){
     right.userData={type:'rampSeg', slope, run:horizLen, toNextRestRun:0};
     cityGroup.add(left, right);
 
-    // register for picking
     rampSegments.push({mesh, slope, run:horizLen, toNextRestRun:0});
     rampSegments.push({mesh:left, slope, run:horizLen, toNextRestRun:0});
     rampSegments.push({mesh:right, slope, run:horizLen, toNextRestRun:0});
 
-    // add landing at p1 (except very last)
+    // landing at p1 (except last)
     if (i < points.length-2){
       const land=new THREE.Mesh(new THREE.BoxGeometry(width*1.25, thickness, width*1.6), mat.clone());
       land.material.color.copy(new THREE.Color(0x9fb6ff));
@@ -434,25 +449,22 @@ function buildCareRamp(a,b,restEvery,mat,guideMat,isBridge=false){
       land.castShadow=true; land.userData={type:'landing'};
       cityGroup.add(land);
 
-      // if this index is a rest, store spacing and reset accum
       if (restIndices.has(i+1)){
         landingSpacings.push(accumRun);
-        // backfill toNextRestRun for segments since last rest
+        // backfill toNextRestRun on recent segments
         let backrun = accumRun;
         for (let j = rampSegments.length-1; j>=0; j--){
           const rs = rampSegments[j];
           if (rs.mesh.userData.type !== 'rampSeg') continue;
-          if (rs.toNextRestRun>0) break; // already assigned (from earlier chain)
+          if (rs.toNextRestRun>0) break;
           rs.toNextRestRun = backrun;
           rs.mesh.userData.toNextRestRun = backrun;
           backrun -= rs.run;
           if (backrun <= 0) break;
         }
         accumRun = 0;
-        lastRestIndex = i+1;
       }
 
-      // guidance halo
       if (params.guidanceVisible){
         const halo=new THREE.Mesh(new THREE.CylinderGeometry(width*0.55, width*0.55, 0.05, 24), guideMat);
         halo.position.set(land.position.x, land.position.y+0.08, land.position.z);
@@ -462,7 +474,7 @@ function buildCareRamp(a,b,restEvery,mat,guideMat,isBridge=false){
   }
 }
 
-/* ---------------------- HUD + hover ---------------------- */
+/* ======================= HUD + hover ======================= */
 function updateHUD(){
   const segs = rampSegments.filter(r=>r.mesh.userData.type==='rampSeg');
   const total = segs.length;
@@ -478,34 +490,27 @@ function updateHUD(){
   hudAvg.textContent  = `${fmt(avg)} units`;
   hudStd.textContent  = `${fmt(std)} units`;
 }
+function setHUDVisible(v){ params.hudVisible = v; hudBox.style.display = v ? 'block' : 'none'; }
 
-function setHUDVisible(v){
-  params.hudVisible = v;
-  hudBox.style.display = v ? 'block' : 'none';
-}
-
-/* hover tooltip */
+const raycasterObjList = ()=> rampSegments.map(r=>r.mesh);
 function onMouseMove(e){
-  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  const rect = renderer.domElement.getBoundingClientRect();
+  const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+  mouse.x =  (cx / rect.width) * 2 - 1;
+  mouse.y = -(cy / rect.height) * 2 + 1;
   raycaster.setFromCamera(mouse, camera);
-  const meshes = rampSegments.map(r=>r.mesh);
-  const hits = raycaster.intersectObjects(meshes, false);
+  const hits = raycaster.intersectObjects(raycasterObjList(), false);
   if (hits.length){
-    const obj = hits[0].object;
-    const ud = obj.userData;
+    const ud = hits[0].object.userData;
     if (ud && ud.type==='rampSeg'){
-      const slope = ud.slope ?? 0;
-      const run   = ud.run ?? 0;
-      const toNext = ud.toNextRestRun ?? 0;
       tooltip.style.display='block';
       tooltip.style.left = (e.clientX + 12) + 'px';
       tooltip.style.top  = (e.clientY + 12) + 'px';
       tooltip.innerHTML = `
         <div style="color:#c0eaff; font-weight:600; margin-bottom:2px">Ramp segment</div>
-        <div>Slope: <b>${slope.toFixed(3)}</b> (limit ${params.rampMaxSlope.toFixed(3)})</div>
-        <div>Horizontal run: <b>${run.toFixed(2)}</b></div>
-        <div>To next rest: <b>${toNext>0?toNext.toFixed(2):'–'}</b></div>
+        <div>Slope: <b>${(ud.slope||0).toFixed(3)}</b> (limit ${params.rampMaxSlope.toFixed(3)})</div>
+        <div>Horizontal run: <b>${(ud.run||0).toFixed(2)}</b></div>
+        <div>To next rest: <b>${ud.toNextRestRun && isFinite(ud.toNextRestRun) ? ud.toNextRestRun.toFixed(2) : '–'}</b></div>
       `;
       return;
     }
@@ -513,7 +518,7 @@ function onMouseMove(e){
   tooltip.style.display='none';
 }
 
-/* ---------------------- animation & input ---------------------- */
+/* ======================= animation & input ======================= */
 const clock = new THREE.Clock();
 function animate(){
   requestAnimationFrame(animate);
@@ -553,4 +558,3 @@ generate(document.getElementById('seedInput').value);
 </script>
 </body>
 </html>
-
