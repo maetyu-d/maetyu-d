@@ -2,17 +2,17 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Asymmetric Modernism City — HUD + Heatmap + Solid Controls</title>
+  <title>Asymmetric Modernism City — HUD + Heatmap + Solid Controls (Fixed UI)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     html, body { margin:0; height:100%; background:#0a0a0a; color:#eaeaea; font-family:system-ui, sans-serif; }
+
     /* Canvas gets a grab cursor for orbiting */
     #canvas { display:block; width:100%; height:100%; outline:none; cursor: grab; }
     #canvas.dragging { cursor: grabbing; }
 
-    /* UI/HUD: do not block pointer events except on interactive elements */
-    #ui, #hud, #tooltip { pointer-events: none; }
-    #ui input, #ui button, #ui label { pointer-events: auto; }
+    /* ✅ UI/HUD/tooltip accept pointer events so buttons are clickable */
+    #ui, #hud, #tooltip { pointer-events: auto; }
 
     #ui {
       position: fixed; top: 12px; left: 12px; z-index: 20;
@@ -116,16 +116,11 @@ controls.panSpeed = 0.8;
 controls.minDistance = 20;
 controls.maxDistance = 600;
 controls.maxPolarAngle = Math.PI * 0.495; // keep horizon visible
-// Touch gestures
 controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
-
-// Nice cursor state
 controls.addEventListener('start', ()=> canvas.classList.add('dragging'));
 controls.addEventListener('end',   ()=> canvas.classList.remove('dragging'));
-
-// Make sure wheel zoom works after clicking UI
 canvas.addEventListener('mousedown', ()=> canvas.focus());
-canvas.addEventListener('keydown', ()=> canvas.focus());
+canvas.addEventListener('keydown',   ()=> canvas.focus());
 
 const hemi = new THREE.HemisphereLight(0xbcdfff, 0x202020, 0.8);
 scene.add(hemi);
@@ -159,7 +154,18 @@ const hudMax  = document.getElementById('hudMax');
 const hudAvg  = document.getElementById('hudAvg');
 const hudStd  = document.getElementById('hudStd');
 const hudBox  = document.getElementById('hud');
+const uiBox   = document.getElementById('ui');
 const tooltip = document.getElementById('tooltip');
+
+/* ✅ Pause controls while pointer is over UI/HUD; re-enable on leave */
+['pointerenter','mouseenter','touchstart'].forEach(ev=>{
+  uiBox.addEventListener(ev,  ()=> controls.enabled = false, {passive:true});
+  hudBox.addEventListener(ev, ()=> controls.enabled = false, {passive:true});
+});
+['pointerleave','mouseleave','touchend','touchcancel'].forEach(ev=>{
+  uiBox.addEventListener(ev,  ()=> controls.enabled = true, {passive:true});
+  hudBox.addEventListener(ev, ()=> controls.enabled = true, {passive:true});
+});
 
 /* picking */
 const raycaster = new THREE.Raycaster();
@@ -496,8 +502,9 @@ const raycasterObjList = ()=> rampSegments.map(r=>r.mesh);
 function onMouseMove(e){
   const rect = renderer.domElement.getBoundingClientRect();
   const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
-  mouse.x =  (cx / rect.width) * 2 - 1;
-  mouse.y = -(cy / rect.height) * 2 + 1;
+  const mx =  (cx / rect.width) * 2 - 1;
+  const my = -(cy / rect.height) * 2 + 1;
+  mouse.x = mx; mouse.y = my;
   raycaster.setFromCamera(mouse, camera);
   const hits = raycaster.intersectObjects(raycasterObjList(), false);
   if (hits.length){
@@ -554,7 +561,8 @@ window.addEventListener('mousemove', onMouseMove);
 
 // initial
 setHUDVisible(true);
-generate(document.getElementById('seedInput').value);
+generate('asym-001');
 </script>
 </body>
 </html>
+
