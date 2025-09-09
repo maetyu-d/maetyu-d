@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Procedural Brutalist City Generator — 16×16×16</title>
+  <style>
+    body { margin:0; background:#0c0c0c; color:#e6e6e6; font-family:monospace; }
+    canvas { display:block; }
+    #ui { position:absolute; top:10px; left:10px; background:#000a; padding:10px; border-radius:8px; }
+    .chip { display:inline-flex; align-items:center; gap:6px; background:#222; border:1px solid #444; border-radius:6px; padding:4px 8px; margin:2px; font-size:12px; }
+    #legend { position:absolute; bottom:10px; left:10px; font-size:12px; color:#aaa; background:#0008; padding:6px 8px; border-radius:6px; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/p5.min.js"></script>
+</head>
+<body>
+  <div id="ui">
+    <label class="chip"><input id="toggleStairs" type="checkbox" checked> Stair Shafts</label>
+    <label class="chip"><input id="toggleBridges" type="checkbox" checked> Sky Bridges</label>
+    <label class="chip"><input id="toggleGrid" type="checkbox" checked> Grid</label>
+    <label class="chip"><input id="toggleAccess" type="checkbox"> Accessibility Overlay</label>
+  </div>
+  <div id="legend">
+    Mouse: drag to orbit • wheel to zoom • toggle overlays in the HUD<br/>
+    Accessibility score (per tower): red = low (0) → green = high (10)
+  </div>
+
+  <script>
+    // --- Params ---
+    const GRID=16, LEVELS=16, CELL=40;
+    const GROUND_SIZE = GRID * CELL;
+    const BRIDGE_THICK=8;
+
+    // --- State ---
+    let towers=[], bridges=[];
+    let accessScores=[];
+    let greenImpairScale=1.0; // scales impairment effect in accessibility calc
+
+    function setup(){
+      createCanvas(windowWidth,windowHeight,WEBGL);
+      noStroke();
+      setupUI();
+      generateCity();
+    }
+
+    function setupUI(){
+      const onToggle = () => {
+        // Changing stairs/bridges affects accessibility; grid/access only affects draw
+        if (this === document.getElementById('toggleBridges')) {
+          generateBridges(); computeAccessibility(); redraw();
+        } else if (this === document.getElementById('toggleStairs')) {
+          computeAccessibility(); redraw();
+        } else {
+          redraw();
+        }
+      };
+      ['toggleStairs','toggleBridges','toggleGrid','toggleAccess'].forEach(id=>{
+        document.getElementById(id).addEventListener('change', onToggle);
+      });
+    }
+
+    function windowResized(){ resizeCanvas(windowWidth,windowHeight); redraw(); }
+
+    // --- City generation ---
+    function generateCity(){
+      towers=[]; bridges=[];
+      // Simple density pass
+      for(let gx=0; gx<GRID; gx++){
+        for(let gz=0; gz<GRID; gz++){
+          // place tower with some noise-like variation
+          if (random() < 0.22) continue; // empty lot
+          const maxH = int(random(4, LEVELS)); // 4..15
+          towers.push({gx,gz,maxH,footprint:1});
+        }
+      }
+      generateBridges();
+      computeAccessibility();
+      redraw();
+    }
+
+    function generateBridges(){
+      bridges.length = 0;
+      const bridgesOn = document.getElementById('toggleBridges').checked;
+      if (!bridgesOn || towers.length < 2) return;
+
+      // Very simple connectivity: connect each tower to its 2 nearest distinct neighbors
+      for (let i=0;i<towers.length;i++){
+        const a=towers[i];
+        const neighbors = [];
+        for (let j=0;j<towers.length;j++){
+          if (i===j) continue;
+          const b=towers[j];
+          const dx=b.gx-a.gx, dz=b.gz-a.gz;
+          const d2=dx*dx + dz*dz;
+          neighbors.push({j, d2});
+        }
+        neighbors.sort((u,v)=>u.d2-v.d2);
+        const chosen = new Set();
+        for (let k=0;k<Math.min(2, neighbors.length); k++){
+          const j = neighbors[k].j;
+          const key1 = i+'-'+j, key2 = j+'-'+i;
+          if (chosen.has(j)) continue;
+          // Avoid duplicates
+          if (!bridges.some(br => (br.ai===i && br.bi===j) || (br.ai===j && br.bi===i))) {
+            const aH=towers[i].maxH, bH=towers[j].maxH;
+            const yLvl = Math.max(3, Math.min(aH, bH) - 1);
+            bridges.push({ ai:i, bi:j, y:yLvl });
+            chosen.add(j);
+          }
+        }
+      }
+    }
+
+    // --- Accessibility scoring ---
+    function computeAccessibility(){
+      accessScores=[];
+      if(towers.length===0) return;
+
+      // Degree per tower (bridge touches)
+      const deg = Array(towers.length).fill(0);
+      for (const br of bridges){
+        if (Number.isInteger(br.ai) && Number.isInteger(br.bi)){
+          deg[br.ai]++; deg[br.bi]++;
+        }
+      }
+      const maxDeg = Math.max(1, ...deg);
+
+      // Factors
+      const stairsFactor = document.getElementById('toggleStairs').checked ? 1.0 : 0.3;
+      const impairFactor = 1.0 / (1.0 + 0.3*(greenImpairScale - 1)); // >1 impair => lower score
+
+      for(let i=0;i<towers.length;i++){
+        const t=towers[i];
+        const degN=(maxDeg>0)?(deg[i]/maxDeg):0;           // 0..1
+        const heightPenalty = 1 - (t.maxH/LEVELS);          // 1 (short) .. 0 (tall)
+        let raw = 0.6*degN + 0.4*heightPenalty;            // mix connectivity & height
+        raw *= stairsFactor * impairFactor;
+        const s01 = constrain(raw, 0, 1);
+        accessScores.push({score01:s01, score10:Math.round(s01*10)});
+      }
+    }
+
+    // --- Drawing helpers ---
+    function drawGrid(){
+      if (!document.getElementById('toggleGrid').checked) return;
+      push();
+      stroke(40); noFill();
+      const half = (GRID*CELL)/2;
+      for(let i=-half; i<=half; i+=CELL){
+        line(-half, 0, i,  half, 0, i);
+        line(i, 0, -half, i, 0, half);
+      }
+      pop();
+      noStroke();
+    }
+
+    function drawAccessibilityOverlay(){
+      if(!document.getElementById('toggleAccess').checked) return;
+      if(!accessScores || accessScores.length!==towers.length) return;
+      for(let i=0;i<towers.length;i++){
+        const t=towers[i];
+        const s=accessScores[i].score01;
+        const cx=(t.gx-GRID/2)*CELL;
+        const cz=(t.gz-GRID/2)*CELL;
+        // red→green ramp
+        const r = 220 + (40  -220)*s;
+        const g = 60  + (220 - 60)*s;
+        const b = 60  + (90  - 60)*s;
+        push();
+        translate(cx, 2, cz);
+        fill(r,g,b, 140);
+        box(CELL, 2, CELL);
+        pop();
+
+        // Optional: numeric label (commented)
+        // push(); translate(cx, 6, cz); rotateX(-HALF_PI);
+        // fill(255, 220); textSize(10); textAlign(CENTER, CENTER);
+        // text(accessScores[i].score10, 0, 0); pop();
+      }
+    }
+
+    function drawBridge(br){
+      const a=towers[br.ai], b=towers[br.bi];
+      if (!a || !b) return;
+      const x1=(a.gx-GRID/2)*CELL, z1=(a.gz-GRID/2)*CELL;
+      const x2=(b.gx-GRID/2)*CELL, z2=(b.gz-GRID/2)*CELL;
+      const y = -br.y * CELL; // level height
+      const midx=(x1+x2)/2, midz=(z1+z2)/2;
+      const len = dist(x1, z1, x2, z2);
+      const ang = atan2(x2-x1, z2-z1);
+
+      push();
+      translate(midx, y, midz);
+      rotateY(ang);
+      ambientMaterial(120);
+      box(len, BRIDGE_THICK, BRIDGE_THICK*1.4);
+      pop();
+    }
+
+    function drawTower(t){
+      const x=(t.gx-GRID/2)*CELL;
+      const z=(t.gz-GRID/2)*CELL;
+      const h=t.maxH*CELL;
+      push();
+      translate(x, -h/2, z);
+      ambientMaterial(150);
+      box(CELL, h, CELL);
+      pop();
+
+      // Stair core (if visualized)
+      if (document.getElementById('toggleStairs').checked){
+        push();
+        translate(x, -h/2, z);
+        ambientMaterial(170);
+        box(CELL*0.45, h*0.95, CELL*0.45);
+        pop();
+      }
+    }
+
+    // --- Draw loop ---
+    function draw(){
+      background(20);
+      // Lighting
+      ambientLight(120);
+      directionalLight(200,200,210, 0.3,-0.6,-0.2);
+
+      // Orbit controls for quick inspection
+      orbitControl();
+
+      // Ground
+      push();
+      translate(0, 2, 0);
+      ambientMaterial(25,25,30);
+      box(GROUND_SIZE*1.2, 4, GROUND_SIZE*1.2);
+      pop();
+
+      drawGrid();
+      drawAccessibilityOverlay();
+
+      // Bridges below towers (so they integrate visually)
+      if (document.getElementById('toggleBridges').checked){
+        for(const br of bridges) drawBridge(br);
+      }
+
+      // Towers
+      for(const t of towers) drawTower(t);
+    }
+  </script>
+</body>
+</html>
