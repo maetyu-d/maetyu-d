@@ -126,7 +126,10 @@
 # zoomL=1.2
 # panLX=200
 # freeRotY=0.7
-# green.speed=2.5
+# green.count=3
+# orange.count=1
+# green.impair=1.5
+# green.speed=2.4
 # orange.restMult=26
 # goal=random   # or goal=node:120  or goal=tower:3,level:10
 # regen
@@ -148,7 +151,7 @@
     </div>
 
     <div id="legend">
-      Drag on the <b>right pane</b> to orbit (when Right view = Free). Mouse wheel zooms the pane under the cursor.
+      Drag on the <b>right pane</b> to orbit (when Right view = Free). Mouse wheel zoom is disabled — use the pane sliders (or DSL).
       Shortcuts: <b>R</b> regenerate • <b>S</b> save stitched PNG • <b>T</b> tests • <b>[ / ]</b> speed • <b>H</b> HUD • <b>C</b> pane controls.
     </div>
     <div id="tests"></div>
@@ -209,8 +212,10 @@
     // Tests
     let SHOW_TESTS=false; const testPanel=()=>document.getElementById('tests');
 
-    // Bot overrides from DSL
+    // Bot overrides from DSL + counts + impairment
     const botOverrides = { green:{}, orange:{} };
+    let botCounts = { green: 1, orange: 1 };
+    let greenImpairScale = 1.0; // scales sway/curve/asym on green
 
     // --- UI helpers ---
     function reseed(val){ seed=(val!==undefined)?val:Math.floor(Math.random()*1e9); randomSeed(seed); noiseSeed(seed); const inp=document.getElementById('seedInput'); if(inp) inp.value=seed; }
@@ -219,7 +224,6 @@
     function setHUDVisible(show){
       HUD_VISIBLE = !!show;
       document.getElementById('ui').classList.toggle('hidden', !HUD_VISIBLE);
-      // keep mini splitLabels HUD; just hide pane controls when HUD hidden
       setControlsVisible(HUD_VISIBLE && CONTROLS_VISIBLE);
     }
     function setControlsVisible(show){
@@ -260,7 +264,9 @@
           generateCity();
         });
 
-      window.addEventListener('wheel',(e)=>{const d=-Math.sign(e.deltaY)*0.05; if(mouseX<=width/2){ zoomLeft=constrain(zoomLeft+d,0.4,3.0); document.getElementById('zoomLeftCtl').value=zoomLeft; } else { zoomRight=constrain(zoomRight+d,0.4,3.0); document.getElementById('zoomRightCtl').value=zoomRight; } },{passive:true});
+      // Disable mouse-wheel zoom (zoom only via sliders)
+      window.addEventListener('wheel',(e)=>{ e.preventDefault(); },{passive:false});
+
       updateSimLabel(); generateCity();
     }
 
@@ -305,32 +311,65 @@
 
     function pickRandomNode(exclude=-1){ if(navNodes.length===0) return -1; let idx; do{ idx=Math.floor(random(navNodes.length)); }while(idx===exclude && navNodes.length>1); return idx; }
 
-    // --- Bots (green impaired) & goal ---
-    function createBotsAndGoal(){ if(navNodes.length===0) return; const gIdx=pickRandomNode(); const oIdx=pickRandomNode(gIdx);
-      bots=[
-        {name:'green', color:[60,200,100], node:gIdx, pos:{...navNodes[gIdx]}, path:[], segI:0, t:0, speed:2.0, trail:[{...navNodes[gIdx]}],
-         gaitPhase: random(Math.PI*2), gaitOmega:(Math.PI*2)/(CELL*0.9), curveBias:0.12, stairSlow:0.6, swayAmp:CELL*0.18, speedAsym:0.22,
-         fatigue:0, fatigueAccMult:1.35, fatigueRecMult:0.9, resting:false, restMult:24.7},
-        {name:'orange', color:[240,150,60], node:oIdx, pos:{...navNodes[oIdx]}, path:[], segI:0, t:0, speed:2.2, trail:[{...navNodes[oIdx]}],
-         gaitPhase:0, gaitOmega:(Math.PI*2)/CELL, curveBias:0, stairSlow:1, swayAmp:0, speedAsym:0,
-         fatigue:0, fatigueAccMult:1.0, fatigueRecMult:1.1, resting:false, restMult:25.25}
-      ];
-      // apply DSL overrides
-      for(const b of bots){ const ov=botOverrides[b.name]; if(ov && Object.keys(ov).length) Object.assign(b, ov); }
+    // --- Bots (multi-count, green impairment scale) & goal ---
+    function createBotsAndGoal(){
+      if(navNodes.length===0) return;
+      bots=[];
+      const startIdxs=[];
+      const takeStart=()=>{ let idx=pickRandomNode(); let guard=0; while(startIdxs.includes(idx) && guard++<20){ idx=pickRandomNode(); } startIdxs.push(idx); return idx; };
+
+      // green bots
+      for(let i=0;i<botCounts.green;i++){
+        const gIdx = takeStart();
+        const baseSway = CELL*0.18*greenImpairScale;
+        const baseCurve = 0.12*greenImpairScale;
+        const baseAsym = 0.22*greenImpairScale;
+        const b={
+          name:'green', color:[60,200,100], node:gIdx,
+          pos:{...navNodes[gIdx]}, path:[], segI:0, t:0,
+          speed:2.0, trail:[{...navNodes[gIdx]}],
+          gaitPhase: random(Math.PI*2),
+          gaitOmega:(Math.PI*2)/(CELL*0.9),
+          curveBias:baseCurve, stairSlow:0.6,
+          swayAmp:baseSway, speedAsym:baseAsym,
+          fatigue:0, fatigueAccMult:1.35, fatigueRecMult:0.9,
+          resting:false, restMult:24.7
+        };
+        const ov = botOverrides.green; if(ov && Object.keys(ov).length) Object.assign(b, ov);
+        bots.push(b);
+      }
+
+      // orange bots
+      for(let i=0;i<botCounts.orange;i++){
+        const oIdx = takeStart();
+        const b={
+          name:'orange', color:[240,150,60], node:oIdx,
+          pos:{...navNodes[oIdx]}, path:[], segI:0, t:0,
+          speed:2.2, trail:[{...navNodes[oIdx]}],
+          gaitPhase:0, gaitOmega:(Math.PI*2)/CELL,
+          curveBias:0, stairSlow:1, swayAmp:0, speedAsym:0,
+          fatigue:0, fatigueAccMult:1.0, fatigueRecMult:1.1,
+          resting:false, restMult:25.25
+        };
+        const ov = botOverrides.orange; if(ov && Object.keys(ov).length) Object.assign(b, ov);
+        bots.push(b);
+      }
+
       goal={node:pickRandomNode()};
       for(const b of bots) planPath(b, goal.node);
-      updateScoreLabel(); }
+      updateScoreLabel();
+    }
 
     // HUD updaters
     function updateSimLabel(){ const el=document.getElementById('simLabel'); if(el) el.textContent = ` • speed: ${simSpeed.toFixed(1)}×`; }
     function updateFatigueHUD(){
       const el=document.getElementById('fatigueHUD');
       if(!el) return;
-      if(!bots || bots.length<2){ el.textContent=''; return; }
-      const g=bots.find(b=>b.name==='green');
-      const o=bots.find(b=>b.name==='orange');
-      const gf=g?Math.round((g.fatigue||0)*100):0;
-      const of=o?Math.round((o.fatigue||0)*100):0;
+      if(!bots || bots.length===0){ el.textContent=''; return; }
+      let gSum=0,gN=0,oSum=0,oN=0;
+      for(const b of bots){ if(b.name==='green'){ gSum+=(b.fatigue||0); gN++; } else if(b.name==='orange'){ oSum+=(b.fatigue||0); oN++; } }
+      const gf=gN?Math.round((gSum/gN)*100):0;
+      const of=oN?Math.round((oSum/oN)*100):0;
       el.textContent = ` • fatigue: 🟩 ${gf}% • 🟧 ${of}%`;
     }
     function updateScoreLabel(){ const el=document.getElementById('score'); if(el) el.textContent = `🟩 ${scores.green} : ${scores.orange} 🟧`; }
@@ -397,8 +436,7 @@
             const d=Math.hypot(b.pos.x-gp.x,b.pos.y-gp.y,b.pos.z-gp.z);
             if(d<1e-3){
               scores[b.name]=(scores[b.name]||0)+1;
-              // modest recovery on goal
-              b.fatigue *= 0.6;
+              b.fatigue *= 0.6; // modest recovery on goal
               goal.node=pickRandomNode();
               for(const bb of bots) planPath(bb, goal.node);
               updateScoreLabel();
@@ -537,26 +575,23 @@
       g.translate(0,200,-200);
       g.scale(zoomVal);
       if(which==='iso'){
-        // Isometric: screen pan maps to world X/Y
         g.rotateX(-35.264*Math.PI/180);
         g.rotateY(45*Math.PI/180);
         g.translate((panX||0)/zoomVal, (panY||0)/zoomVal, 0);
       } else if(which==='free'){
-        // Free orbit (right pane)
         g.rotateX(freeRotX);
         g.rotateY(freeRotY);
         g.translate((panX||0)/zoomVal, (panY||0)/zoomVal, 0);
       } else if(which==='side'){
-        // Side-on (left pane): horizontal → world Z, vertical → world Y
+        // Left: side-on → panX world Z, panY world Y
         g.rotateY(Math.PI/2);
-        g.translate(0, (panY||0)/zoomVal, 0);
-        g.translate(0, 0, (panX||0)/zoomVal);
+        g.translate(0,(panY||0)/zoomVal,0);
+        g.translate(0,0,(panX||0)/zoomVal);
       } else if(which==='top'){
-        // Top-down (left pane): horizontal → world X, vertical → world Z
+        // Left: top-down → panX world X, panY world Z
         g.rotateX(Math.PI/2);
-        g.translate((panX||0)/zoomVal, 0, (panY||0)/zoomVal);
+        g.translate((panX||0)/zoomVal,0,(panY||0)/zoomVal);
       } else {
-        // Fallback
         g.translate((panX||0)/zoomVal, (panY||0)/zoomVal, 0);
       }
     }
@@ -687,45 +722,36 @@
         return;
       }
 
-      // Bot programming: supports green.* and orange.*
+      // Bot counts via DSL: green.count=K, orange.count=K  (regenerates)
+      const mCount = k.match(/^(green|orange)\.count$/);
+      if(mCount){ const name=mCount[1]; const cnt=Math.max(0, Math.floor(numOr(val,1))); botCounts[name]=cnt; generateCity(); return; }
+
+      // Green impairment scaler: green.impair or green.impairscale  (regenerates)
+      if(k==='green.impair' || k==='green.impairscale'){ greenImpairScale = Math.max(0, numOr(val,1)); generateCity(); return; }
+
+      // Bot programming: supports green.* and orange.* for per-property overrides (applies now + persists)
       const botM=k.match(/^(green|orange)\.(.+)$/);
-      if(botM){
-        const name=botM[1]; const prop=botM[2];
-        const target=(bots.find(b=>b.name===name))||null;
-        const nval=numOr(val,NaN); const asNumber=!isNaN(nval);
+      if(botM){ const name=botM[1]; const prop=botM[2]; const target=(bots.find(b=>b.name===name))||null; const nval=numOr(val,NaN); const asNumber=!isNaN(nval);
         const assign=(obj)=>{ if(asNumber) obj[prop]=nval; else obj[prop]=(parseBool(val)?true:(val)); };
-        if(target) assign(target);
+        if(target){ assign(target); }
         assign(botOverrides[name]); // persist across regenerations
         return;
       }
       // Unknown keys are ignored for now
     }
 
-    // --- Rendering loop and export ---
-    function renderAndBlit(){
-      const P=params();
-      wireLeft=P.wireLeft; wireRight=P.wireRight;
-      stepBots();
-      renderPane(leftPG,P.leftView,wireLeft,zoomLeft, panLeftX, panLeftY);
-      renderPane(rightPG,P.rightView,wireRight,zoomRight, panRightX, panRightY);
-      background(12);
-      image(leftPG,0,0,width/2,height);
-      image(rightPG,width/2,0,width/2,height);
-      stroke(32); line(width/2,0,width/2,height); noStroke();
-      updateFatigueHUD();
-    }
-    // keep draw() minimal
-    function draw(){ renderAndBlit(); }
-
     // --- Tests (optional) ---
     function runTests(){
       const P=params(), lines=[];
+      // A: bridges connectivity (loose)
       let okB=true;
       if(P.bridgesOn){ for(const t of towers){ const inc=bridges.some(br=>br.a===t||br.b===t); if(!inc) okB=false; } }
       lines.push(`A/bridges: ${P.bridgesOn?(okB?'✓ all towers connected':'✗ some towers unconnected'):'— (disabled)'}`);
+      // B: bounds
       let okC=true;
       for(const t of towers){ if(t.gx<0||t.gx>=GRID||t.gz<0||t.gz>=GRID||t.maxH>LEVELS) okC=false; }
       lines.push(`B/grid-bounds: ${okC?'✓':'✗ out-of-bounds tower found'}`);
+      // C: random reachability
       if(navNodes.length>1){ const a=pickRandomNode(), b=pickRandomNode(a); const reachable=bfsReachable(a,b); lines.push(`C/path(${a}->${b}): ${reachable?'✓ reachable':'✗ no path'}`);}
       const summary=`Tests ${((okB||!params().bridgesOn)&&okC)?'PASSED':'HAS ISSUES'}`;
       testPanel().textContent=(SHOW_TESTS?(summary+'\n'+lines.join('\n')):'');
@@ -739,3 +765,4 @@
   </script>
 </body>
 </html>
+
