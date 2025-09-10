@@ -79,7 +79,7 @@
           <input type="range" id="lldSeverity" min="0" max="1" step="0.05" value="0.7" style="width:100%;">
         </div>
 
-        <!-- New wobble controls -->
+        <!-- Wobble controls -->
         <div style="margin-bottom:6px;display:flex;gap:8px;align-items:center;">
           <label><input type="checkbox" id="wobbleEnabled" checked> LLD wobble</label>
         </div>
@@ -408,7 +408,7 @@
       }
     }
 
-    // Trails & bots (screen-size aware)
+    // Trails & bots
     ctx.drawImage(trailCanvas,0,0);
     const invZ=1/(cam.z||1);
     if(goal){
@@ -479,8 +479,7 @@
       }
     }
 
-    const globalMax=Math.max(1,...world.modules.map(m=>m.height));
-    // Iso overlay project
+    // Iso overlay
     const isoFromWorld=(u,v)=>{ const ix=u/MODULE_PX, iy=v/MODULE_PX; return [(ix-iy)*tile,(ix+iy)*tile*0.5]; };
     const isoFromWorldZ=(u,v,z)=>{ const p=isoFromWorld(u,v); p[1]-=z*6*isoCam.z; return p; };
 
@@ -493,6 +492,7 @@
     if(goal){ const gu=goal.gx*CUBE+CUBE/2, gv=goal.gy*CUBE+CUBE/2; const gp=isoFromWorldZ(gu,gv,goal.gz||0); ctx.save(); ctx.strokeStyle='white'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(gp[0],gp[1],10,0,Math.PI*2); ctx.stroke(); ctx.restore(); }
     for(const b of bots){ const bp=isoFromWorldZ(b.x,b.y,b.gz||0); ctx.save(); ctx.fillStyle=b.color; ctx.strokeStyle='#0b0c0d'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(bp[0],bp[1],6,0,Math.PI*2); ctx.fill(); ctx.stroke(); ctx.restore(); }
 
+    const globalMax=Math.max(1,...world.modules.map(m=>m.height));
     const fO=((bots[0]?.fatigue)||0).toFixed(2), fG=((bots[1]?.fatigue)||0).toFixed(2);
     if(hud) hud.textContent=`Isometric ${isoWireframe ? '(wireframe)' : ''} · Tallest ${globalMax} · Zoom ${isoCam.z.toFixed(2)}× · Modules ${world.modules.length}` + (goal?` · Goal z ${goal.gz}`:'') + ` · Fatigue O ${fO} · G ${fG}`;
     ctx.restore();
@@ -630,7 +630,7 @@
 
   function cellCenter(gx,gy){ return { x: gx*CUBE + CUBE/2, y: gy*CUBE + CUBE/2 }; }
   function randomCell(){ return { gx: Math.floor(Math.random()*GRID), gy: Math.floor(Math.random()*GRID) }; }
-  function makeBot(name,color){ return { name, color, gx:0, gy:0, gz:0, x:0, y:0, path:[], speed:200, baseSpeed:200, phase:0, hx:1, hy:0, fatigue:0, restUntil:0 }; }
+  function makeBot(name,color){ return { name, color, gx:0, gy:0, gz:0, x:0, y:0, path:[], speed:200, baseSpeed:200, phase:0, hx:1, hy:0, fatigue:0, restUntil:0, _lastPhaseTime:0 }; }
 
   function setGoalRandom(){
     // In Mode 2, goals are forced to z=0 ; in Mode 1, 10% chance to pick higher floors
@@ -647,14 +647,14 @@
       if((bots[0] && bots[0].gx===ggx && bots[0].gy===ggy && bots[0].gz===gz) || (bots[1] && bots[1].gx===ggx && bots[1].gy===ggy && bots[1].gz===gz)) continue;
       g={ gx:ggx, gy:ggy, gz };
 
-      const startO={x:bots[0].gx,y:bots[0].gy,z:bots[0].gz};
-      const startG={x:bots[1].gx,y:bots[1].gy,z:bots[1].gz};
+      const startO={x:bots[0]?.gx??0,y:bots[0]?.gy??0,z:bots[0]?.gz??0};
+      const startG={x:bots[1]?.gx??0,y:bots[1]?.gy??0,z:bots[1]?.gz??0};
       pO=aStar3D(startO,g,(x,y,z)=>hasFloor(x,y,z),(cx,cy,cz,nx,ny,nz)=>1+(nz!==cz?0.2:0));
       if(!pO) continue;
       pG=aStar3D(startG,g,(x,y,z)=>hasFloor(x,y,z) && accAt(x,y,z)>=Math.min(greenThreshold,1),(cx,cy,cz,nx,ny,nz)=>1+Math.max(0,greenThreshold-accAt(nx,ny,nz))*4+(nz!==cz?0.3:0));
     } while((!g || !pO || !pG) && attempts<200);
     if(!g){ g={ gx:Math.floor(Math.random()*GRID), gy:Math.floor(Math.random()*GRID), gz:0 }; }
-    goal=g; pendingNewGoal=false; planForOrange(bots[0],goal); planForGreen(bots[1],goal);
+    goal=g; pendingNewGoal=false; if(bots[0]) planForOrange(bots[0],goal); if(bots[1]) planForGreen(bots[1],goal);
   }
 
   function resetBots(){
@@ -696,7 +696,7 @@
     }
     trailSegs.push({x1:x1,y1:y1,z1:z1,x2:x2,y2:y2,z2:z2,color:bot.color,alpha:alpha,width:width});
   }
-  // Vector export (re-renders segments at chosen scale)
+  // Vector export
   function exportTrailsVector(scale=2){
     const w = WORLD_PX * scale, h = WORLD_PX * scale;
     const off = document.createElement('canvas'); off.width=w; off.height=h;
@@ -743,6 +743,77 @@
     return { nx: bot.x + vx*step, ny: bot.y + vy*step, vx, vy };
   }
 
+  // ---- Bot integrator (movement, fatigue, trails) ----
+  function moveBot(bot, dt, now){
+    if(!bot || dt<=0) return;
+    if(bot.restUntil && now < bot.restUntil) return;
+
+    // phase advance for gait/wobble
+    const gaitHz = 8; // visual gait frequency
+    bot.phase += dt * gaitHz;
+
+    const speed = (bot.baseSpeed||200) * (FATIGUE.enabled ? 1/(1 + FATIGUE.slowK*(bot.fatigue||0)) : 1);
+    let remaining = speed * dt;
+
+    // ensure path planned
+    if((!bot.path || bot.path.length===0) && goal){
+      if(bot.name==='orange') planForOrange(bot,goal); else planForGreen(bot,goal);
+      if(!bot.path || bot.path.length===0) return;
+    }
+
+    // progress toward current waypoint
+    const target = bot.path[0];
+    const dx = target.x - bot.x, dy = target.y - bot.y;
+    const dist = Math.hypot(dx,dy);
+
+    const step = Math.min(remaining, dist);
+    let nx, ny, vx, vy;
+    if(bot.name==='green' && LLD.enabled){
+      const cs = curvedStep(bot, dx, dy, step);
+      nx = cs.nx; ny = cs.ny; vx = cs.vx; vy = cs.vy;
+    } else {
+      const inv = 1/(dist||1); vx = dx*inv; vy = dy*inv; nx = bot.x + vx*step; ny = bot.y + vy*step;
+    }
+
+    // trail
+    drawTrailSegment(bot, bot.x, bot.y, bot.gz, nx, ny, bot.gz, 0.6, trailThickness);
+
+    // update heading & pos
+    const dot = clamp(bot.hx*vx + bot.hy*vy, -1, 1);
+    const turnAngle = Math.acos(dot);
+    bot.hx = vx; bot.hy = vy;
+    bot.x = nx; bot.y = ny;
+
+    // fatigue
+    if(FATIGUE.enabled){
+      const acc = accAt(bot.gx, bot.gy, bot.gz);
+      bot.fatigue += FATIGUE.buildTurn * (turnAngle/Math.PI);
+      bot.fatigue += FATIGUE.buildRough * (1 - acc);
+      bot.fatigue -= FATIGUE.decay * dt;
+      if(bot.fatigue < 0) bot.fatigue = 0;
+    }
+
+    // reached waypoint?
+    if(step >= dist - 1e-6){
+      // snap & commit grid/z, pop waypoint
+      bot.x = target.x; bot.y = target.y; bot.gx = target.gx; bot.gy = target.gy;
+      if(target.gz !== bot.gz){
+        if(FATIGUE.enabled) bot.fatigue += FATIGUE.buildRamp;
+        bot.gz = target.gz;
+      }
+      bot.path.shift();
+    } else {
+      // update grid approx
+      bot.gx = Math.floor(bot.x / CUBE); bot.gy = Math.floor(bot.y / CUBE);
+    }
+
+    // micro rest
+    if(FATIGUE.enabled && FATIGUE.microRests && (bot.fatigue||0) > FATIGUE.restThreshold){
+      bot.restUntil = now + FATIGUE.restDuration;
+      bot.fatigue *= 0.7; // small immediate recovery
+    }
+  }
+
   // ===== Mode switching =====
   function updateUIForMode(){
     const is2D=(MODE===2);
@@ -773,7 +844,66 @@
   mode1El.addEventListener('change',()=>{ if(mode1El.checked) setMode(1); });
   mode2El.addEventListener('change',()=>{ if(mode2El.checked) setMode(2); });
 
-  // UI wiring
+  // ===== Interaction =====
+  function attachNav(canvas, cam, getMode){
+    let dragging=false, lx=0, ly=0;
+    canvas.addEventListener('mousedown', e=>{ dragging=true; lx=e.clientX; ly=e.clientY; });
+    window.addEventListener('mouseup', ()=> dragging=false);
+    window.addEventListener('mousemove', e=>{
+      if(!dragging || getMode()!=='top') return;
+      cam.x -= (e.clientX-lx)/cam.z; cam.y -= (e.clientY-ly)/cam.z; lx=e.clientX; ly=e.clientY; drawAll();
+    });
+    canvas.addEventListener('wheel', e=>{
+      e.preventDefault(); if(getMode()!=='top') return;
+      const scale=Math.exp(-e.deltaY*0.001);
+      const rect=canvas.getBoundingClientRect();
+      const mx=(e.clientX-rect.left)/cam.z + cam.x - canvas.width/(2*cam.z);
+      const my=(e.clientY-rect.top)/cam.z + cam.y - canvas.height/(2*cam.z);
+      cam.x = mx - (mx-cam.x)*scale; cam.y = my - (my-cam.y)*scale;
+      cam.z = clamp(cam.z*scale, 0.05, 2.0); drawAll();
+    }, {passive:false});
+    canvas.addEventListener('dblclick', e=>{
+      if(getMode()!=='top') return;
+      const rect=canvas.getBoundingClientRect();
+      cam.x = (e.clientX-rect.left)/cam.z + cam.x - canvas.width/(2*cam.z);
+      cam.y = (e.clientY-rect.top)/cam.z + cam.y - canvas.height/(2*cam.z);
+      drawAll();
+    });
+  }
+  attachNav(leftCanvas, leftCam, ()=>leftMode);
+  attachNav(rightCanvas, rightCam, ()=>rightMode);
+
+  function setActive(onBtn, offBtn){ onBtn.classList.add('active'); offBtn.classList.remove('active'); }
+  leftTopBtn.addEventListener('click', ()=>{ leftMode='top'; setActive(leftTopBtn,leftSideBtn); drawAll(); });
+  leftSideBtn.addEventListener('click', ()=>{ leftMode='side'; setActive(leftSideBtn,leftTopBtn); drawAll(); });
+  rightTopBtn.addEventListener('click', ()=>{ rightMode='top'; setActive(rightTopBtn,rightIsoBtn); isoControls.style.display='none'; drawAll(); });
+  rightIsoBtn.addEventListener('click', ()=>{ rightMode='iso'; setActive(rightIsoBtn,rightTopBtn); isoControls.style.display='inline-flex'; drawAll(); });
+
+  // Divider drag (defaults to 50/50)
+  splitEl.style.gridTemplateColumns='1fr 6px 1fr';
+  let draggingSplit=false;
+  divider.addEventListener('mousedown', ()=>{ draggingSplit=true; document.body.style.cursor='col-resize'; });
+  window.addEventListener('mouseup', ()=>{ draggingSplit=false; document.body.style.cursor=''; });
+  window.addEventListener('mousemove', e=>{
+    if(!draggingSplit) return;
+    const rect = splitEl.getBoundingClientRect();
+    const rel = clamp((e.clientX - rect.left)/rect.width, 0.15, 0.85);
+    splitEl.style.gridTemplateColumns = `${(rel*100).toFixed(2)}% 6px ${(100-rel*100).toFixed(2)}%`;
+    resize();
+  });
+
+  // Iso controls logic (min zoom twice as zoomed out: 0.2)
+  function redrawIfIso(){ if(rightMode==='iso'){ drawAll(); } }
+  isoZoomIn.addEventListener('click', ()=>{ isoCam.z = clamp(isoCam.z*1.15, 0.2, 3.0); redrawIfIso(); });
+  isoZoomOut.addEventListener('click', ()=>{ isoCam.z = clamp(isoCam.z/1.15, 0.2, 3.0); redrawIfIso(); });
+  const STEP = 24;
+  isoPanUp.addEventListener('click',   ()=>{ isoCam.y -= STEP; redrawIfIso(); });
+  isoPanDown.addEventListener('click', ()=>{ isoCam.y += STEP; redrawIfIso(); });
+  isoPanLeft.addEventListener('click', ()=>{ isoCam.x -= STEP; redrawIfIso(); });
+  isoPanRight.addEventListener('click',()=>{ isoCam.x += STEP; redrawIfIso(); });
+  isoWireBtn.addEventListener('click', ()=>{ isoWireframe = !isoWireframe; isoWireBtn.classList.toggle('active', isoWireframe); redrawIfIso(); });
+
+  // Mode 1/2 UI wiring and others
   randomGoalsChk.addEventListener('change',()=>{ randomGoals=randomGoalsChk.checked; });
   greenThresholdEl.addEventListener('input',()=>{
     greenThreshold=parseFloat(greenThresholdEl.value||'0.5'); threshLabel.textContent=greenThreshold.toFixed(2);
@@ -791,6 +921,7 @@
   fatigueEnabledEl.addEventListener('change',()=>{ FATIGUE.enabled=fatigueEnabledEl.checked; });
   microRestsEl.addEventListener('change',()=>{ FATIGUE.microRests=microRestsEl.checked; });
   speed10xEl.addEventListener('change',()=>{ timeScale=speed10xEl.checked?10:1; });
+  isoFollowChk.addEventListener('change',()=>{ isoFollow = isoFollowChk.checked; });
 
   // Panel keys & regenerate
   document.addEventListener('keydown', e=>{
@@ -843,13 +974,15 @@
       }
     }
 
+    // Right pane follow green (top-down)
     if(rightMode==='top' && bots.length>1){
       const fx=bots[1].x, fy=bots[1].y; const a=0.2; rightCam.x+=(fx-rightCam.x)*a; rightCam.y+=(fy-rightCam.y)*a;
     }
+    // Iso follow green
     if(rightMode==='iso' && isoFollow && bots.length>1){
       const b=bots[1]; const base=0.6; const tile=MODULE_PX*0.5*base*isoCam.z;
       const ix=b.x/MODULE_PX, iy=b.y/MODULE_PX; const projX=(ix-iy)*tile; const projY=(ix+iy)*tile*0.5 - (b.gz*6*isoCam.z);
-      const w=rightCanvas.width, h=rightCanvas.height; const tx=-projX; const ty=(h*0.5 - h*0.6) - projY; const a=0.15;
+      const h=rightCanvas.height; const tx=-projX; const ty=(h*0.5 - h*0.6) - projY; const a=0.15;
       isoCam.x+=(tx-isoCam.x)*a; isoCam.y+=(ty-isoCam.y)*a; const targetZ=1.3; isoCam.z+=(targetZ-isoCam.z)*0.08;
     }
 
@@ -870,11 +1003,12 @@
   function afterPause(){
     for(const b of bots){ b._arrived=false; b._arriveTime=0; }
     firstArrived=null;
-    if(pendingNewGoal){ setGoalRandom(); } else { planForOrange(bots[0],goal); planForGreen(bots[1],goal); }
+    if(pendingNewGoal){ setGoalRandom(); } else { if(bots[0]) planForOrange(bots[0],goal); if(bots[1]) planForGreen(bots[1],goal); }
   }
 
   requestAnimationFrame(tick);
   </script>
 </body>
 </html>
+
 
