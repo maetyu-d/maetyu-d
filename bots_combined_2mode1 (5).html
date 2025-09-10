@@ -961,7 +961,7 @@ function checkArrivals(now){
   if(arrived.length && !firstArrived){
     const winner=arrived[0]; firstArrived=winner.name;
     if(winner.name==='orange') wins.orange++; else if(winner.name==='green') wins.green++;
-    pausedUntil=now+1.0; pendingNewGoal=randomGoals;
+    pausedUntil=now+0.01; pendingNewGoal=randomGoals;
   }
 }
 function afterPause(){
