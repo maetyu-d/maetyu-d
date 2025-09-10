@@ -10,7 +10,7 @@ from numpy.random import uniform
 # The sample rate of the audio in Hz. Standard CD quality is 44100.
 SAMPLE_RATE = 44100  
 # The total duration of the audio in seconds.
-TOTAL_DURATION = 11.0 * 60  # 11 minutes
+TOTAL_DURATION = 1.0 * 60  # 11 minutes
 # The number of detuned sawtooth waves to create a single supersaw.
 NUM_SAWS = 9
 # The maximum detuning amount for the saws in cents.
@@ -87,8 +87,8 @@ def main():
   final_audio = np.zeros((total_samples, 2))
   
   # Define key timestamps in seconds.
-  phase_1_end_time = 5.0 * 60  # 5 minutes
-  phase_2_end_time = 11.0 * 60 # 11 minutes
+  phase_1_end_time = 0.5 * 60  # 5 minutes
+  phase_2_end_time = 0.5 * 60 # 11 minutes
 
   # Generate audio for the first phase (beautiful and growing).
   print("Phase 1: Growing beautiful harmony (0-5 minutes)...")
