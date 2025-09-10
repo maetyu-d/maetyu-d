@@ -73,6 +73,10 @@
           <input type="range" id="greenThreshold" min="0" max="1" step="0.05" value="0.5" style="width:100%;">
         </div>
         <div style="margin-bottom:8px;">
+          <label for="lldSeverity">LLD severity (green): <span id="lldSeverityLabel">0.70</span></label>
+          <input type="range" id="lldSeverity" min="0" max="1" step="0.05" value="0.7" style="width:100%;">
+        </div>
+        <div style="margin-bottom:8px;">
           <label for="trailWidth">Trail thickness: <span id="trailWidthLabel">6</span> px</label>
           <input type="range" id="trailWidth" min="1" max="20" step="1" value="6" style="width:100%;">
         </div>
@@ -152,7 +156,7 @@
   const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
 
   // === LLD model (green bot) ===
-  const LLD = { enabled:true, severity:0.35, leftShort:true, driftBias:0.12, rampBias:0.25, roughBoost:0.08 };
+  const LLD = { enabled:true, severity:0.70, leftShort:true, driftBias:0.20, rampBias:0.35, roughBoost:0.12 };
 
   // Textures
   const textureCache=new Map();
@@ -203,7 +207,7 @@
     const maxTower = (params.maxTower ?? 6);
     const tallChance = (params.tallChance ?? 0.10);
     const tallMin = (params.tallMin ?? 10);
-    const tallMax = (params.tallMax ?? 40);
+    const tallMax = (params.tallMax ?? 40); // doubled maximum tall tower height
     const finalSeed = (seed ?? ((Math.random()*2**32)>>>0));
     const rand=XorShift32(finalSeed);
 
@@ -300,6 +304,8 @@
   const randomGoalsChk=document.getElementById('randomGoals');
   const greenThresholdEl=document.getElementById('greenThreshold');
   const threshLabel=document.getElementById('threshLabel');
+  const lldSeverityEl=document.getElementById('lldSeverity');
+  const lldSeverityLabel=document.getElementById('lldSeverityLabel');
   const trailWidthEl=document.getElementById('trailWidth');
   const trailWidthLabel=document.getElementById('trailWidthLabel');
   const fatigueEnabledEl=document.getElementById('fatigueEnabled');
@@ -317,6 +323,7 @@
 
   let randomGoals=true;
   let greenThreshold=0.5;
+  if(lldSeverityLabel){ lldSeverityLabel.textContent=(LLD.severity??0).toFixed(2); }
   let trailThickness=parseFloat(trailWidthEl.value)||6;
   trailWidthEl.addEventListener('input',()=>{ trailThickness=parseFloat(trailWidthEl.value)||6; trailWidthLabel.textContent=String(trailThickness); });
   isoFollowChk.addEventListener('change',()=>{ isoFollow=isoFollowChk.checked; });
@@ -685,6 +692,20 @@
     document.body.appendChild(a); a.click(); a.remove();
   }
 
+  // -- Curved step for green bot (visible leftward arc) --
+  function curvedStep(bot, dx, dy, step){
+    let vx = dx/(Math.hypot(dx,dy)||1), vy = dy/(Math.hypot(dx,dy)||1);
+    if(bot.name==='green' && LLD.enabled){
+      const fatigue = (bot.fatigue||0);
+      const curveBase = 0.25 * LLD.severity * (1 + 0.5*fatigue);
+      const curve = clamp(curveBase, 0, 0.6);
+      const bx = -vy * curve, by = vx * curve; // left of motion
+      vx += bx; vy += by;
+      const vlen = Math.hypot(vx,vy) || 1; vx/=vlen; vy/=vlen;
+    }
+    return { nx: bot.x + vx*step, ny: bot.y + vy*step, vx, vy };
+  }
+
   function moveBot(bot,dt,now){
     if(!bot.path || bot.path.length===0) return;
     if(FATIGUE.enabled && now < (bot.restUntil||0)) return;
@@ -692,13 +713,21 @@
     const target=bot.path[0]; const dx=target.x-bot.x, dy=target.y-bot.y; const dist=Math.hypot(dx,dy);
 
     let speed=bot.speed;
-    if(bot.name==='green' && LLD.enabled){ bot.phase=(bot.phase||0) + dt*(1+0.5*LLD.severity); const limp=1 - 0.15*LLD.severity + 0.15*LLD.severity*Math.max(0,Math.sin(bot.phase)); speed=bot.baseSpeed*limp; }
+    if(bot.name==='green' && LLD.enabled){
+      // Stronger asymmetric limp with fatigue coupling
+      bot.phase = (bot.phase||0) + dt * (0.9 + 0.8*LLD.severity);
+      const s = Math.sin(bot.phase);
+      const leftStance = s < 0; // negative half-cycle = left leg stance (shorter)
+      const asym = leftStance ? (1 - (0.45*LLD.severity)) : (1 - (0.15*LLD.severity));
+      const fatigueDip = 1 - Math.min(0.35, 0.18*(bot.fatigue||0));
+      speed = bot.baseSpeed * asym * fatigueDip;
+    }
     if(FATIGUE.enabled){ const slow=1/(1 + FATIGUE.slowK*(bot.fatigue||0)); speed*=slow; }
     const step=speed*dt;
     const segWStrong=Math.max(1,trailThickness*0.67), segWLight=Math.max(1,trailThickness*0.50);
     const phx=bot.hx||1, phy=bot.hy||0;
 
-    // Vertical step (only ever happens in MODE 1, but safe to keep)
+    // Vertical step (same x/y, change z)
     if(dist<0.001){
       trailCtx.fillStyle=bot.color; trailCtx.globalAlpha=0.85; trailCtx.beginPath(); trailCtx.arc(bot.x,bot.y,Math.max(1.5,trailThickness*0.4),0,Math.PI*2); trailCtx.fill();
       trailSegs.push({x1:bot.x,y1:bot.y,z1:bot.gz,x2:target.x,y2:target.y,z2:target.gz,color:bot.color,alpha:0.85,width:segWStrong});
@@ -709,7 +738,7 @@
     }
 
     if(dist<=step){
-      // full segment
+      // full segment to node
       drawTrailSegment(bot, bot.x, bot.y, bot.gz, target.x, target.y, target.gz, 0.85, trailThickness);
       if(FATIGUE.enabled){
         const a=accAt(target.gx,target.gy,target.gz); const rough=Math.max(0,0.6 - a)*FATIGUE.buildRough;
@@ -719,8 +748,9 @@
       const mdx=target.x-bot.x, mdy=target.y-bot.y; if(Math.abs(mdx)+Math.abs(mdy)>0){ if(Math.abs(mdx)>=Math.abs(mdy)){ bot.hx=Math.sign(mdx)||phx; bot.hy=0; } else { bot.hy=Math.sign(mdy)||phy; bot.hx=0; } }
       bot.x=target.x; bot.y=target.y; bot.gx=target.gx; bot.gy=target.gy; bot.gz=target.gz; bot.path.shift();
     } else {
-      // partial step
-      const nx=bot.x+(dx/dist)*step, ny=bot.y+(dy/dist)*step;
+      // partial step (curved for green)
+      const _cs = curvedStep(bot, dx, dy, step);
+      const nx = _cs.nx, ny = _cs.ny;
       drawTrailSegment(bot, bot.x, bot.y, bot.gz, nx, ny, bot.gz, 0.35, trailThickness);
       if(FATIGUE.enabled){
         const ngx=Math.max(0,Math.min(GRID-1,Math.floor(nx/CUBE))), ngy=Math.max(0,Math.min(GRID-1,Math.floor(ny/CUBE)));
@@ -854,6 +884,9 @@
     greenThreshold=parseFloat(greenThresholdEl.value||'0.5'); threshLabel.textContent=greenThreshold.toFixed(2);
     if(bots[1]) planForGreen(bots[1],goal);
   });
+  if(lldSeverityEl){
+    lldSeverityEl.addEventListener('input',()=>{ LLD.severity=parseFloat(lldSeverityEl.value||'0'); if(lldSeverityLabel) lldSeverityLabel.textContent=LLD.severity.toFixed(2); });
+  }
   newGoalBtn.addEventListener('click',()=>{ pendingNewGoal=false; setGoalRandom(); drawAll(); });
   exportTrailsBtn.addEventListener('click', (e)=>{ exportTrailsPNG(e.shiftKey?1:2); });
   exportTrailsVectorBtn.addEventListener('click', (e)=>{ exportTrailsVector(e.shiftKey?1:2); });
@@ -906,3 +939,4 @@
   </script>
 </body>
 </html>
+
