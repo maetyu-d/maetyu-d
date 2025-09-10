@@ -44,7 +44,7 @@
     /* Iso mini controls */
     .isoControls { display: none; gap: 6px; align-items: center; margin-left: 8px; }
     .isoControls .group { display: inline-flex; gap: 4px; align-items: center; }
-    .isoControls .sep { width: 1px; height: 16px; background: rgba(255,255,255,0.12); margin: 0 2px; display: inline-block; }
+    .isoControls .sep { width: 1px; height: 16px; background: rgba(255,255,255,0.12); margin: 0 6px; display: inline-block; }
     .isoControls button { padding: 2px 6px; font-size: 11px; border-radius: 8px; }
     .isoControls label { font-size: 11px; display: inline-flex; gap: 4px; align-items: center; }
   </style>
@@ -68,23 +68,37 @@
 
       <div id="botsUI">
         <label style="display:block; margin-bottom:6px;"><input type="checkbox" id="randomGoals" checked> Random Goals</label>
+
         <div style="margin-bottom:8px;">
           <label for="greenThreshold">Green bot accessibility ≥ <span id="threshLabel">0.50</span></label>
           <input type="range" id="greenThreshold" min="0" max="1" step="0.05" value="0.5" style="width:100%;">
         </div>
+
         <div style="margin-bottom:8px;">
           <label for="lldSeverity">LLD severity (green): <span id="lldSeverityLabel">0.70</span></label>
           <input type="range" id="lldSeverity" min="0" max="1" step="0.05" value="0.7" style="width:100%;">
         </div>
+
+        <!-- New wobble controls -->
+        <div style="margin-bottom:6px;display:flex;gap:8px;align-items:center;">
+          <label><input type="checkbox" id="wobbleEnabled" checked> LLD wobble</label>
+        </div>
+        <div style="margin-bottom:8px;">
+          <label for="wobbleAmp">Wobble amplitude: <span id="wobbleAmpLabel">0.25</span></label>
+          <input type="range" id="wobbleAmp" min="0" max="1" step="0.05" value="0.25" style="width:100%;">
+        </div>
+
         <div style="margin-bottom:8px;">
           <label for="trailWidth">Trail thickness: <span id="trailWidthLabel">6</span> px</label>
           <input type="range" id="trailWidth" min="1" max="20" step="1" value="6" style="width:100%;">
         </div>
+
         <div style="margin-bottom:8px;">
           <div style="margin-bottom:4px;">Trail Renderer</div>
           <label style="margin-right:8px;"><input type="radio" name="trailRenderer" id="trailStroke" value="stroke" checked> Stroke</label>
           <label><input type="radio" name="trailRenderer" id="trailStamp" value="stamp"> Stamp</label>
         </div>
+
         <div style="margin-bottom:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <label><input type="checkbox" id="fatigueEnabled" checked> Fatigue</label>
           <label><input type="checkbox" id="microRests" checked> Micro rests</label>
@@ -92,9 +106,12 @@
         <div style="margin-bottom:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <label><input type="checkbox" id="speed10x"> 10× Speed</label>
         </div>
-        <button id="newGoalBtn">New Goal Now</button>
-        <button id="exportTrailsBtn">Export Trails PNG</button>
-        <button id="exportTrailsVectorBtn">Export Trails (vector)</button>
+
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button id="newGoalBtn">New Goal Now</button>
+          <button id="exportTrailsBtn">Export Trails PNG</button>
+          <button id="exportTrailsVectorBtn">Export Trails (vector)</button>
+        </div>
       </div>
     </aside>
 
@@ -156,7 +173,11 @@
   const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
 
   // === LLD model (green bot) ===
-  const LLD = { enabled:true, severity:0.70, leftShort:true, driftBias:0.20, rampBias:0.35, roughBoost:0.12 };
+  const LLD = {
+    enabled:true, severity:0.70, leftShort:true,
+    driftBias:0.20, rampBias:0.35, roughBoost:0.12,
+    wobbleEnabled:true, wobbleAmp:0.25, wobbleBias:0.35
+  };
 
   // Textures
   const textureCache=new Map();
@@ -306,6 +327,9 @@
   const threshLabel=document.getElementById('threshLabel');
   const lldSeverityEl=document.getElementById('lldSeverity');
   const lldSeverityLabel=document.getElementById('lldSeverityLabel');
+  const wobbleEnabledEl=document.getElementById('wobbleEnabled');
+  const wobbleAmpEl=document.getElementById('wobbleAmp');
+  const wobbleAmpLabel=document.getElementById('wobbleAmpLabel');
   const trailWidthEl=document.getElementById('trailWidth');
   const trailWidthLabel=document.getElementById('trailWidthLabel');
   const fatigueEnabledEl=document.getElementById('fatigueEnabled');
@@ -324,6 +348,8 @@
   let randomGoals=true;
   let greenThreshold=0.5;
   if(lldSeverityLabel){ lldSeverityLabel.textContent=(LLD.severity??0).toFixed(2); }
+  if(wobbleEnabledEl){ wobbleEnabledEl.checked=!!LLD.wobbleEnabled; }
+  if(wobbleAmpEl){ wobbleAmpEl.value=String(LLD.wobbleAmp??0.25); if(wobbleAmpLabel) wobbleAmpLabel.textContent=(LLD.wobbleAmp??0.25).toFixed(2); }
   let trailThickness=parseFloat(trailWidthEl.value)||6;
   trailWidthEl.addEventListener('input',()=>{ trailThickness=parseFloat(trailWidthEl.value)||6; trailWidthLabel.textContent=String(trailThickness); });
   isoFollowChk.addEventListener('change',()=>{ isoFollow=isoFollowChk.checked; });
@@ -607,7 +633,7 @@
   function makeBot(name,color){ return { name, color, gx:0, gy:0, gz:0, x:0, y:0, path:[], speed:200, baseSpeed:200, phase:0, hx:1, hy:0, fatigue:0, restUntil:0 }; }
 
   function setGoalRandom(){
-    // In Mode 2, goals are forced to z=0
+    // In Mode 2, goals are forced to z=0 ; in Mode 1, 10% chance to pick higher floors
     let attempts=0; let g=null; let pO=null, pG=null;
     do{
       attempts++;
@@ -692,160 +718,29 @@
     document.body.appendChild(a); a.click(); a.remove();
   }
 
-  // -- Curved step for green bot (visible leftward arc) --
+  // -- Curved step for green bot (leftward arc + wobble affects physics) --
   function curvedStep(bot, dx, dy, step){
     let vx = dx/(Math.hypot(dx,dy)||1), vy = dy/(Math.hypot(dx,dy)||1);
     if(bot.name==='green' && LLD.enabled){
       const fatigue = (bot.fatigue||0);
+      // base leftward curvature
       const curveBase = 0.25 * LLD.severity * (1 + 0.5*fatigue);
       const curve = clamp(curveBase, 0, 0.6);
-      const bx = -vy * curve, by = vx * curve; // left of motion
-      vx += bx; vy += by;
+      let tvx=vx, tvy=vy;
+      vx += (-tvy) * curve; // left of motion
+      vy += ( tvx) * curve;
+      // gait-synced lateral wobble (physics-impacting)
+      if(LLD.wobbleEnabled){
+        const s = Math.sin(bot.phase||0);
+        const shape = s + (LLD.wobbleBias||0)*Math.max(0, s); // lean more on left stance
+        const wob = clamp((LLD.wobbleAmp||0.25) * (0.5+0.5*LLD.severity) * (1+0.5*fatigue) * shape, -0.6, 0.6);
+        tvx=vx; tvy=vy;
+        vx += (-tvy) * wob;
+        vy += ( tvx) * wob;
+      }
       const vlen = Math.hypot(vx,vy) || 1; vx/=vlen; vy/=vlen;
     }
     return { nx: bot.x + vx*step, ny: bot.y + vy*step, vx, vy };
-  }
-
-  function moveBot(bot,dt,now){
-    if(!bot.path || bot.path.length===0) return;
-    if(FATIGUE.enabled && now < (bot.restUntil||0)) return;
-
-    const target=bot.path[0]; const dx=target.x-bot.x, dy=target.y-bot.y; const dist=Math.hypot(dx,dy);
-
-    let speed=bot.speed;
-    if(bot.name==='green' && LLD.enabled){
-      // Stronger asymmetric limp with fatigue coupling
-      bot.phase = (bot.phase||0) + dt * (0.9 + 0.8*LLD.severity);
-      const s = Math.sin(bot.phase);
-      const leftStance = s < 0; // negative half-cycle = left leg stance (shorter)
-      const asym = leftStance ? (1 - (0.45*LLD.severity)) : (1 - (0.15*LLD.severity));
-      const fatigueDip = 1 - Math.min(0.35, 0.18*(bot.fatigue||0));
-      speed = bot.baseSpeed * asym * fatigueDip;
-    }
-    if(FATIGUE.enabled){ const slow=1/(1 + FATIGUE.slowK*(bot.fatigue||0)); speed*=slow; }
-    const step=speed*dt;
-    const segWStrong=Math.max(1,trailThickness*0.67), segWLight=Math.max(1,trailThickness*0.50);
-    const phx=bot.hx||1, phy=bot.hy||0;
-
-    // Vertical step (same x/y, change z)
-    if(dist<0.001){
-      trailCtx.fillStyle=bot.color; trailCtx.globalAlpha=0.85; trailCtx.beginPath(); trailCtx.arc(bot.x,bot.y,Math.max(1.5,trailThickness*0.4),0,Math.PI*2); trailCtx.fill();
-      trailSegs.push({x1:bot.x,y1:bot.y,z1:bot.gz,x2:target.x,y2:target.y,z2:target.gz,color:bot.color,alpha:0.85,width:segWStrong});
-      if(FATIGUE.enabled) bot.fatigue=(bot.fatigue||0)+FATIGUE.buildRamp;
-      bot.gz=target.gz; bot.gx=target.gx; bot.gy=target.gy; bot.path.shift();
-      if(FATIGUE.enabled){ bot.fatigue=Math.max(0,(bot.fatigue||0)-FATIGUE.decay*dt); if(FATIGUE.microRests && (bot.fatigue||0)>FATIGUE.restThreshold){ bot.restUntil=now+FATIGUE.restDuration; bot.fatigue*=0.6; } }
-      return;
-    }
-
-    if(dist<=step){
-      // full segment to node
-      drawTrailSegment(bot, bot.x, bot.y, bot.gz, target.x, target.y, target.gz, 0.85, trailThickness);
-      if(FATIGUE.enabled){
-        const a=accAt(target.gx,target.gy,target.gz); const rough=Math.max(0,0.6 - a)*FATIGUE.buildRough;
-        let hnx=0,hny=0; const mdx=target.x-bot.x, mdy=target.y-bot.y; if(Math.abs(mdx)>=Math.abs(mdy)){ hnx=Math.sign(mdx)||phx; hny=0; } else { hnx=0; hny=Math.sign(mdy)||phy; }
-        const cross=phx*hny - phy*hnx, dot=phx*hnx + phy*hny; let turnEff=0; if(cross!==0) turnEff+=FATIGUE.buildTurn; if(dot<0) turnEff+=FATIGUE.buildTurn; bot.fatigue=(bot.fatigue||0)+rough+turnEff;
-      }
-      const mdx=target.x-bot.x, mdy=target.y-bot.y; if(Math.abs(mdx)+Math.abs(mdy)>0){ if(Math.abs(mdx)>=Math.abs(mdy)){ bot.hx=Math.sign(mdx)||phx; bot.hy=0; } else { bot.hy=Math.sign(mdy)||phy; bot.hx=0; } }
-      bot.x=target.x; bot.y=target.y; bot.gx=target.gx; bot.gy=target.gy; bot.gz=target.gz; bot.path.shift();
-    } else {
-      // partial step (curved for green)
-      const _cs = curvedStep(bot, dx, dy, step);
-      const nx = _cs.nx, ny = _cs.ny;
-      drawTrailSegment(bot, bot.x, bot.y, bot.gz, nx, ny, bot.gz, 0.35, trailThickness);
-      if(FATIGUE.enabled){
-        const ngx=Math.max(0,Math.min(GRID-1,Math.floor(nx/CUBE))), ngy=Math.max(0,Math.min(GRID-1,Math.floor(ny/CUBE)));
-        const a=accAt(ngx,ngy,bot.gz); const rough=Math.max(0,0.6 - a)*FATIGUE.buildRough*0.5;
-        let hnx=0,hny=0; const mdx=nx-bot.x, mdy=ny-bot.y; if(Math.abs(mdx)>=Math.abs(mdy)){ hnx=Math.sign(mdx)||phx; hny=0; } else { hnx=0; hny=Math.sign(mdy)||phy; }
-        const cross=phx*hny - phy*hnx, dot=phx*hnx + phy*hny; let turnEff=0; if(cross!==0) turnEff+=FATIGUE.buildTurn*0.5; if(dot<0) turnEff+=FATIGUE.buildTurn*0.75;
-        bot.fatigue=(bot.fatigue||0)+rough+turnEff;
-      }
-      const mdx2=nx-bot.x, mdy2=ny-bot.y; if(Math.abs(mdx2)+Math.abs(mdy2)>0){ if(Math.abs(mdx2)>=Math.abs(mdy2)){ bot.hx=Math.sign(mdx2)||phx; bot.hy=0; } else { bot.hy=Math.sign(mdy2)||phy; bot.hx=0; } }
-      bot.x=nx; bot.y=ny;
-    }
-    if(FATIGUE.enabled){ bot.fatigue=Math.max(0,(bot.fatigue||0)-FATIGUE.decay*dt); if(FATIGUE.microRests && (bot.fatigue||0)>FATIGUE.restThreshold){ bot.restUntil=now+FATIGUE.restDuration; bot.fatigue*=0.6; } }
-  }
-
-  function checkArrivals(now){
-    if(!goal) return;
-    for(const b of bots){ if(b.gx===goal.gx && b.gy===goal.gy && b.gz===goal.gz){ if(!b._arrived){ b._arrived=true; b._arriveTime=now; } } }
-    const arrived=bots.filter(b=>b._arrived).sort((a,b)=>a._arriveTime-b._arriveTime);
-    if(arrived.length){
-      if(!firstArrived){
-        const winner=arrived[0]; firstArrived=winner.name; if(winner.name==='orange') wins.orange++; else wins.green++;
-        pausedUntil=now+1.0; pendingNewGoal=randomGoals;
-      }
-    }
-  }
-
-  function afterPause(){
-    for(const b of bots){ b._arrived=false; b._arriveTime=0; }
-    firstArrived=null;
-    if(pendingNewGoal){ setGoalRandom(); } else { planForOrange(bots[0],goal); planForGreen(bots[1],goal); }
-  }
-
-  // ===== Interaction =====
-  function attachNav(canvas, cam, getMode){
-    let dragging=false, lx=0, ly=0;
-    canvas.addEventListener('mousedown', e=>{ dragging=true; lx=e.clientX; ly=e.clientY; });
-    window.addEventListener('mouseup', ()=> dragging=false);
-    window.addEventListener('mousemove', e=>{ if(!dragging || getMode()!=='top') return; cam.x -= (e.clientX-lx)/cam.z; cam.y -= (e.clientY-ly)/cam.z; lx=e.clientX; ly=e.clientY; drawAll(); });
-    canvas.addEventListener('wheel', e=>{ e.preventDefault(); if(getMode()!=='top') return; const scale=Math.exp(-e.deltaY*0.001); const rect=canvas.getBoundingClientRect(); const mx=(e.clientX-rect.left)/cam.z + cam.x - canvas.width/(2*cam.z); const my=(e.clientY-rect.top)/cam.z + cam.y - canvas.height/(2*cam.z); cam.x = mx - (mx-cam.x)*scale; cam.y = my - (my-cam.y)*scale; cam.z = clamp(cam.z*scale, 0.05, 2.0); drawAll(); }, {passive:false});
-    canvas.addEventListener('dblclick', e=>{ if(getMode()!=='top') return; const rect=canvas.getBoundingClientRect(); cam.x=(e.clientX-rect.left)/cam.z + cam.x - canvas.width/(2*cam.z); cam.y=(e.clientY-rect.top)/cam.z + cam.y - canvas.height/(2*cam.z); drawAll(); });
-  }
-  attachNav(leftCanvas,leftCam,()=>leftMode);
-  attachNav(rightCanvas,rightCam,()=>rightMode);
-
-  function setActive(onBtn, offBtn){ onBtn.classList.add('active'); offBtn.classList.remove('active'); }
-  leftTopBtn.addEventListener('click', ()=>{ leftMode='top'; setActive(leftTopBtn,leftSideBtn); drawAll(); });
-  leftSideBtn.addEventListener('click', ()=>{ leftMode='side'; setActive(leftSideBtn,leftTopBtn); drawAll(); });
-  rightTopBtn.addEventListener('click', ()=>{ rightMode='top'; setActive(rightTopBtn,rightIsoBtn); isoControls.style.display='none'; drawAll(); });
-  rightIsoBtn.addEventListener('click', ()=>{ rightMode='iso'; setActive(rightIsoBtn,rightTopBtn); isoControls.style.display='inline-flex'; drawAll(); });
-
-  // Divider drag
-  splitEl.style.gridTemplateColumns='1fr 6px 1fr';
-  let draggingSplit=false;
-  divider.addEventListener('mousedown', ()=>{ draggingSplit=true; document.body.style.cursor='col-resize'; });
-  window.addEventListener('mouseup', ()=>{ draggingSplit=false; document.body.style.cursor=''; });
-  window.addEventListener('mousemove', e=>{
-    if(!draggingSplit) return;
-    const rect=splitEl.getBoundingClientRect(); const rel=clamp((e.clientX-rect.left)/rect.width,0.15,0.85);
-    splitEl.style.gridTemplateColumns=`${(rel*100).toFixed(2)}% 6px ${(100-rel*100).toFixed(2)}%`;
-    resize();
-  });
-
-  // Iso controls
-  function redrawIfIso(){ if(rightMode==='iso'){ drawAll(); } }
-  isoZoomIn.addEventListener('click', ()=>{ isoCam.z=clamp(isoCam.z*1.15,0.2,3.0); redrawIfIso(); });
-  isoZoomOut.addEventListener('click', ()=>{ isoCam.z=clamp(isoCam.z/1.15,0.2,3.0); redrawIfIso(); });
-  const STEP=24;
-  isoPanUp.addEventListener('click', ()=>{ isoCam.y-=STEP; redrawIfIso(); });
-  isoPanDown.addEventListener('click', ()=>{ isoCam.y+=STEP; redrawIfIso(); });
-  isoPanLeft.addEventListener('click', ()=>{ isoCam.x-=STEP; redrawIfIso(); });
-  isoPanRight.addEventListener('click', ()=>{ isoCam.x+=STEP; redrawIfIso(); });
-  isoWireBtn.addEventListener('click', ()=>{ isoWireframe=!isoWireframe; isoWireBtn.classList.toggle('active', isoWireframe); redrawIfIso(); });
-
-  // Panel keys & regenerate
-  document.addEventListener('keydown', e=>{
-    if(e.key==='h' || e.key==='H') panel.classList.toggle('hidden');
-    if(e.key==='r' || e.key==='R'){
-      moduleTopCache.clear(); groundPlaneCache.clear();
-      world=generateWorld({ coverage:0.8, stackProb:0.35, towerChance:0.6, maxTower:6 });
-      accGrid=buildAccGrid(world.seed); rebuildNav3D(); updateUIForMode(); resetBots(); drawAll();
-    }
-  });
-  regenBtn.addEventListener('click', ()=>{
-    moduleTopCache.clear(); groundPlaneCache.clear();
-    world=generateWorld({ coverage:0.8, stackProb:0.35, towerChance:0.6, maxTower:6 });
-    accGrid=buildAccGrid(world.seed); rebuildNav3D(); updateUIForMode(); resetBots(); drawAll();
-  });
-
-  // Export trails PNG (transparent). Default 2×; Shift for 1×
-  function exportTrailsPNG(scale=2){
-    const w=Math.floor(WORLD_PX*scale), h=Math.floor(WORLD_PX*scale);
-    const off=document.createElement('canvas'); off.width=w; off.height=h; const g=off.getContext('2d');
-    g.clearRect(0,0,w,h); g.imageSmoothingEnabled=false; g.drawImage(trailCanvas,0,0,w,h);
-    const url=off.toDataURL('image/png'); const a=document.createElement('a'); const ts=new Date().toISOString().replace(/[:.]/g,'-');
-    a.href=url; a.download=`trails_${world.seed}_${ts}@${scale}x.png`; document.body.appendChild(a); a.click(); a.remove();
   }
 
   // ===== Mode switching =====
@@ -884,9 +779,10 @@
     greenThreshold=parseFloat(greenThresholdEl.value||'0.5'); threshLabel.textContent=greenThreshold.toFixed(2);
     if(bots[1]) planForGreen(bots[1],goal);
   });
-  if(lldSeverityEl){
-    lldSeverityEl.addEventListener('input',()=>{ LLD.severity=parseFloat(lldSeverityEl.value||'0'); if(lldSeverityLabel) lldSeverityLabel.textContent=LLD.severity.toFixed(2); });
-  }
+  lldSeverityEl.addEventListener('input',()=>{ LLD.severity=parseFloat(lldSeverityEl.value||'0'); if(lldSeverityLabel) lldSeverityLabel.textContent=LLD.severity.toFixed(2); });
+  if(wobbleEnabledEl){ wobbleEnabledEl.addEventListener('change',()=>{ LLD.wobbleEnabled=wobbleEnabledEl.checked; }); }
+  if(wobbleAmpEl){ wobbleAmpEl.addEventListener('input',()=>{ LLD.wobbleAmp=parseFloat(wobbleAmpEl.value||'0'); if(wobbleAmpLabel) wobbleAmpLabel.textContent=LLD.wobbleAmp.toFixed(2); }); }
+
   newGoalBtn.addEventListener('click',()=>{ pendingNewGoal=false; setGoalRandom(); drawAll(); });
   exportTrailsBtn.addEventListener('click', (e)=>{ exportTrailsPNG(e.shiftKey?1:2); });
   exportTrailsVectorBtn.addEventListener('click', (e)=>{ exportTrailsVector(e.shiftKey?1:2); });
@@ -895,6 +791,21 @@
   fatigueEnabledEl.addEventListener('change',()=>{ FATIGUE.enabled=fatigueEnabledEl.checked; });
   microRestsEl.addEventListener('change',()=>{ FATIGUE.microRests=microRestsEl.checked; });
   speed10xEl.addEventListener('change',()=>{ timeScale=speed10xEl.checked?10:1; });
+
+  // Panel keys & regenerate
+  document.addEventListener('keydown', e=>{
+    if(e.key==='h' || e.key==='H') panel.classList.toggle('hidden');
+    if(e.key==='r' || e.key==='R'){
+      moduleTopCache.clear(); groundPlaneCache.clear();
+      world=generateWorld({ coverage:0.8, stackProb:0.35, towerChance:0.6, maxTower:6 });
+      accGrid=buildAccGrid(world.seed); rebuildNav3D(); updateUIForMode(); resetBots(); drawAll();
+    }
+  });
+  regenBtn.addEventListener('click', ()=>{
+    moduleTopCache.clear(); groundPlaneCache.clear();
+    world=generateWorld({ coverage:0.8, stackProb:0.35, towerChance:0.6, maxTower:6 });
+    accGrid=buildAccGrid(world.seed); rebuildNav3D(); updateUIForMode(); resetBots(); drawAll();
+  });
 
   // ===== Boot =====
   function resize(){ leftCanvas.width=leftCanvas.clientWidth; leftCanvas.height=leftCanvas.clientHeight; rightCanvas.width=rightCanvas.clientWidth; rightCanvas.height=rightCanvas.clientHeight; }
@@ -905,6 +816,15 @@
   updateUIForMode();
   resetBots();
   drawAll();
+
+  // Export just the trails as a hi-res PNG (transparent background) default 2×
+  function exportTrailsPNG(scale=2){
+    const w=Math.floor(WORLD_PX*scale), h=Math.floor(WORLD_PX*scale);
+    const off=document.createElement('canvas'); off.width=w; off.height=h; const g=off.getContext('2d');
+    g.clearRect(0,0,w,h); g.imageSmoothingEnabled=false; g.drawImage(trailCanvas,0,0,w,h);
+    const url=off.toDataURL('image/png'); const a=document.createElement('a'); const ts=new Date().toISOString().replace(/[:.]/g,'-');
+    a.href=url; a.download=`trails_${world.seed}_${ts}@${scale}x.png`; document.body.appendChild(a); a.click(); a.remove();
+  }
 
   // Animation loop
   let lastT=0;
@@ -935,6 +855,24 @@
 
     checkArrivals(now); drawAll(); requestAnimationFrame(tick);
   }
+
+  function checkArrivals(now){
+    if(!goal) return;
+    for(const b of bots){ if(b.gx===goal.gx && b.gy===goal.gy && b.gz===goal.gz){ if(!b._arrived){ b._arrived=true; b._arriveTime=now; } } }
+    const arrived=bots.filter(b=>b._arrived).sort((a,b)=>a._arriveTime-b._arriveTime);
+    if(arrived.length){
+      if(!firstArrived){
+        const winner=arrived[0]; firstArrived=winner.name; if(winner.name==='orange') wins.orange++; else wins.green++;
+        pausedUntil=now+1.0; pendingNewGoal=randomGoals;
+      }
+    }
+  }
+  function afterPause(){
+    for(const b of bots){ b._arrived=false; b._arriveTime=0; }
+    firstArrived=null;
+    if(pendingNewGoal){ setGoalRandom(); } else { planForOrange(bots[0],goal); planForGreen(bots[1],goal); }
+  }
+
   requestAnimationFrame(tick);
   </script>
 </body>
