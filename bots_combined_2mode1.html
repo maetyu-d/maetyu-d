@@ -76,6 +76,11 @@
           <label for="trailWidth">Trail thickness: <span id="trailWidthLabel">6</span> px</label>
           <input type="range" id="trailWidth" min="1" max="20" step="1" value="6" style="width:100%;">
         </div>
+        <div style="margin-bottom:8px;">
+          <div style="margin-bottom:4px;">Trail Renderer</div>
+          <label style="margin-right:8px;"><input type="radio" name="trailRenderer" id="trailStroke" value="stroke" checked> Stroke</label>
+          <label><input type="radio" name="trailRenderer" id="trailStamp" value="stamp"> Stamp</label>
+        </div>
         <div style="margin-bottom:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <label><input type="checkbox" id="fatigueEnabled" checked> Fatigue</label>
           <label><input type="checkbox" id="microRests" checked> Micro rests</label>
@@ -85,6 +90,7 @@
         </div>
         <button id="newGoalBtn">New Goal Now</button>
         <button id="exportTrailsBtn">Export Trails PNG</button>
+        <button id="exportTrailsVectorBtn">Export Trails (vector)</button>
       </div>
     </aside>
 
@@ -301,6 +307,10 @@
   const speed10xEl=document.getElementById('speed10x');
   const newGoalBtn=document.getElementById('newGoalBtn');
   const exportTrailsBtn=document.getElementById('exportTrailsBtn');
+  const exportTrailsVectorBtn=document.getElementById('exportTrailsVectorBtn');
+  const trailStrokeEl=document.getElementById('trailStroke');
+  const trailStampEl=document.getElementById('trailStamp');
+  let trailRenderer='stroke';
 
   // Time scale
   let timeScale=1, simTime=0;
@@ -626,6 +636,55 @@
     setGoalRandom();
   }
 
+  // ---- Trail renderer helpers ----
+  function stampTrail(ctx, x1,y1, x2,y2, width, color, alpha=1){
+    const r = Math.max(0.5, width * 0.5);
+    const dx = x2-x1, dy = y2-y1;
+    const d = Math.hypot(dx,dy) || 1;
+    const step = Math.max(1, r * 0.6);
+    const nx = dx / d, ny = dy / d;
+    ctx.save();
+    ctx.fillStyle = color; ctx.globalAlpha = alpha;
+    for(let t=0; t<=d; t+=step){
+      const px = x1 + nx*t, py = y1 + ny*t;
+      ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.beginPath(); ctx.arc(x2, y2, r, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+  function drawTrailSegment(bot, x1,y1,z1, x2,y2,z2, alpha, width){
+    if(trailRenderer === 'stamp'){
+      stampTrail(trailCtx, x1,y1, x2,y2, width, bot.color, alpha);
+    } else {
+      trailCtx.strokeStyle = bot.color;
+      trailCtx.lineWidth = width;
+      trailCtx.globalAlpha = alpha;
+      trailCtx.beginPath(); trailCtx.moveTo(x1,y1); trailCtx.lineTo(x2,y2); trailCtx.stroke();
+    }
+    trailSegs.push({x1:x1,y1:y1,z1:z1,x2:x2,y2:y2,z2:z2,color:bot.color,alpha:alpha,width:width});
+  }
+  // Vector export (re-renders segments at chosen scale)
+  function exportTrailsVector(scale=2){
+    const w = WORLD_PX * scale, h = WORLD_PX * scale;
+    const off = document.createElement('canvas'); off.width=w; off.height=h;
+    const g = off.getContext('2d');
+    g.lineCap='round'; g.lineJoin='round'; g.imageSmoothingEnabled = false;
+    for(const s of trailSegs){
+      g.strokeStyle = s.color;
+      g.globalAlpha = (s.alpha ?? 1);
+      g.lineWidth = (s.width ?? 3) * scale;
+      g.beginPath();
+      g.moveTo(s.x1*scale, s.y1*scale);
+      g.lineTo(s.x2*scale, s.y2*scale);
+      g.stroke();
+    }
+    const url = off.toDataURL('image/png');
+    const a = document.createElement('a');
+    const ts = new Date().toISOString().replace(/[:.]/g,'-');
+    a.href = url; a.download = `trails_vector_${world.seed}_${ts}@${scale}x.png`;
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+
   function moveBot(bot,dt,now){
     if(!bot.path || bot.path.length===0) return;
     if(FATIGUE.enabled && now < (bot.restUntil||0)) return;
@@ -650,8 +709,8 @@
     }
 
     if(dist<=step){
-      trailCtx.strokeStyle=bot.color; trailCtx.lineWidth=trailThickness; trailCtx.globalAlpha=0.85; trailCtx.beginPath(); trailCtx.moveTo(bot.x,bot.y); trailCtx.lineTo(target.x,target.y); trailCtx.stroke();
-      trailSegs.push({x1:bot.x,y1:bot.y,z1:bot.gz,x2:target.x,y2:target.y,z2:target.gz,color:bot.color,alpha:0.85,width:segWStrong});
+      // full segment
+      drawTrailSegment(bot, bot.x, bot.y, bot.gz, target.x, target.y, target.gz, 0.85, trailThickness);
       if(FATIGUE.enabled){
         const a=accAt(target.gx,target.gy,target.gz); const rough=Math.max(0,0.6 - a)*FATIGUE.buildRough;
         let hnx=0,hny=0; const mdx=target.x-bot.x, mdy=target.y-bot.y; if(Math.abs(mdx)>=Math.abs(mdy)){ hnx=Math.sign(mdx)||phx; hny=0; } else { hnx=0; hny=Math.sign(mdy)||phy; }
@@ -660,9 +719,9 @@
       const mdx=target.x-bot.x, mdy=target.y-bot.y; if(Math.abs(mdx)+Math.abs(mdy)>0){ if(Math.abs(mdx)>=Math.abs(mdy)){ bot.hx=Math.sign(mdx)||phx; bot.hy=0; } else { bot.hy=Math.sign(mdy)||phy; bot.hx=0; } }
       bot.x=target.x; bot.y=target.y; bot.gx=target.gx; bot.gy=target.gy; bot.gz=target.gz; bot.path.shift();
     } else {
+      // partial step
       const nx=bot.x+(dx/dist)*step, ny=bot.y+(dy/dist)*step;
-      trailCtx.strokeStyle=bot.color; trailCtx.lineWidth=trailThickness; trailCtx.globalAlpha=0.35; trailCtx.beginPath(); trailCtx.moveTo(bot.x,bot.y); trailCtx.lineTo(nx,ny); trailCtx.stroke();
-      trailSegs.push({x1:bot.x,y1:bot.y,z1:bot.gz,x2:nx,y2:ny,z2:bot.gz,color:bot.color,alpha:0.35,width:segWLight});
+      drawTrailSegment(bot, bot.x, bot.y, bot.gz, nx, ny, bot.gz, 0.35, trailThickness);
       if(FATIGUE.enabled){
         const ngx=Math.max(0,Math.min(GRID-1,Math.floor(nx/CUBE))), ngy=Math.max(0,Math.min(GRID-1,Math.floor(ny/CUBE)));
         const a=accAt(ngx,ngy,bot.gz); const rough=Math.max(0,0.6 - a)*FATIGUE.buildRough*0.5;
@@ -797,6 +856,9 @@
   });
   newGoalBtn.addEventListener('click',()=>{ pendingNewGoal=false; setGoalRandom(); drawAll(); });
   exportTrailsBtn.addEventListener('click', (e)=>{ exportTrailsPNG(e.shiftKey?1:2); });
+  exportTrailsVectorBtn.addEventListener('click', (e)=>{ exportTrailsVector(e.shiftKey?1:2); });
+  trailStrokeEl.addEventListener('change', ()=>{ if(trailStrokeEl.checked) trailRenderer='stroke'; });
+  trailStampEl.addEventListener('change', ()=>{ if(trailStampEl.checked) trailRenderer='stamp'; });
   fatigueEnabledEl.addEventListener('change',()=>{ FATIGUE.enabled=fatigueEnabledEl.checked; });
   microRestsEl.addEventListener('change',()=>{ FATIGUE.microRests=microRestsEl.checked; });
   speed10xEl.addEventListener('change',()=>{ timeScale=speed10xEl.checked?10:1; });
