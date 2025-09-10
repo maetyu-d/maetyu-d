@@ -136,15 +136,13 @@
   const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
 
   // === Leg-Length Discrepancy (LLD) model for GREEN bot ===
-  // Implements (1) limp cadence/speed asymmetry, (2) directional bias (curve LEFT),
-  // (3) slope/ramp asymmetry, and (4) added aversion to rough/low-access tiles.
   const LLD = {
     enabled: true,
     severity: 0.35,   // 0..1
-    leftShort: true,  // the short leg is the LEFT one
-    driftBias: 0.12,  // extra cost when taking a rightward step (to curve LEFT)
-    rampBias: 0.25,   // extra cost on vertical transitions that load the short leg
-    roughBoost: 0.08  // added aversion to rough/low-access tiles
+    leftShort: true,  // short leg is LEFT
+    driftBias: 0.12,  // penalize right turns (to curve LEFT)
+    rampBias: 0.25,   // extra cost on vertical transitions
+    roughBoost: 0.08  // extra aversion to rough tiles
   };
 
   // Accessibility textures (per-cube), plus module-top cache for iso
@@ -386,15 +384,16 @@
 
     /* Trails & bots overlay (top-down) */
     ctx.drawImage(trailCanvas, 0, 0);
+    const invZ = 1/(cam.z||1);
     if(goal){
       const gx = goal.gx*CUBE + CUBE/2, gy = goal.gy*CUBE + CUBE/2;
-      ctx.save(); ctx.strokeStyle = 'white'; ctx.lineWidth = 3; ctx.globalAlpha = 0.9;
-      ctx.beginPath(); ctx.arc(gx, gy, 14, 0, Math.PI*2); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(gx-10, gy); ctx.lineTo(gx+10, gy); ctx.moveTo(gx, gy-10); ctx.lineTo(gx, gy+10); ctx.stroke(); ctx.restore();
+      ctx.save(); ctx.strokeStyle = 'white'; ctx.lineWidth = 3*invZ; ctx.globalAlpha = 0.9;
+      ctx.beginPath(); ctx.arc(gx, gy, 14*invZ, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(gx-10*invZ, gy); ctx.lineTo(gx+10*invZ, gy); ctx.moveTo(gx, gy-10*invZ); ctx.lineTo(gx, gy+10*invZ); ctx.stroke(); ctx.restore();
     }
     for(const b of bots){
-      ctx.save(); ctx.fillStyle=b.color; ctx.strokeStyle='#0b0c0d'; ctx.lineWidth=3; ctx.globalAlpha=0.95;
-      ctx.beginPath(); ctx.arc(b.x, b.y, 9, 0, Math.PI*2); ctx.fill(); ctx.stroke(); ctx.restore();
+      ctx.save(); ctx.fillStyle=b.color; ctx.strokeStyle='#0b0c0d'; ctx.lineWidth=3*invZ; ctx.globalAlpha=0.95;
+      ctx.beginPath(); ctx.arc(b.x, b.y, 9*invZ, 0, Math.PI*2); ctx.fill(); ctx.stroke(); ctx.restore();
     }
 
     ctx.restore();
@@ -593,11 +592,11 @@
       if(hasRampUp(cx,cy,cz) && hasFloor(cx,cy,cz+1)) neigh.push({x:cx,y:cy,z:cz+1});
       if(cz>0 && hasRampUp(cx,cy,cz-1) && hasFloor(cx,cy,cz-1)) neigh.push({x:cx,y:cy,z:cz-1});
 
-      for(const n of neigh{
+      for (const n of neigh) {
         if(!passFn(n.x,n.y,n.z)) continue;
         const nid=key3(n.x,n.y,n.z);
         const gcur = (gScore.has(curId)?gScore.get(curId):Infinity);
-        const step = stepCostFn(cx,cy,cz,n.x,n.y,n.z);  // <-- fixed here
+        const step = stepCostFn(cx,cy,cz,n.x,n.y,n.z);
         const tentative=gcur+step;
         const goldG=(gScore.has(nid)?gScore.get(nid):Infinity);
         if(tentative < goldG){
@@ -821,7 +820,7 @@
       const nx=bot.x+(dx/dist)*step; const ny=bot.y+(dy/dist)*step;
       trailCtx.strokeStyle=bot.color; trailCtx.lineWidth=trailThickness; trailCtx.globalAlpha=0.35;
       trailCtx.beginPath(); trailCtx.moveTo(bot.x,bot.y); trailCtx.lineTo(nx,ny); trailCtx.stroke();
-      trailSegs.push({x1:bot.x,y1:bot.y,z1:bot.gz,x2:nx,y2:ny,Z2:bot.gz,color:bot.color,alpha:0.35,width:segWLight});
+      trailSegs.push({x1:bot.x,y1:bot.y,z1:bot.gz,x2:nx,y2:ny,z2:bot.gz,color:bot.color,alpha:0.35,width:segWLight});
 
       // Fatigue from roughness and small heading tweak
       if(FATIGUE.enabled){
@@ -1020,4 +1019,5 @@
   </script>
 </body>
 </html>
+
 
