@@ -1,0 +1,91 @@
+<!doctype html>
+// fatigue
+const rho = 1 + parseFloat(UI.wacc.value) * Math.max(0, 7 - access)/7;
+const chi = 1 + 0.5 * Math.abs(kappa_bias);
+const E_dot = PARAM.c0 * bot.v*bot.v * rho * chi;
+const recover = (bot.v<0.06)? PARAM.kR : 0;
+bot.F = Math.max(0, Math.min(1, bot.F + (PARAM.kE*E_dot - recover)*dt));
+
+
+// trail
+bot.trail.push({x:bot.pos.x,y:bot.pos.y,age:0});
+if(bot.trail.length>2000) bot.trail.shift();
+}
+
+
+function draw(){
+ctx.clearRect(0,0,canvas.width,canvas.height);
+// grid / nodes
+for(const e of EDGES){
+const a=NODES[e[0]], b=NODES[e[1]];
+ctx.strokeStyle="#2d3240"; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+}
+for(const n of NODES){
+const t = n.a/10; // access tint
+ctx.fillStyle = `rgba(${Math.round(40+160*t)},${Math.round(60+90*t)},${Math.round(80+20*t)},0.35)`;
+ctx.beginPath(); ctx.arc(n.x,n.y,26,0,Math.PI*2); ctx.fill();
+ctx.strokeStyle = '#3a3f4b'; ctx.lineWidth=1; ctx.stroke();
+ctx.fillStyle = '#cbd3e7'; ctx.font='12px system-ui'; ctx.textAlign='center'; ctx.fillText(`${n.id} a:${n.a}`, n.x, n.y+4);
+}
+
+
+function drawTrail(tr, color){
+ctx.strokeStyle=color; ctx.lineWidth=2; ctx.beginPath();
+for(let i=0;i<tr.length;i++){ const p=tr[i]; if(i===0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y); }
+ctx.stroke();
+}
+drawTrail(orange.trail, '#ff9a00');
+drawTrail(green.trail, '#58f79d');
+
+
+// bots
+function drawBot(b,color){
+ctx.save(); ctx.translate(b.pos.x,b.pos.y); ctx.rotate(b.yaw);
+ctx.fillStyle=color; ctx.strokeStyle='#000';
+ctx.beginPath(); ctx.moveTo(10,0); ctx.lineTo(-8,6); ctx.lineTo(-8,-6); ctx.closePath(); ctx.fill();
+ctx.restore();
+}
+drawBot(orange,'#ff9a00');
+drawBot(green,'#58f79d');
+
+
+// HUD
+ctx.fillStyle='#9aa3b2'; ctx.font='12px system-ui';
+ctx.fillText(`Orange F=${orange.F.toFixed(2)} v=${orange.v.toFixed(2)}`, 14, 20);
+ctx.fillText(`Green F=${green.F.toFixed(2)} v=${green.v.toFixed(2)} α=${green.alpha.toFixed(2)} A0=${green.A0.toFixed(2)}`, 14, 36);
+}
+
+
+let last=performance.now(), time=0; let simSpeed=1;
+function loop(t){
+const dt = Math.min(0.05, (t-last)/1000)*simSpeed; last=t; time+=dt;
+step(orange, dt); step(green, dt);
+draw(); requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+
+// UI wiring
+UI.timeScale.oninput=()=>{ simSpeed=parseInt(UI.timeScale.value,10); UI.tsv.textContent=simSpeed+"×"; };
+UI.alpha.oninput=()=>{ UI.alphav.textContent=UI.alpha.value; green.alpha=parseFloat(UI.alpha.value); };
+UI.A0.oninput=()=>{ UI.A0v.textContent=UI.A0.value; green.A0=parseFloat(UI.A0.value); };
+UI.wacc.oninput=()=>{ UI.waccv.textContent=UI.wacc.value; replan(green); };
+UI.reset.onclick=()=>{ orange=makeBot('orange'); green=makeBot('green'); replan(orange); replan(green); };
+UI.export.onclick=()=>{
+const scale=2; const off=document.createElement('canvas'); off.width=canvas.width*scale; off.height=canvas.height*scale; const ox=off.getContext('2d');
+ox.scale(scale,scale); // redraw scene scaled
+const bakCtx=ctx; const bakCan=canvas; // quick re-render hack
+const tmpCtx = ctx; const tmpCan = canvas; // no-op (we'll just call draw after scaling with ox)
+// re-implement draw to ox quickly
+const saveCtx = ctx; const saveCanvas = canvas; window._ctx=ctx; window._canvas=canvas;
+// Use existing draw by swapping ctx temporarily
+const oldCtx = ctx; const oldCanvas = canvas;
+// Monkey-patch
+const desc = Object.getOwnPropertyDescriptor(window,'ctx');
+ctx = ox; canvas = off; draw(); ctx = oldCtx; canvas = oldCanvas;
+const url = off.toDataURL('image/png'); const a=document.createElement('a'); a.download='export.png'; a.href=url; a.click();
+};
+})();
+</script>
+</body>
+</html>
