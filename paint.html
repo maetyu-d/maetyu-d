@@ -1,4 +1,5 @@
-<!doctype html>
+<!DOCTYPE html>
+<html lang="en">
 <meta charset="utf-8" />
 <title>Generative Melted Stripes — Fluid (Level 2)</title>
 <style>
@@ -13,6 +14,7 @@
   button{all:unset;background:#1f1f22;padding:8px 10px;margin-top:8px;border-radius:8px;cursor:pointer}
   button:hover{background:#2a2a2e}
 </style>
+<body>
 <div id="wrap">
   <canvas id="c"></canvas>
   <aside>
@@ -39,13 +41,14 @@
     <button id="reset">Reset</button>
   </aside>
 </div>
+
 <script>
 (() => {
   const canvas = document.getElementById('c');
   const ctx = canvas.getContext('2d', {alpha:false, desynchronized:true});
   let W=0,H=0, aspect=1;
 
-  // ---- FIX: declare before any use ----
+  // IMPORTANT: declare before any usage to avoid TDZ errors
   let injectTimer = 0;
 
   // UI helpers
@@ -82,7 +85,7 @@
       params.slip = +el('slip').value/100;
       params.curl = +el('curl').value/2000;
       updateLabels();
-      if (id==='res') init(); // rebuild grid
+      if (id==='res') init(); // rebuild grid when resolution changes
     });
   });
   el('reset').onclick = () => resetPaint(true);
@@ -103,10 +106,6 @@
   }
 
   function clamp(v,a,b){ return v<a?a: v>b?b:v; }
-
-  function addSource(x, s, dt){
-    for(let i=0;i<size;i++) x[i] += dt*s[i];
-  }
 
   function diffuse(bnd, x, x0, diff, dt){
     const a = dt*diff*NX*NY;
@@ -185,9 +184,9 @@
     if (bnd===1 || bnd===2){
       for(let i=1;i<NX-1;i++){
         if (bnd===1) { // u component
-          u[idx(i,NY-1)] *= (1-params.slip); // zero normal at floor
+          u[idx(i,NY-1)] *= (1-params.slip);
         } else {       // v component
-          v[idx(i,NY-1)] =  Math.abs(v[idx(i,NY-1)])*params.slip; // allow outward slide
+          v[idx(i,NY-1)] =  Math.abs(v[idx(i,NY-1)])*params.slip;
         }
       }
     }
@@ -227,7 +226,7 @@
     if (fresh){
       u.fill(0); v.fill(0); p.fill(0); div.fill(0);
     }
-    injectTimer = 0;  // safe now
+    injectTimer = 0;  // safe now (declared above)
   }
 
   function init(){
@@ -258,17 +257,17 @@
       const B = parseInt(col.substr(5,2),16)/255;
 
       for(let x=cx-half;x<=cx+half;x++){
-        const y=1;
+        const y=1; // just below top boundary
         const id = idx(clamp(x,1,NX-2), y);
         r[id] = Math.min(1.5, r[id] + R*0.8);
         g[id] = Math.min(1.5, g[id] + G*0.8);
         b[id] = Math.min(1.5, b[id] + B*0.8);
-        v[id] += 0.2; // initial downward
+        v[id] += 0.2; // initial downward nudge
       }
     }
   }
 
-  // Curl noise perturbation
+  // Curl noise perturbation (keeps lanes wiggly)
   function curlNoise(x,y,t){
     function h(n){ return Math.sin(n*853.23 + Math.cos(n*0.113+t*0.3))*43758.5453 % 1; }
     const n1 = h(x*13.1+y*7.7);
@@ -276,7 +275,7 @@
     return {x: (n2-0.5), y: -(n1-0.5)};
   }
 
-  // Simulation step
+  // Simulation loop
   let last=performance.now();
   function step(){
     const now = performance.now();
@@ -295,6 +294,7 @@
         const co = curlNoise(i/NX, j/NY, now*0.001);
         u[id] += co.x*params.curl;
         v[id] += co.y*params.curl;
+        // near floor: outward slip + vertical damping
         if (j>NY-4){
           const center = NX*0.5;
           const dir = Math.sign(i-center)|| (Math.random()<.5?-1:1);
@@ -309,6 +309,7 @@
     diffuse(1, u, uPrev, params.nu, dt);
     diffuse(2, v, vPrev, params.nu, dt);
 
+    // Incompressible projection
     project(u, v, p, div);
 
     // Advect velocity
@@ -318,7 +319,7 @@
 
     project(u, v, p, div);
 
-    // Dye diffusion (low)
+    // Dye diffusion (low for stacked color look)
     rPrev.set(r); gPrev.set(g); bPrev.set(b);
     diffuse(0, r, rPrev, params.diff, dt);
     diffuse(0, g, gPrev, params.diff, dt);
@@ -331,7 +332,6 @@
     advect(0, b, bPrev, u, v, dt);
 
     render();
-
     requestAnimationFrame(step);
   }
 
@@ -345,8 +345,10 @@
         const idg = idx(gx,gy);
         let R = r[idg], G=g[idg], B=b[idg];
 
+        // tone map to avoid dull colors
         R = 1 - Math.exp(-R); G = 1 - Math.exp(-G); B = 1 - Math.exp(-B);
 
+        // thickness rim near pooling regions
         const below = b[idx(gx, Math.min(NY-2,gy+1))] + g[idx(gx, Math.min(NY-2,gy+1))] + r[idx(gx, Math.min(NY-2,gy+1))];
         const here  = b[idg] + g[idg] + r[idg];
         const edge = Math.max(0, here - below);
@@ -360,7 +362,8 @@
       }
     }
     ctx.putImageData(img,0,0);
-    // panel edge
+
+    // draw a subtle panel edge
     ctx.save();
     ctx.scale(canvas.width, canvas.height);
     ctx.lineWidth = 1/canvas.width;
@@ -374,4 +377,5 @@
   requestAnimationFrame(step);
 })();
 </script>
-
+</body>
+</html>
