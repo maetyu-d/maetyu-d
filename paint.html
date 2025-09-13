@@ -73,13 +73,12 @@
   const ctx = canvas.getContext('2d', {alpha:false, desynchronized:true});
   let W=0,H=0, aspect=1;
 
-  // global timer (declare before any use)
+  // timers / globals (declare before use)
   let injectTimer = 0;
 
-  // UI refs
+  // UI helpers
   const el = id => document.getElementById(id);
   const lbl = (id, v) => el(id).textContent = v;
-
   const params = {
     N: +el('res').value,
     gravity: +el('grav').value/100,
@@ -88,10 +87,9 @@
     nStripes: +el('nstripes').value,
     jitter: +el('jitter').value/100,
     curl: +el('curl').value/2000,
-    settle: +el('settle').value/100,
-    poolSpread: +el('spread').value/1000,
+    settle: +el('settle').value/100,         // 0..1 per frame
+    poolSpread: +el('spread').value/1000,    // small sideways blur
   };
-
   const updateLabels = () => {
     lbl('resLbl', params.N+' cells high');
     lbl('gLbl', params.gravity.toFixed(2));
@@ -103,7 +101,6 @@
     lbl('settleLbl', params.settle.toFixed(2));
     lbl('spreadLbl', params.poolSpread.toFixed(3));
   };
-
   function bindSliders(){
     ['res','grav','nu','diff','nstripes','jitter','curl','settle','spread'].forEach(id=>{
       el(id).addEventListener('input', () => {
@@ -117,17 +114,16 @@
         params.settle = +el('settle').value/100;
         params.poolSpread = +el('spread').value/1000;
         updateLabels();
-        if (id==='res') init(); // rebuild grid on res change
+        if (id==='res') init(); // rebuild grid
       });
     });
   }
-
   function setSlider(id, val){
     el(id).value = val;
     el(id).dispatchEvent(new Event('input'));
   }
 
-  // Presets dropdown
+  // Presets
   el('preset').addEventListener('change', e=>{
     const p = e.target.value;
     if (p === 'straight'){
@@ -176,12 +172,17 @@
   });
 
   el('reset').onclick = () => resetPaint(true);
-  el('save').onclick = () => savePNG();
+  el('save').onclick = () => {
+    const a = document.createElement('a');
+    a.href = canvas.toDataURL('image/png');
+    a.download = 'melted-stripes.png';
+    a.click();
+  };
 
   updateLabels();
   bindSliders();
 
-  // Fluid grid & pooling buffers
+  // ----- Fluid grid (Stable Fluids) + pooling buffers -----
   let NX, NY, size, u,v,uPrev,vPrev,p,div, r,g,b, rPrev,gPrev,bPrev;
   let poolR, poolG, poolB;
 
@@ -257,7 +258,7 @@
   }
 
   function setBnd(bnd, x){
-    // no-slip on all borders
+    // no-slip on borders
     for(let i=1;i<NX-1;i++){
       x[idx(i,0)]    = (bnd===2? -x[idx(i,1)]    : x[idx(i,1)]);
       x[idx(i,NY-1)] = (bnd===2? -x[idx(i,NY-2)] : x[idx(i,NY-2)]);
@@ -272,6 +273,7 @@
     x[idx(NX-1,NY-1)] = 0.5*(x[idx(NX-2,NY-1)] + x[idx(NX-1,NY-2)]);
   }
 
+  // sizing
   function resize(){
     const rect = canvas.getBoundingClientRect();
     const dpr = Math.min(2, window.devicePixelRatio||1);
@@ -281,6 +283,7 @@
     aspect = W/H;
   }
 
+  // palette
   let palette = [];
   function buildPalette(){
     palette = [];
@@ -322,6 +325,7 @@
   window.addEventListener('resize', () => { init(); });
   init();
 
+  // stripe injection (top)
   function inject(dt){
     const lanes = params.nStripes;
     const laneW = NX/lanes;
@@ -335,16 +339,17 @@
       const G = parseInt(col.substr(3,2),16)/255;
       const B = parseInt(col.substr(5,2),16)/255;
       for(let x=cx-half;x<=cx+half;x++){
-        const y=1;
+        const y=1; // just under the top boundary
         const id = idx(clamp(x,1,NX-2), y);
         r[id] = Math.min(1.5, r[id] + R*0.8);
         g[id] = Math.min(1.5, g[id] + G*0.8);
         b[id] = Math.min(1.5, b[id] + B*0.8);
-        v[id] += 0.2;
+        v[id] += 0.2; // downward nudge
       }
     }
   }
 
+  // curl noise (divergence-free-ish)
   function curlNoise(x,y,t){
     function h(n){ return Math.sin(n*853.23 + Math.cos(n*0.113+t*0.3))*43758.5453 % 1; }
     const n1 = h(x*13.1+y*7.7);
@@ -352,24 +357,18 @@
     return {x: (n2-0.5), y: -(n1-0.5)};
   }
 
-  function savePNG(){
-    const a = document.createElement('a');
-    a.href = canvas.toDataURL('image/png');
-    a.download = 'melted-stripes.png';
-    a.click();
-  }
-
+  // main loop
   let last=performance.now();
   function step(){
     const now = performance.now();
     let dt = Math.min(0.033, (now-last)/1000);
     last = now;
 
-    // injection cadence
+    // inject
     injectTimer += dt;
     if (injectTimer > 0.045){ inject(dt); injectTimer = 0; }
 
-    // gravity + curl + mild bottom damping
+    // gravity + curl + bottom damping
     for(let j=1;j<NY-1;j++){
       for(let i=1;i<NX-1;i++){
         const id = idx(i,j);
@@ -377,9 +376,7 @@
         const co = curlNoise(i/NX, j/NY, now*0.001);
         u[id] += co.x*params.curl;
         v[id] += co.y*params.curl;
-        if (j > NY-3){
-          u[id] *= 0.7; v[id] *= 0.5;
-        }
+        if (j > NY-3){ u[id] *= 0.7; v[id] *= 0.5; } // calm near floor
       }
     }
 
@@ -403,20 +400,19 @@
 
     project(u, v, p, div);
 
-    // dye evolve
+    // dye: low diffusion + advection
     rPrev.set(r); gPrev.set(g); bPrev.set(b);
     diffuse(0, r, rPrev, params.diff, dt);
     diffuse(0, g, gPrev, params.diff, dt);
     diffuse(0, b, bPrev, params.diff, dt);
-
     rPrev.set(r); gPrev.set(g); bPrev.set(b);
     advect(0, r, rPrev, u, v, dt);
     advect(0, g, gPrev, u, v, dt);
     advect(0, b, bPrev, u, v, dt);
 
-    // --- Pooling / deposition near bottom ---
+    // pooling/deposition (last two rows)
     const settleFrac = params.settle;
-    const startRow = NY - 3; // last two rows
+    const startRow = NY - 3;
     for (let j = startRow; j < NY-1; j++){
       for (let i=1; i<NX-1; i++){
         const id = idx(i,j);
@@ -427,7 +423,7 @@
         r[id] -= dR;     g[id] -= dG;     b[id] -= dB;
       }
     }
-    // sideways spread for pooled paint (bottom band only)
+    // sideways spread (only pooled paint, bottom band)
     const s = params.poolSpread;
     if (s > 0){
       for (let j = startRow; j < NY-1; j++){
@@ -456,7 +452,7 @@
         const gx = Math.floor(x/W*(NX-2))+1;
         const idg = idx(gx,gy);
 
-        // pooled + flowing dye
+        // combine flowing dye + pooled paint
         let R = r[idg] + poolR[idg];
         let G = g[idg] + poolG[idg];
         let B = b[idg] + poolB[idg];
@@ -466,7 +462,7 @@
         G = 1 - Math.exp(-G);
         B = 1 - Math.exp(-B);
 
-        // subtle thickness rim where accumulation increases downward
+        // subtle rim where accumulation increases downward
         const belowSum =
           (b[idx(gx, Math.min(NY-2,gy+1))] + g[idx(gx, Math.min(NY-2,gy+1))] + r[idx(gx, Math.min(NY-2,gy+1))]) +
           (poolB[idx(gx, Math.min(NY-2,gy+1))] + poolG[idx(gx, Math.min(NY-2,gy+1))] + poolR[idx(gx, Math.min(NY-2,gy+1))]);
@@ -493,10 +489,17 @@
     ctx.restore();
   }
 
+  // Save PNG
+  function savePNG(){
+    const a = document.createElement('a');
+    a.href = canvas.toDataURL('image/png');
+    a.download = 'melted-stripes.png';
+    a.click();
+  }
+
   requestAnimationFrame(step);
 })();
 </script>
 </body>
 </html>
-
 
