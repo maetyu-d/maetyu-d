@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <meta charset="utf-8" />
-<title>Generative Melted Stripes — Fluid (Level 2, Fixed Pooling)</title>
+<title>Melted Stripes — Fluid with Pooling</title>
 <style>
   html,body{margin:0;height:100%;background:#111;color:#eee;font-family:ui-sans-serif,system-ui}
   #wrap{display:grid;grid-template-columns:1fr 320px;gap:16px;height:100%}
@@ -18,12 +18,12 @@
 <div id="wrap">
   <canvas id="c"></canvas>
   <aside>
-    <h1>Melted Stripes — Real-time Fluid</h1>
+    <h1>Melted Stripes — Fluid + Pool</h1>
     <div class="small">
-      Stable-fluids sim with gravity, damping floor, and pooling.
+      Stable-fluids drips (r,g,b) + separate bottom pooling buffers (poolR,G,B).
     </div>
     <label>Grid Resolution <span id="resLbl"></span></label>
-    <input id="res" type="range" min="96" max="220" step="4" value="160">
+    <input id="res" type="range" min="96" max="240" step="4" value="168">
     <label>Gravity <span id="gLbl"></span></label>
     <input id="grav" type="range" min="0" max="45" step="1" value="22">
     <label>Viscosity <span id="nuLbl"></span></label>
@@ -31,11 +31,15 @@
     <label>Diffusion (keep low) <span id="diffLbl"></span></label>
     <input id="diff" type="range" min="0" max="6" step="1" value="1">
     <label>Stripe Count <span id="nLbl"></span></label>
-    <input id="nstripes" type="range" min="28" max="140" step="4" value="84">
+    <input id="nstripes" type="range" min="28" max="160" step="4" value="96">
     <label>Stripe Width Jitter <span id="jitLbl"></span></label>
-    <input id="jitter" type="range" min="0" max="100" step="5" value="35">
+    <input id="jitter" type="range" min="0" max="100" step="5" value="30">
     <label>Curl Noise (perturb) <span id="curlLbl"></span></label>
     <input id="curl" type="range" min="0" max="60" step="2" value="10">
+    <label>Settle Rate (pooling) <span id="settleLbl"></span></label>
+    <input id="settle" type="range" min="0" max="100" step="1" value="28">
+    <label>Pool Spread (sideways) <span id="spreadLbl"></span></label>
+    <input id="spread" type="range" min="0" max="100" step="1" value="8">
     <button id="reset">Reset</button>
   </aside>
 </div>
@@ -46,7 +50,7 @@
   const ctx = canvas.getContext('2d', {alpha:false, desynchronized:true});
   let W=0,H=0, aspect=1;
 
-  // timer for stripe injection
+  // timers / globals declared before any use (avoid TDZ)
   let injectTimer = 0;
 
   // UI helpers
@@ -60,6 +64,8 @@
     nStripes: +el('nstripes').value,
     jitter: +el('jitter').value/100,
     curl: +el('curl').value/2000,
+    settle: +el('settle').value/100,        // 0..1 of dye that deposits per frame on floor row
+    poolSpread: +el('spread').value/1000,   // tiny sideways blur of pooled paint
   };
   const updateLabels = () => {
     lbl('resLbl', params.N+' cells high');
@@ -69,8 +75,10 @@
     lbl('nLbl', params.nStripes);
     lbl('jitLbl', params.jitter.toFixed(2));
     lbl('curlLbl', params.curl.toFixed(3));
+    lbl('settleLbl', params.settle.toFixed(2));
+    lbl('spreadLbl', params.poolSpread.toFixed(3));
   };
-  ['res','grav','nu','diff','nstripes','jitter','curl'].forEach(id=>{
+  ['res','grav','nu','diff','nstripes','jitter','curl','settle','spread'].forEach(id=>{
     el(id).addEventListener('input', () => {
       params.N = +el('res').value;
       params.gravity = +el('grav').value/100;
@@ -79,15 +87,19 @@
       params.nStripes = +el('nstripes').value;
       params.jitter = +el('jitter').value/100;
       params.curl = +el('curl').value/2000;
+      params.settle = +el('settle').value/100;
+      params.poolSpread = +el('spread').value/1000;
       updateLabels();
-      if (id==='res') init(); 
+      if (id==='res') init(); // rebuild grid when resolution changes
     });
   });
   el('reset').onclick = () => resetPaint(true);
   updateLabels();
 
-  // fluid state
-  let NX, NY, size, u,v,uPrev,vPrev,p,div,r,g,b,rPrev,gPrev,bPrev;
+  // ----- Fluid grid (Stable Fluids) -----
+  let NX, NY, size, u,v,uPrev,vPrev,p,div, r,g,b, rPrev,gPrev,bPrev;
+  // Pooling buffers (static, do NOT advect)
+  let poolR, poolG, poolB;
 
   function idx(x,y){ return x + y*NX; }
 
@@ -98,11 +110,11 @@
     p = new Float32Array(size); div = new Float32Array(size);
     r = new Float32Array(size); g = new Float32Array(size); b = new Float32Array(size);
     rPrev = new Float32Array(size); gPrev = new Float32Array(size); bPrev = new Float32Array(size);
+    poolR = new Float32Array(size); poolG = new Float32Array(size); poolB = new Float32Array(size);
   }
 
   function clamp(v,a,b){ return v<a?a: v>b?b:v; }
 
-  // diffusion
   function diffuse(bnd, x, x0, diff, dt){
     const a = dt*diff*NX*NY;
     for(let k=0;k<15;k++){
@@ -115,7 +127,6 @@
     }
   }
 
-  // advection
   function advect(bnd, d, d0, uu, vv, dt){
     for(let j=1;j<NY-1;j++){
       for(let i=1;i<NX-1;i++){
@@ -135,7 +146,6 @@
     setBnd(bnd,d);
   }
 
-  // pressure projection
   function project(uu, vv, pp, dd){
     const h = 1/NX;
     for(let j=1;j<NY-1;j++){
@@ -162,8 +172,8 @@
     setBnd(1,uu); setBnd(2,vv);
   }
 
-  // boundaries
   function setBnd(bnd, x){
+    // No-slip top/bottom; no-slip left/right
     for(let i=1;i<NX-1;i++){
       x[idx(i,0)]    = (bnd===2? -x[idx(i,1)]    : x[idx(i,1)]);
       x[idx(i,NY-1)] = (bnd===2? -x[idx(i,NY-2)] : x[idx(i,NY-2)]);
@@ -178,7 +188,6 @@
     x[idx(NX-1,NY-1)]         = 0.5*(x[idx(NX-2,NY-1)] + x[idx(NX-1,NY-2)]);
   }
 
-  // resize
   function resize(){
     const rect = canvas.getBoundingClientRect();
     const dpr = Math.min(2, window.devicePixelRatio||1);
@@ -209,6 +218,7 @@
 
   function resetPaint(fresh=false){
     r.fill(0); g.fill(0); b.fill(0);
+    poolR.fill(0); poolG.fill(0); poolB.fill(0);
     if (fresh){
       u.fill(0); v.fill(0); p.fill(0); div.fill(0);
     }
@@ -228,7 +238,7 @@
   window.addEventListener('resize', () => { init(); });
   init();
 
-  // inject stripes at top
+  // Stripe injection at top
   function inject(dt){
     const lanes = params.nStripes;
     const laneW = NX/lanes;
@@ -241,17 +251,19 @@
       const R = parseInt(col.substr(1,2),16)/255;
       const G = parseInt(col.substr(3,2),16)/255;
       const B = parseInt(col.substr(5,2),16)/255;
+
       for(let x=cx-half;x<=cx+half;x++){
         const y=1;
         const id = idx(clamp(x,1,NX-2), y);
         r[id] = Math.min(1.5, r[id] + R*0.8);
         g[id] = Math.min(1.5, g[id] + G*0.8);
         b[id] = Math.min(1.5, b[id] + B*0.8);
-        v[id] += 0.2;
+        v[id] += 0.2; // initial downward nudge
       }
     }
   }
 
+  // Curl noise perturbation
   function curlNoise(x,y,t){
     function h(n){ return Math.sin(n*853.23 + Math.cos(n*0.113+t*0.3))*43758.5453 % 1; }
     const n1 = h(x*13.1+y*7.7);
@@ -259,6 +271,7 @@
     return {x: (n2-0.5), y: -(n1-0.5)};
   }
 
+  // Simulation loop
   let last=performance.now();
   function step(){
     const now = performance.now();
@@ -269,7 +282,7 @@
     injectTimer += dt;
     if (injectTimer > 0.045){ inject(dt); injectTimer = 0; }
 
-    // apply gravity, curl, and floor damping
+    // gravity + curl + mild bottom damping to slow motion near floor
     for(let j=1;j<NY-1;j++){
       for(let i=1;i<NX-1;i++){
         const id = idx(i,j);
@@ -277,14 +290,14 @@
         const co = curlNoise(i/NX, j/NY, now*0.001);
         u[id] += co.x*params.curl;
         v[id] += co.y*params.curl;
-        if (j > NY-4){  // damping near floor
-          u[id] *= 0.6;
-          v[id] *= 0.3;
+        if (j > NY-3){ // gentle damping very near floor so drips calm down
+          u[id] *= 0.7;
+          v[id] *= 0.5;
         }
       }
     }
 
-    // kill horizontal drift
+    // remove tiny global horizontal drift
     let sumU = 0;
     for (let n=0; n<size; n++) sumU += u[n];
     const meanU = sumU / size;
@@ -297,13 +310,14 @@
 
     project(u, v, p, div);
 
+    // advect velocity
     uPrev.set(u); vPrev.set(v);
     advect(1, u, uPrev, uPrev, vPrev, dt);
     advect(2, v, vPrev, uPrev, vPrev, dt);
 
     project(u, v, p, div);
 
-    // dye
+    // dye (fluid) evolve
     rPrev.set(r); gPrev.set(g); bPrev.set(b);
     diffuse(0, r, rPrev, params.diff, dt);
     diffuse(0, g, gPrev, params.diff, dt);
@@ -313,6 +327,37 @@
     advect(0, r, rPrev, u, v, dt);
     advect(0, g, gPrev, u, v, dt);
     advect(0, b, bPrev, u, v, dt);
+
+    // --- POOLING / DEPOSITION ---
+    // Take dye from the last 2 rows and deposit into pool; remove from fluid so it stops moving.
+    const settleFrac = params.settle; // 0..1 per frame (keep modest)
+    const startRow = NY - 3; // deposit in the last two rows
+    for (let j = startRow; j < NY-1; j++){
+      for (let i=1; i<NX-1; i++){
+        const id = idx(i,j);
+        const dR = r[id] * settleFrac;
+        const dG = g[id] * settleFrac;
+        const dB = b[id] * settleFrac;
+        poolR[id] += dR; poolG[id] += dG; poolB[id] += dB;
+        r[id] -= dR;     g[id] -= dG;     b[id] -= dB;
+      }
+    }
+
+    // Make the pool spread sideways a little (diffuse only along X, bottom band)
+    const s = params.poolSpread; // tiny
+    if (s > 0){
+      for (let j = startRow; j < NY-1; j++){
+        for (let i=1; i<NX-1; i++){
+          const id = idx(i,j);
+          const lapR = (poolR[idx(i-1,j)] + poolR[idx(i+1,j)] - 2*poolR[id]);
+          const lapG = (poolG[idx(i-1,j)] + poolG[idx(i+1,j)] - 2*poolG[id]);
+          const lapB = (poolB[idx(i-1,j)] + poolB[idx(i+1,j)] - 2*poolB[id]);
+          poolR[id] += s * lapR;
+          poolG[id] += s * lapG;
+          poolB[id] += s * lapB;
+        }
+      }
+    }
 
     render();
     requestAnimationFrame(step);
@@ -326,14 +371,25 @@
       for(let x=0;x<W;x++){
         const gx = Math.floor(x/W*(NX-2))+1;
         const idg = idx(gx,gy);
-        let R = r[idg], G=g[idg], B=b[idg];
+
+        // combine dynamic dye + pooled paint
+        let R = r[idg] + poolR[idg];
+        let G = g[idg] + poolG[idg];
+        let B = b[idg] + poolB[idg];
+
+        // tone map to keep colors vivid
         R = 1 - Math.exp(-R);
         G = 1 - Math.exp(-G);
         B = 1 - Math.exp(-B);
-        const below = b[idx(gx, Math.min(NY-2,gy+1))] + g[idx(gx, Math.min(NY-2,gy+1))] + r[idx(gx, Math.min(NY-2,gy+1))];
-        const here  = b[idg] + g[idg] + r[idg];
-        const edge = Math.max(0, here - below);
+
+        // add a subtle "thickness rim" where accumulation increases downward
+        const belowSum =
+          (b[idx(gx, Math.min(NY-2,gy+1))] + g[idx(gx, Math.min(NY-2,gy+1))] + r[idx(gx, Math.min(NY-2,gy+1))]) +
+          (poolB[idx(gx, Math.min(NY-2,gy+1))] + poolG[idx(gx, Math.min(NY-2,gy+1))] + poolR[idx(gx, Math.min(NY-2,gy+1))]);
+        const hereSum = (b[idg]+g[idg]+r[idg]) + (poolB[idg]+poolG[idg]+poolR[idg]);
+        const edge = Math.max(0, hereSum - belowSum);
         const rim = Math.min(1, edge*2.5);
+
         const k = (x + y*W)<<2;
         data[k  ] = Math.min(255,(R*255 + rim*18));
         data[k+1] = Math.min(255,(G*255 + rim*18));
@@ -342,6 +398,8 @@
       }
     }
     ctx.putImageData(img,0,0);
+
+    // decorative frame line (top and right edge)
     ctx.save();
     ctx.scale(canvas.width, canvas.height);
     ctx.lineWidth = 1/canvas.width;
