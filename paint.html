@@ -1,0 +1,389 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Generative Melted Stripes — Fluid (Level 2)</title>
+<style>
+  html,body{margin:0;height:100%;background:#111;color:#eee;font-family:ui-sans-serif,system-ui}
+  #wrap{display:grid;grid-template-columns:1fr 320px;gap:16px;height:100%}
+  canvas{width:100%;height:100%;display:block;background:#f1f3f5}
+  aside{padding:14px 14px 22px;background:#0f0f10;border-left:1px solid #222;overflow:auto}
+  h1{font-size:16px;margin:0 0 10px;color:#ddd}
+  label{display:flex;justify-content:space-between;font-size:12px;margin:8px 0 2px}
+  input[type=range]{width:100%}
+  .small{opacity:.75;font-size:11px}
+  button{all:unset;background:#1f1f22;padding:8px 10px;margin-top:8px;border-radius:8px;cursor:pointer}
+  button:hover{background:#2a2a2e}
+</style>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <aside>
+    <h1>Melted Stripes — Real-time Fluid</h1>
+    <div class="small">
+      Semi-Lagrangian advection, pressure projection, gravity, slip floor. Colors injected as vertical stripes.
+    </div>
+    <label>Grid Resolution <span id="resLbl"></span></label>
+    <input id="res" type="range" min="96" max="220" step="4" value="160">
+    <label>Gravity <span id="gLbl"></span></label>
+    <input id="grav" type="range" min="0" max="45" step="1" value="22">
+    <label>Viscosity <span id="nuLbl"></span></label>
+    <input id="nu" type="range" min="0" max="25" step="1" value="8">
+    <label>Diffusion (keep low) <span id="diffLbl"></span></label>
+    <input id="diff" type="range" min="0" max="6" step="1" value="1">
+    <label>Stripe Count <span id="nLbl"></span></label>
+    <input id="nstripes" type="range" min="28" max="140" step="4" value="84">
+    <label>Stripe Width Jitter <span id="jitLbl"></span></label>
+    <input id="jitter" type="range" min="0" max="100" step="5" value="35">
+    <label>Floor Spread (slip) <span id="slipLbl"></span></label>
+    <input id="slip" type="range" min="0" max="100" step="5" value="60">
+    <label>Curl Noise (perturb) <span id="curlLbl"></span></label>
+    <input id="curl" type="range" min="0" max="60" step="2" value="20">
+    <button id="reset">Reset</button>
+  </aside>
+</div>
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d', {alpha:false, desynchronized:true});
+  let W=0,H=0, aspect=1;
+
+  // UI helpers
+  const el = id => document.getElementById(id);
+  const lbl = (id, v) => el(id).textContent = v;
+  const params = {
+    N: +el('res').value,
+    gravity: +el('grav').value/100,     // 0..0.45
+    nu: +el('nu').value/1000,           // viscosity
+    diff: +el('diff').value/2000,       // diffusion
+    nStripes: +el('nstripes').value,
+    jitter: +el('jitter').value/100,    // 0..1
+    slip: +el('slip').value/100,        // 0..1
+    curl: +el('curl').value/2000,       // 0..0.03
+  };
+  const updateLabels = () => {
+    lbl('resLbl', params.N+' cells high');
+    lbl('gLbl', params.gravity.toFixed(2));
+    lbl('nuLbl', params.nu.toFixed(3));
+    lbl('diffLbl', params.diff.toFixed(3));
+    lbl('nLbl', params.nStripes);
+    lbl('jitLbl', params.jitter.toFixed(2));
+    lbl('slipLbl', params.slip.toFixed(2));
+    lbl('curlLbl', params.curl.toFixed(3));
+  };
+  ['res','grav','nu','diff','nstripes','jitter','slip','curl'].forEach(id=>{
+    el(id).addEventListener('input', () => {
+      params.N = +el('res').value;
+      params.gravity = +el('grav').value/100;
+      params.nu = +el('nu').value/1000;
+      params.diff = +el('diff').value/2000;
+      params.nStripes = +el('nstripes').value;
+      params.jitter = +el('jitter').value/100;
+      params.slip = +el('slip').value/100;
+      params.curl = +el('curl').value/2000;
+      updateLabels();
+      if (id==='res') init(); // rebuild grid
+    });
+  });
+  el('reset').onclick = () => resetPaint(true);
+  updateLabels();
+
+  // ----- Fluid grid (Stable Fluids) -----
+  // Grid is (NX x NY). We'll make NY = params.N, NX proportional to canvas aspect.
+  let NX, NY, size, u, v, uPrev, vPrev, p, div, r,g,b, rPrev,gPrev,bPrev, tmp;
+
+  function idx(x,y){ return x + y*NX; }
+
+  function alloc() {
+    size = NX*NY;
+    u = new Float32Array(size); v = new Float32Array(size);
+    uPrev = new Float32Array(size); vPrev = new Float32Array(size);
+    p = new Float32Array(size); div = new Float32Array(size);
+    r = new Float32Array(size); g = new Float32Array(size); b = new Float32Array(size);
+    rPrev = new Float32Array(size); gPrev = new Float32Array(size); bPrev = new Float32Array(size);
+  }
+
+  function clamp(v,a,b){ return v<a?a: v>b?b:v; }
+
+  function addSource(x, s, dt){
+    for(let i=0;i<size;i++) x[i] += dt*s[i];
+  }
+
+  function diffuse(bnd, x, x0, diff, dt){
+    const a = dt*diff*NX*NY;
+    for(let k=0;k<15;k++){
+      for(let j=1;j<NY-1;j++){
+        for(let i=1;i<NX-1;i++){
+          x[idx(i,j)] = (x0[idx(i,j)] + a*(x[idx(i-1,j)] + x[idx(i+1,j)] + x[idx(i,j-1)] + x[idx(i,j+1)]))/(1+4*a);
+        }
+      }
+      setBnd(bnd,x);
+    }
+  }
+
+  function advect(bnd, d, d0, uu, vv, dt){
+    for(let j=1;j<NY-1;j++){
+      for(let i=1;i<NX-1;i++){
+        let x = i - dt*NX*uu[idx(i,j)];
+        let y = j - dt*NY*vv[idx(i,j)];
+        x = clamp(x, .5, NX-1.5);
+        y = clamp(y, .5, NY-1.5);
+        const i0 = Math.floor(x), i1=i0+1;
+        const j0 = Math.floor(y), j1=j0+1;
+        const s1 = x-i0, s0=1-s1;
+        const t1 = y-j0, t0=1-t1;
+        d[idx(i,j)] =
+          s0*(t0*d0[idx(i0,j0)] + t1*d0[idx(i0,j1)]) +
+          s1*(t0*d0[idx(i1,j0)] + t1*d0[idx(i1,j1)]);
+      }
+    }
+    setBnd(bnd,d);
+  }
+
+  function project(uu, vv, pp, dd){
+    const h = 1/NX;
+    for(let j=1;j<NY-1;j++){
+      for(let i=1;i<NX-1;i++){
+        dd[idx(i,j)] = -0.5*h*(uu[idx(i+1,j)]-uu[idx(i-1,j)] + vv[idx(i,j+1)]-vv[idx(i,j-1)]);
+        pp[idx(i,j)] = 0;
+      }
+    }
+    setBnd(0,dd); setBnd(0,pp);
+    for(let k=0;k<30;k++){
+      for(let j=1;j<NY-1;j++){
+        for(let i=1;i<NX-1;i++){
+          pp[idx(i,j)] = (dd[idx(i,j)] + pp[idx(i-1,j)] + pp[idx(i+1,j)] + pp[idx(i,j-1)] + pp[idx(i,j+1)])/4;
+        }
+      }
+      setBnd(0,pp);
+    }
+    for(let j=1;j<NY-1;j++){
+      for(let i=1;i<NX-1;i++){
+        uu[idx(i,j)] -= 0.5*(pp[idx(i+1,j)]-pp[idx(i-1,j)])/h;
+        vv[idx(i,j)] -= 0.5*(pp[idx(i,j+1)]-pp[idx(i,j-1)])/h;
+      }
+    }
+    setBnd(1,uu); setBnd(2,vv);
+  }
+
+  function setBnd(bnd, x){
+    // Walls: left/right & ceiling no-slip; floor has slip controlled by params.slip
+    for(let i=1;i<NX-1;i++){
+      x[idx(i,0)]   = (bnd===2? -x[idx(i,1)] : x[idx(i,1)]);   // top
+      x[idx(i,NY-1)]= (bnd===2? -x[idx(i,NY-2)] : x[idx(i,NY-2)]); // bottom
+    }
+    for(let j=1;j<NY-1;j++){
+      x[idx(0,j)]   = (bnd===1? -x[idx(1,j)] : x[idx(1,j)]);   // left
+      x[idx(NX-1,j)]= (bnd===1? -x[idx(NX-2,j)] : x[idx(NX-2,j)]); // right
+    }
+    // corners
+    x[idx(0,0)]               = 0.5*(x[idx(1,0)] + x[idx(0,1)]);
+    x[idx(0,NY-1)]            = 0.5*(x[idx(1,NY-1)] + x[idx(0,NY-2)]);
+    x[idx(NX-1,0)]            = 0.5*(x[idx(NX-2,0)] + x[idx(NX-1,1)]);
+    x[idx(NX-1,NY-1)]         = 0.5*(x[idx(NX-2,NY-1)] + x[idx(NX-1,NY-2)]);
+
+    // Extra: slip floor for velocity field
+    if (bnd===1 || bnd===2){
+      // Tangential keeps, normal damped by slip.
+      for(let i=1;i<NX-1;i++){
+        if (bnd===1) { // u component
+          u[idx(i,NY-1)] *= (1-params.slip); // zero normal at floor
+        } else {       // v component
+          v[idx(i,NY-1)] =  Math.abs(v[idx(i,NY-1)])*params.slip; // allow outward slide
+        }
+      }
+    }
+  }
+
+  // ----- Initialization & rendering -----
+  function resize(){
+    const rect = canvas.getBoundingClientRect();
+    const dpr = Math.min(2, window.devicePixelRatio||1);
+    W = Math.floor(rect.width  * dpr);
+    H = Math.floor(rect.height * dpr);
+    canvas.width = W; canvas.height = H;
+    aspect = W/H;
+  }
+
+  let palette = [];
+  function buildPalette(){
+    palette = [];
+    // A long set of “industrial + candy” hues
+    const base = [
+      '#111214','#0d3b66','#e63946','#f1fa8c','#7f5539','#00a896',
+      '#e76f51','#2a9d8f','#264653','#e9c46a','#1b1f3b','#9d4edd',
+      '#4361ee','#ef476f','#ffd166','#06d6a0','#118ab2','#073b4c',
+      '#c1121f','#669bbc','#f4a261','#8ecae6','#ff7b00','#6a040f'
+    ];
+    // expand slightly darker/lighter variants
+    function hexToRgb(h){h=h.replace('#','');return [parseInt(h.substr(0,2),16),parseInt(h.substr(2,2),16),parseInt(h.substr(4,2),16)];}
+    function rgbToHex(r,g,b){return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');}
+    base.forEach(h=>{
+      const [r,g,b]=hexToRgb(h);
+      const d=24;
+      palette.push(h, rgbToHex(Math.max(0,r-d),Math.max(0,g-d),Math.max(0,b-d)),
+                       rgbToHex(Math.min(255,r+d),Math.min(255,g+d),Math.min(255,b+d)));
+    });
+  }
+
+  function resetPaint(fresh=false){
+    r.fill(0); g.fill(0); b.fill(0);
+    if (fresh){
+      u.fill(0); v.fill(0); p.fill(0); div.fill(0);
+    }
+    // Pre-fill the “wall” look: thin column of dye near top row
+    injectTimer = 0;
+  }
+
+  function init(){
+    resize();
+    NY = params.N;
+    NX = Math.round(NY*aspect);
+    NX = Math.max(48, NX);
+    alloc();
+    buildPalette();
+    resetPaint(true);
+  }
+
+  window.addEventListener('resize', () => { init(); });
+  init();
+
+  // Stripe injection at top
+  let injectTimer = 0;
+  function inject(dt){
+    // layout stripes with jitter
+    const lanes = params.nStripes;
+    const laneW = NX/lanes;
+    for(let k=0;k<lanes;k++){
+      const baseX = k*laneW + laneW*0.5;
+      const wiggle = (Math.random()*2-1)*laneW*params.jitter*0.5;
+      const cx = Math.floor(clamp(baseX+wiggle, 2, NX-3));
+      const half = Math.max(1, Math.floor(laneW*(0.35+Math.random()*0.45)));
+      const col = palette[k % palette.length];
+      const R = parseInt(col.substr(1,2),16)/255;
+      const G = parseInt(col.substr(3,2),16)/255;
+      const B = parseInt(col.substr(5,2),16)/255;
+
+      for(let x=cx-half;x<=cx+half;x++){
+        const y=1; // top row below boundary
+        const id = idx(clamp(x,1,NX-2), y);
+        r[id] = clamp(r[id] + R*0.8, 0, 1.5);
+        g[id] = clamp(g[id] + G*0.8, 0, 1.5);
+        b[id] = clamp(b[id] + B*0.8, 0, 1.5);
+        // give initial downward velocity
+        v[id] += 0.2;
+      }
+    }
+  }
+
+  // Curl noise perturbation (keeps lanes wiggly, prevents perfect straightness)
+  function curlNoise(x,y,t){
+    // simple hash-based pseudo noise gradients
+    function h(n){ return Math.sin(n*853.23 + Math.cos(n*0.113+t*0.3))*43758.5453 % 1; }
+    const n1 = h(x*13.1+y*7.7);
+    const n2 = h(x*9.2 +y*5.3+13.37);
+    // 2D divergence-free "curl" vector
+    return {x: (n2-0.5), y: -(n1-0.5)};
+  }
+
+  // Simulation step
+  let last=performance.now();
+  function step(){
+    const now = performance.now();
+    let dt = Math.min(0.033, (now-last)/1000); // clamp for stability
+    last = now;
+
+    // Sources
+    injectTimer += dt;
+    if (injectTimer > 0.045){ inject(dt); injectTimer = 0; }
+
+    // Apply gravity and curl to velocity
+    for(let j=1;j<NY-1;j++){
+      for(let i=1;i<NX-1;i++){
+        const id = idx(i,j);
+        v[id] += params.gravity*dt; // gravity down
+        const co = curlNoise(i/NX, j/NY, now*0.001);
+        u[id] += co.x*params.curl;
+        v[id] += co.y*params.curl;
+        // floor friction: when near floor, gently push outward then slow
+        if (j>NY-4){
+          const center = NX*0.5;
+          const dir = Math.sign(i-center)|| (Math.random()<.5?-1:1);
+          u[id] += dir*0.02*params.slip;
+          v[id] *= 0.5; // damp vertical near floor
+        }
+      }
+    }
+
+    // Velocity diffusion (viscosity)
+    uPrev.set(u); vPrev.set(v);
+    diffuse(1, u, uPrev, params.nu, dt);
+    diffuse(2, v, vPrev, params.nu, dt);
+
+    // Project (make incompressible)
+    project(u, v, p, div);
+
+    // Advect velocity
+    uPrev.set(u); vPrev.set(v);
+    advect(1, u, uPrev, uPrev, vPrev, dt);
+    advect(2, v, vPrev, uPrev, vPrev, dt);
+
+    // Project again
+    project(u, v, p, div);
+
+    // Dye diffusion (very low)
+    rPrev.set(r); gPrev.set(g); bPrev.set(b);
+    diffuse(0, r, rPrev, params.diff, dt);
+    diffuse(0, g, gPrev, params.diff, dt);
+    diffuse(0, b, bPrev, params.diff, dt);
+
+    // Advect dye
+    rPrev.set(r); gPrev.set(g); bPrev.set(b);
+    advect(0, r, rPrev, u, v, dt);
+    advect(0, g, gPrev, u, v, dt);
+    advect(0, b, bPrev, u, v, dt);
+
+    render();
+
+    requestAnimationFrame(step);
+  }
+
+  function render(){
+    // Convert dye to pixels, add a subtle "thickness" rim on high concentration
+    const img = ctx.getImageData(0,0,W,H);
+    const data = img.data;
+    for(let y=0;y<H;y++){
+      const gy = Math.floor(y/H*(NY-2))+1;
+      for(let x=0;x<W;x++){
+        const gx = Math.floor(x/W*(NX-2))+1;
+        const idg = idx(gx,gy);
+        let R = r[idg], G=g[idg], B=b[idg];
+
+        // gamma-ish tone map
+        R = 1 - Math.exp(-R); G = 1 - Math.exp(-G); B = 1 - Math.exp(-B);
+
+        // thickness edge at pool: accentuate where vertical gradient is high
+        const below = b[idx(gx, Math.min(NY-2,gy+1))] + g[idx(gx, Math.min(NY-2,gy+1))] + r[idx(gx, Math.min(NY-2,gy+1))];
+        const here  = b[idg] + g[idg] + r[idg];
+        const edge = Math.max(0, here - below);
+        const rim = Math.min(1, edge*2.5);
+
+        const k = (x + y*W)<<2;
+        data[k  ] = Math.min(255,(R*255 + rim*18));
+        data[k+1] = Math.min(255,(G*255 + rim*18));
+        data[k+2] = Math.min(255,(B*255 + rim*18));
+        data[k+3] = 255;
+      }
+    }
+    ctx.putImageData(img,0,0);
+    // Draw the "panel" edge
+    ctx.save();
+    ctx.scale(canvas.width, canvas.height);
+    ctx.lineWidth = 1/canvas.width;
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.moveTo(0.02,0.02); ctx.lineTo(0.98,0.02); ctx.lineTo(0.98,0.85);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  requestAnimationFrame(step);
+})();
+</script>
