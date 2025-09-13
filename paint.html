@@ -1,46 +1,69 @@
 <!DOCTYPE html>
 <html lang="en">
 <meta charset="utf-8" />
-<title>Melted Stripes — Fluid with Pooling</title>
+<title>Melted Stripes — Fluid with Pooling + Presets + Save</title>
 <style>
   html,body{margin:0;height:100%;background:#111;color:#eee;font-family:ui-sans-serif,system-ui}
-  #wrap{display:grid;grid-template-columns:1fr 320px;gap:16px;height:100%}
+  #wrap{display:grid;grid-template-columns:1fr 340px;gap:16px;height:100%}
   canvas{width:100%;height:100%;display:block;background:#f1f3f5}
   aside{padding:14px 14px 22px;background:#0f0f10;border-left:1px solid #222;overflow:auto}
   h1{font-size:16px;margin:0 0 10px;color:#ddd}
-  label{display:flex;justify-content:space-between;font-size:12px;margin:8px 0 2px}
+  label{display:flex;justify-content:space-between;align-items:center;font-size:12px;margin:8px 0 2px}
   input[type=range]{width:100%}
-  .small{opacity:.75;font-size:11px}
-  button{all:unset;background:#1f1f22;padding:8px 10px;margin-top:8px;border-radius:8px;cursor:pointer}
+  select{width:100%;padding:6px;border-radius:8px;background:#18181a;color:#eee;border:1px solid #2a2a2e}
+  .row{display:flex;gap:8px;margin-top:8px}
+  button{all:unset;background:#1f1f22;padding:8px 10px;border-radius:8px;cursor:pointer;text-align:center;flex:1}
   button:hover{background:#2a2a2e}
+  .small{opacity:.75;font-size:11px}
 </style>
 <body>
 <div id="wrap">
   <canvas id="c"></canvas>
   <aside>
     <h1>Melted Stripes — Fluid + Pool</h1>
-    <div class="small">
-      Stable-fluids drips (r,g,b) + separate bottom pooling buffers (poolR,G,B).
-    </div>
+    <div class="small">Stable-fluids drips + separate bottom pooling buffers.</div>
+
+    <label>Presets</label>
+    <select id="preset">
+      <option value="default">— Choose a preset —</option>
+      <option value="straight">Straight Drips</option>
+      <option value="heavypool">Heavy Pool</option>
+      <option value="marbled">Marbled</option>
+      <option value="superstraight">Super Straight</option>
+      <option value="chaos">Chaos Drips</option>
+    </select>
+
     <label>Grid Resolution <span id="resLbl"></span></label>
     <input id="res" type="range" min="96" max="240" step="4" value="168">
+
     <label>Gravity <span id="gLbl"></span></label>
     <input id="grav" type="range" min="0" max="45" step="1" value="22">
+
     <label>Viscosity <span id="nuLbl"></span></label>
     <input id="nu" type="range" min="0" max="25" step="1" value="8">
+
     <label>Diffusion (keep low) <span id="diffLbl"></span></label>
     <input id="diff" type="range" min="0" max="6" step="1" value="1">
+
     <label>Stripe Count <span id="nLbl"></span></label>
     <input id="nstripes" type="range" min="28" max="160" step="4" value="96">
+
     <label>Stripe Width Jitter <span id="jitLbl"></span></label>
     <input id="jitter" type="range" min="0" max="100" step="5" value="30">
+
     <label>Curl Noise (perturb) <span id="curlLbl"></span></label>
     <input id="curl" type="range" min="0" max="60" step="2" value="10">
+
     <label>Settle Rate (pooling) <span id="settleLbl"></span></label>
     <input id="settle" type="range" min="0" max="100" step="1" value="28">
+
     <label>Pool Spread (sideways) <span id="spreadLbl"></span></label>
     <input id="spread" type="range" min="0" max="100" step="1" value="8">
-    <button id="reset">Reset</button>
+
+    <div class="row">
+      <button id="reset">Reset</button>
+      <button id="save">Save PNG</button>
+    </div>
   </aside>
 </div>
 
@@ -50,12 +73,13 @@
   const ctx = canvas.getContext('2d', {alpha:false, desynchronized:true});
   let W=0,H=0, aspect=1;
 
-  // timers / globals declared before any use (avoid TDZ)
+  // global timer (declare before any use)
   let injectTimer = 0;
 
-  // UI helpers
+  // UI refs
   const el = id => document.getElementById(id);
   const lbl = (id, v) => el(id).textContent = v;
+
   const params = {
     N: +el('res').value,
     gravity: +el('grav').value/100,
@@ -64,9 +88,10 @@
     nStripes: +el('nstripes').value,
     jitter: +el('jitter').value/100,
     curl: +el('curl').value/2000,
-    settle: +el('settle').value/100,        // 0..1 of dye that deposits per frame on floor row
-    poolSpread: +el('spread').value/1000,   // tiny sideways blur of pooled paint
+    settle: +el('settle').value/100,
+    poolSpread: +el('spread').value/1000,
   };
+
   const updateLabels = () => {
     lbl('resLbl', params.N+' cells high');
     lbl('gLbl', params.gravity.toFixed(2));
@@ -78,27 +103,86 @@
     lbl('settleLbl', params.settle.toFixed(2));
     lbl('spreadLbl', params.poolSpread.toFixed(3));
   };
-  ['res','grav','nu','diff','nstripes','jitter','curl','settle','spread'].forEach(id=>{
-    el(id).addEventListener('input', () => {
-      params.N = +el('res').value;
-      params.gravity = +el('grav').value/100;
-      params.nu = +el('nu').value/1000;
-      params.diff = +el('diff').value/2000;
-      params.nStripes = +el('nstripes').value;
-      params.jitter = +el('jitter').value/100;
-      params.curl = +el('curl').value/2000;
-      params.settle = +el('settle').value/100;
-      params.poolSpread = +el('spread').value/1000;
-      updateLabels();
-      if (id==='res') init(); // rebuild grid when resolution changes
-    });
-  });
-  el('reset').onclick = () => resetPaint(true);
-  updateLabels();
 
-  // ----- Fluid grid (Stable Fluids) -----
+  function bindSliders(){
+    ['res','grav','nu','diff','nstripes','jitter','curl','settle','spread'].forEach(id=>{
+      el(id).addEventListener('input', () => {
+        params.N = +el('res').value;
+        params.gravity = +el('grav').value/100;
+        params.nu = +el('nu').value/1000;
+        params.diff = +el('diff').value/2000;
+        params.nStripes = +el('nstripes').value;
+        params.jitter = +el('jitter').value/100;
+        params.curl = +el('curl').value/2000;
+        params.settle = +el('settle').value/100;
+        params.poolSpread = +el('spread').value/1000;
+        updateLabels();
+        if (id==='res') init(); // rebuild grid on res change
+      });
+    });
+  }
+
+  function setSlider(id, val){
+    el(id).value = val;
+    el(id).dispatchEvent(new Event('input'));
+  }
+
+  // Presets dropdown
+  el('preset').addEventListener('change', e=>{
+    const p = e.target.value;
+    if (p === 'straight'){
+      setSlider('curl', 6);
+      setSlider('settle', 35);
+      setSlider('spread', 6);
+      setSlider('nu', 12);
+      setSlider('diff', 1);
+      setSlider('nstripes', 120);
+      setSlider('jitter', 20);
+    } else if (p === 'heavypool'){
+      setSlider('curl', 8);
+      setSlider('settle', 50);
+      setSlider('spread', 14);
+      setSlider('nu', 14);
+      setSlider('diff', 0);
+      setSlider('nstripes', 140);
+      setSlider('jitter', 24);
+    } else if (p === 'marbled'){
+      setSlider('curl', 18);
+      setSlider('settle', 28);
+      setSlider('spread', 20);
+      setSlider('nu', 9);
+      setSlider('diff', 1);
+      setSlider('nstripes', 96);
+      setSlider('jitter', 35);
+    } else if (p === 'superstraight'){
+      setSlider('curl', 2);
+      setSlider('settle', 45);
+      setSlider('spread', 3);
+      setSlider('nu', 16);
+      setSlider('diff', 0);
+      setSlider('nstripes', 140);
+      setSlider('jitter', 10);
+    } else if (p === 'chaos'){
+      setSlider('curl', 30);
+      setSlider('settle', 15);
+      setSlider('spread', 30);
+      setSlider('nu', 6);
+      setSlider('diff', 2);
+      setSlider('nstripes', 80);
+      setSlider('jitter', 50);
+    }
+    el('preset').blur();
+    resetPaint(true);
+  });
+
+  el('reset').onclick = () => resetPaint(true);
+  el('save').onclick = () => savePNG();
+
+  updateLabels();
+  bindSliders();
+
+  // Fluid grid & pooling buffers
   let NX, NY, size, u,v,uPrev,vPrev,p,div, r,g,b, rPrev,gPrev,bPrev;
-  // Pooling buffers (static, do NOT advect)
   let poolR, poolG, poolB;
 
   function idx(x,y){ return x + y*NX; }
@@ -173,7 +257,7 @@
   }
 
   function setBnd(bnd, x){
-    // No-slip top/bottom; no-slip left/right
+    // no-slip on all borders
     for(let i=1;i<NX-1;i++){
       x[idx(i,0)]    = (bnd===2? -x[idx(i,1)]    : x[idx(i,1)]);
       x[idx(i,NY-1)] = (bnd===2? -x[idx(i,NY-2)] : x[idx(i,NY-2)]);
@@ -182,10 +266,10 @@
       x[idx(0,j)]    = (bnd===1? -x[idx(1,j)]    : x[idx(1,j)]);
       x[idx(NX-1,j)] = (bnd===1? -x[idx(NX-2,j)] : x[idx(NX-2,j)]);
     }
-    x[idx(0,0)]               = 0.5*(x[idx(1,0)] + x[idx(0,1)]);
-    x[idx(0,NY-1)]            = 0.5*(x[idx(1,NY-1)] + x[idx(0,NY-2)]);
-    x[idx(NX-1,0)]            = 0.5*(x[idx(NX-2,0)] + x[idx(NX-1,1)]);
-    x[idx(NX-1,NY-1)]         = 0.5*(x[idx(NX-2,NY-1)] + x[idx(NX-1,NY-2)]);
+    x[idx(0,0)]       = 0.5*(x[idx(1,0)] + x[idx(0,1)]);
+    x[idx(0,NY-1)]    = 0.5*(x[idx(1,NY-1)] + x[idx(0,NY-2)]);
+    x[idx(NX-1,0)]    = 0.5*(x[idx(NX-2,0)] + x[idx(NX-1,1)]);
+    x[idx(NX-1,NY-1)] = 0.5*(x[idx(NX-2,NY-1)] + x[idx(NX-1,NY-2)]);
   }
 
   function resize(){
@@ -238,7 +322,6 @@
   window.addEventListener('resize', () => { init(); });
   init();
 
-  // Stripe injection at top
   function inject(dt){
     const lanes = params.nStripes;
     const laneW = NX/lanes;
@@ -251,19 +334,17 @@
       const R = parseInt(col.substr(1,2),16)/255;
       const G = parseInt(col.substr(3,2),16)/255;
       const B = parseInt(col.substr(5,2),16)/255;
-
       for(let x=cx-half;x<=cx+half;x++){
         const y=1;
         const id = idx(clamp(x,1,NX-2), y);
         r[id] = Math.min(1.5, r[id] + R*0.8);
         g[id] = Math.min(1.5, g[id] + G*0.8);
         b[id] = Math.min(1.5, b[id] + B*0.8);
-        v[id] += 0.2; // initial downward nudge
+        v[id] += 0.2;
       }
     }
   }
 
-  // Curl noise perturbation
   function curlNoise(x,y,t){
     function h(n){ return Math.sin(n*853.23 + Math.cos(n*0.113+t*0.3))*43758.5453 % 1; }
     const n1 = h(x*13.1+y*7.7);
@@ -271,18 +352,24 @@
     return {x: (n2-0.5), y: -(n1-0.5)};
   }
 
-  // Simulation loop
+  function savePNG(){
+    const a = document.createElement('a');
+    a.href = canvas.toDataURL('image/png');
+    a.download = 'melted-stripes.png';
+    a.click();
+  }
+
   let last=performance.now();
   function step(){
     const now = performance.now();
     let dt = Math.min(0.033, (now-last)/1000);
     last = now;
 
-    // inject stripes
+    // injection cadence
     injectTimer += dt;
     if (injectTimer > 0.045){ inject(dt); injectTimer = 0; }
 
-    // gravity + curl + mild bottom damping to slow motion near floor
+    // gravity + curl + mild bottom damping
     for(let j=1;j<NY-1;j++){
       for(let i=1;i<NX-1;i++){
         const id = idx(i,j);
@@ -290,14 +377,13 @@
         const co = curlNoise(i/NX, j/NY, now*0.001);
         u[id] += co.x*params.curl;
         v[id] += co.y*params.curl;
-        if (j > NY-3){ // gentle damping very near floor so drips calm down
-          u[id] *= 0.7;
-          v[id] *= 0.5;
+        if (j > NY-3){
+          u[id] *= 0.7; v[id] *= 0.5;
         }
       }
     }
 
-    // remove tiny global horizontal drift
+    // remove net horizontal drift
     let sumU = 0;
     for (let n=0; n<size; n++) sumU += u[n];
     const meanU = sumU / size;
@@ -317,7 +403,7 @@
 
     project(u, v, p, div);
 
-    // dye (fluid) evolve
+    // dye evolve
     rPrev.set(r); gPrev.set(g); bPrev.set(b);
     diffuse(0, r, rPrev, params.diff, dt);
     diffuse(0, g, gPrev, params.diff, dt);
@@ -328,10 +414,9 @@
     advect(0, g, gPrev, u, v, dt);
     advect(0, b, bPrev, u, v, dt);
 
-    // --- POOLING / DEPOSITION ---
-    // Take dye from the last 2 rows and deposit into pool; remove from fluid so it stops moving.
-    const settleFrac = params.settle; // 0..1 per frame (keep modest)
-    const startRow = NY - 3; // deposit in the last two rows
+    // --- Pooling / deposition near bottom ---
+    const settleFrac = params.settle;
+    const startRow = NY - 3; // last two rows
     for (let j = startRow; j < NY-1; j++){
       for (let i=1; i<NX-1; i++){
         const id = idx(i,j);
@@ -342,9 +427,8 @@
         r[id] -= dR;     g[id] -= dG;     b[id] -= dB;
       }
     }
-
-    // Make the pool spread sideways a little (diffuse only along X, bottom band)
-    const s = params.poolSpread; // tiny
+    // sideways spread for pooled paint (bottom band only)
+    const s = params.poolSpread;
     if (s > 0){
       for (let j = startRow; j < NY-1; j++){
         for (let i=1; i<NX-1; i++){
@@ -372,23 +456,22 @@
         const gx = Math.floor(x/W*(NX-2))+1;
         const idg = idx(gx,gy);
 
-        // combine dynamic dye + pooled paint
+        // pooled + flowing dye
         let R = r[idg] + poolR[idg];
         let G = g[idg] + poolG[idg];
         let B = b[idg] + poolB[idg];
 
-        // tone map to keep colors vivid
+        // tone map
         R = 1 - Math.exp(-R);
         G = 1 - Math.exp(-G);
         B = 1 - Math.exp(-B);
 
-        // add a subtle "thickness rim" where accumulation increases downward
+        // subtle thickness rim where accumulation increases downward
         const belowSum =
           (b[idx(gx, Math.min(NY-2,gy+1))] + g[idx(gx, Math.min(NY-2,gy+1))] + r[idx(gx, Math.min(NY-2,gy+1))]) +
           (poolB[idx(gx, Math.min(NY-2,gy+1))] + poolG[idx(gx, Math.min(NY-2,gy+1))] + poolR[idx(gx, Math.min(NY-2,gy+1))]);
         const hereSum = (b[idg]+g[idg]+r[idg]) + (poolB[idg]+poolG[idg]+poolR[idg]);
-        const edge = Math.max(0, hereSum - belowSum);
-        const rim = Math.min(1, edge*2.5);
+        const rim = Math.min(1, Math.max(0, hereSum - belowSum)*2.5);
 
         const k = (x + y*W)<<2;
         data[k  ] = Math.min(255,(R*255 + rim*18));
@@ -399,7 +482,7 @@
     }
     ctx.putImageData(img,0,0);
 
-    // decorative frame line (top and right edge)
+    // decorative frame
     ctx.save();
     ctx.scale(canvas.width, canvas.height);
     ctx.lineWidth = 1/canvas.width;
@@ -415,4 +498,5 @@
 </script>
 </body>
 </html>
+
 
