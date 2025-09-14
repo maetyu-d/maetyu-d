@@ -263,17 +263,17 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
              fatigue:0, lastDir:{dx:1,dy:0,dz:0} };
   }
 
-  // A* Pathfinding
+  // A* + Fallback Pathfinding
   const DIRS=[ [1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1] ];
   const heuristic=(a,b)=>Math.abs(a.x-b.x)+Math.abs(a.y-b.y)+Math.abs(a.z-b.z);
   function canMove(bot,x,y,z,nx,ny,nz){
     if(nx<0||ny<0||nz<0||nx>=SIZE||ny>=SIZE||nz>=WORLD_H) return false;
     const dz=nz-z;
-    if(dz===1){ // going up: check from source corner (stairs or ramp). Greens: ramps only.
+    if(dz===1){ // going up
       const stair=isCornerStairAt(x,y,z), ramp=isCornerRampAt(x,y,z);
       return bot.kind==='green' ? ramp : (stair||ramp);
     }
-    if(dz===-1){ // going down: corner at destination layer works (stairs or ramp)
+    if(dz===-1){ // going down
       return isCornerStairAt(nx,ny,nz) || isCornerRampAt(nx,ny,nz);
     }
     return true;
@@ -281,38 +281,97 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
   function moveCost(bot,nx,ny,nz){
     if(bot.kind==='orange') return 1;
     const acc=world.access[IDX(nx,ny,nz)];
-    return 1 + (10-acc)*0.2; // less accessible → higher cost
+    return 1 + (10-acc)*0.2;
   }
   function TinyQueue(data,cmp){ this.data=data||[]; this.length=this.data.length; this.cmp=cmp||( (a,b)=>a<b?-1:a>b?1:0 ); if(this.length){ for(let i=(this.length>>1); i>=0; i--) this._down(i);} }
   TinyQueue.prototype.push=function(it){ this.data.push(it); this.length++; this._up(this.length-1); };
   TinyQueue.prototype.pop=function(){ if(!this.length) return; const top=this.data[0], bot=this.data.pop(); this.length--; if(this.length){ this.data[0]=bot; this._down(0);} return top; };
   TinyQueue.prototype._up=function(p){ const d=this.data,c=this.cmp, it=d[p]; while(p>0){ const parent=(p-1)>>1, cur=d[parent]; if(c(it,cur)>=0) break; d[p]=cur; p=parent;} d[p]=it; };
   TinyQueue.prototype._down=function(p){ const d=this.data,c=this.cmp, half=this.length>>1, it=d[p]; while(p<half){ let left=(p<<1)+1, right=left+1, best=d[left]; if(right<this.length && c(d[right],best)<0){ left=right; best=d[right]; } if(c(best,it)>=0) break; d[p]=best; p=left;} d[p]=it; };
-  function findPath(bot,start,goal,maxNodes=160000){
-    const key=(i)=> i.x | (i.y<<7) | (i.z<<14); // up to 128 in x/y, fits here for 100×100×100
-    const open=new TinyQueue([], (a,b)=>a.f-b.f), gScore=new Map(), came=new Map();
-    gScore.set(key(start),0); open.push({x:start.x,y:start.y,z:start.z,f:heuristic(start,goal)});
-    let visited=0;
-    while(open.length && visited<maxNodes){
-      const cur=open.pop(); visited++;
-      if(cur.x===goal.x && cur.y===goal.y && cur.z===goal.z){
-        const path=[]; let node=cur, k=key(cur);
-        while(true){ path.push({x:node.x,y:node.y,z:node.z}); const prev=came.get(k); if(!prev) break; node=prev; k=key(node); }
+
+  function findPath(bot, start, goal, maxNodes = 1200000) {
+    // Primary A*
+    const key = (i) => i.x | (i.y << 7) | (i.z << 14); // 100×100×100 safe packing
+    const open = new TinyQueue([], (a, b) => a.f - b.f);
+    const gScore = new Map();
+    const came = new Map();
+    gScore.set(key(start), 0);
+    open.push({ x: start.x, y: start.y, z: start.z, f: heuristic(start, goal) });
+    let visited = 0;
+    while (open.length && visited < maxNodes) {
+      const cur = open.pop(); visited++;
+      if (cur.x === goal.x && cur.y === goal.y && cur.z === goal.z) {
+        const path = [];
+        let node = cur, k = key(cur);
+        while (true) {
+          path.push({ x: node.x, y: node.y, z: node.z });
+          const prev = came.get(k); if (!prev) break;
+          node = prev; k = key(node);
+        }
         path.reverse(); return path;
       }
-      const cKey=key(cur), cG=gScore.get(cKey)??Infinity;
-      for(const d of DIRS){
-        const nx=cur.x+d[0], ny=cur.y+d[1], nz=cur.z+d[2];
-        if(!canMove(bot,cur.x,cur.y,cur.z,nx,ny,nz)) continue;
-        const nKey=key({x:nx,y:ny,z:nz}), tentative=cG + moveCost(bot,nx,ny,nz);
-        if(tentative < (gScore.get(nKey)??Infinity)){
-          gScore.set(nKey,tentative);
-          open.push({x:nx,y:ny,z:nz,f:tentative + heuristic({x:nx,y:ny,z:nz},goal)});
-          came.set(nKey,cur);
+      const cKey = key(cur), cG = gScore.get(cKey) ?? Infinity;
+      for (const d of DIRS) {
+        const nx = cur.x + d[0], ny = cur.y + d[1], nz = cur.z + d[2];
+        if (!canMove(bot, cur.x, cur.y, cur.z, nx, ny, nz)) continue;
+        const tentative = cG + moveCost(bot, nx, ny, nz);
+        const nKey = key({ x: nx, y: ny, z: nz });
+        if (tentative < (gScore.get(nKey) ?? Infinity)) {
+          gScore.set(nKey, tentative);
+          came.set(nKey, cur);
+          open.push({ x: nx, y: ny, z: nz, f: tentative + heuristic({ x: nx, y: ny, z: nz }, goal) });
         }
       }
     }
-    return []; // fallback not necessary; we’ll replan later
+
+    // ----- Fallback: legal corner-route between floors -----
+    function nearestCornerTo(x, y) {
+      const cs = [ {c:0,x:0,y:0}, {c:1,x:SIZE-1,y:0}, {c:2,x:0,y:SIZE-1}, {c:3,x:SIZE-1,y:SIZE-1} ];
+      let best = cs[0], bd = Infinity;
+      for (const p of cs) { const d = Math.abs(p.x - x) + Math.abs(p.y - y); if (d < bd) { bd = d; best = p; } }
+      return best;
+    }
+    function pushLine(path, from, to) {
+      let { x, y, z } = from;
+      while (x !== to.x) { x += (to.x > x ? 1 : -1); path.push({ x, y, z }); }
+      while (y !== to.y) { y += (to.y > y ? 1 : -1); path.push({ x, y, z }); }
+    }
+
+    const path = [{ x: start.x, y: start.y, z: start.z }];
+    let cx = start.x, cy = start.y, cz = start.z;
+
+    const stepVert = (up) => {
+      let targetCorner = -1;
+      if (up) {
+        for (let c = 0; c < 4; c++) {
+          const p = cornerXY(c);
+          if (bot.kind === 'green') { if (isCornerRampAt(p.x, p.y, cz)) { targetCorner = c; break; } }
+          else { if (isCornerRampAt(p.x, p.y, cz) || isCornerStairAt(p.x, p.y, cz)) { targetCorner = c; break; } }
+        }
+      } else {
+        for (let c = 0; c < 4; c++) {
+          const p = cornerXY(c);
+          if (isCornerRampAt(p.x, p.y, cz - 1) || isCornerStairAt(p.x, p.y, cz - 1)) { targetCorner = c; break; }
+        }
+      }
+      if (targetCorner < 0) targetCorner = nearestCornerTo(cx, cy).c;
+      const pc = cornerXY(targetCorner);
+      pushLine(path, { x: cx, y: cy, z: cz }, { x: pc.x, y: pc.y, z: cz });
+      const nz = cz + (up ? 1 : -1);
+      path.push({ x: pc.x, y: pc.y, z: nz });
+      cx = pc.x; cy = pc.y; cz = nz;
+    };
+
+    while (cz < goal.z) stepVert(true);
+    while (cz > goal.z) stepVert(false);
+    pushLine(path, { x: cx, y: cy, z: cz }, { x: goal.x, y: goal.y, z: goal.z });
+
+    const cleaned = [path[0]];
+    for (let i = 1; i < path.length; i++) {
+      const a = cleaned[cleaned.length - 1], b = path[i];
+      if (a.x !== b.x || a.y !== b.y || a.z !== b.z) cleaned.push(b);
+    }
+    return cleaned;
   }
 
   // ------------------ Trails ------------------
@@ -327,62 +386,76 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
     const oc=parseInt(orangeCountEl.value||'12',10), gc=parseInt(greenCountEl.value||'12',10);
     for(let i=0;i<oc;i++) bots.push(newBot('orange'));
     for(let i=0;i<gc;i++) bots.push(newBot('green'));
-    for(const b of bots){ b.path=findPath(b,{x:b.x,y:b.y,z:b.z},goalState.current); b.pathIndex=0; b.reached=false; }
+    for(const b of bots){ b.path=findPath(b,{x:b.x,y:b.y,z:b.z},goalState.current); b.pathIndex=0; b.reached=false; b._stuckT=0; }
     const g=bots.find(b=>b.kind==='green')||bots[0]; if(g){ camX=g.x; camY=g.y; camZ=Math.round(g.z); }
   }
 
-  // ------------------ Bot Update ------------------
-  function updateBot(b,dt){
-    // (Re)plan if needed
-    if(!b.path || b.pathIndex>=b.path.length){ b.path=findPath(b,{x:Math.round(b.x),y:Math.round(b.y),z:Math.round(b.z)},goalState.current); b.pathIndex=0; }
-    if(!b.path || !b.path.length) return;
-    const t=b.path[b.pathIndex];
-    const dx=t.x-b.x, dy=t.y-b.y, dz=t.z-b.z;
-    const dist=Math.hypot(dx,dy,dz)||1;
-    // Desired unit direction
-    let ux=dx/dist, uy=dy/dist, uz=dz/dist;
+  // ------------------ Bot Update (with stuck detector) ------------------
+  function updateBot(b, dt) {
+    // Stuck detection: if no progress for ~2 seconds, force replan
+    b._stuckT = (b._stuckT ?? 0) + dt;
+    const lastPX = b._lastPX ?? b.x, lastPY = b._lastPY ?? b.y, lastPZ = b._lastPZ ?? b.z;
+    const progressed = Math.hypot(b.x - lastPX, b.y - lastPY) + Math.abs(b.z - lastPZ);
+    if (progressed > 0.1) { b._stuckT = 0; }
+    b._lastPX = b.x; b._lastPY = b.y; b._lastPZ = b.z;
+
+    if (!b.path || b.pathIndex >= b.path.length || b._stuckT > 2.0) {
+      b.path = findPath(b, { x: Math.round(b.x), y: Math.round(b.y), z: Math.round(b.z) }, goalState.current);
+      b.pathIndex = 0;
+      b._stuckT = 0;
+    }
+    if (!b.path || !b.path.length) return;
+
+    const t = b.path[b.pathIndex];
+    const dx = t.x - b.x, dy = t.y - b.y, dz = t.z - b.z;
+    const dist = Math.hypot(dx, dy, dz) || 1;
+
+    // Desired direction
+    let ux = dx / dist, uy = dy / dist, uz = dz / dist;
 
     // Green gait shaping
-    if(b.kind==='green'){
-      const bias=parseFloat(biasLeftEl.value||'0.25'), wob=parseFloat(wobbleEl.value||'0.35');
-      const leftX=-(b.lastDir?.dy||0), leftY=(b.lastDir?.dx||1);
-      ux += leftX*bias*0.35; uy += leftY*bias*0.35;
-      const perpX=-uy, perpY=ux; const wobAmt=(rng()*2-1)*wob*0.25; ux += perpX*wobAmt; uy += perpY*wobAmt;
-      const nrm=Math.hypot(ux,uy,uz)||1; ux/=nrm; uy/=nrm; uz/=nrm;
+    if (b.kind === 'green') {
+      const bias = parseFloat(biasLeftEl.value || '0.25');
+      const wob  = parseFloat(wobbleEl.value   || '0.35');
+      const leftX = -(b.lastDir?.dy || 0), leftY = (b.lastDir?.dx || 1);
+      ux += leftX * bias * 0.35; uy += leftY * bias * 0.35;
+      const perpX = -uy, perpY = ux; const wobAmt = (rng()*2 - 1) * wob * 0.25;
+      ux += perpX * wobAmt; uy += perpY * wobAmt;
+      const nrm = Math.hypot(ux, uy, uz) || 1; ux /= nrm; uy /= nrm; uz /= nrm;
     }
 
-    // Fatigue & speed jitter (green only)
-    if(b.kind==='green') b.fatigue = clamp(b.fatigue + parseFloat(fatigueRateEl.value||'0.004')*dt, 0, 1);
-    const fatigueMul = (b.kind==='green') ? (1 - 0.6*b.fatigue) : 1.0;
-    const jitterTarget = (rng()*2-1) * (b.kind==='green' ? parseFloat(speedJitterEl.value||'0.3') : 0.15);
-    const baseTarget = ((b.kind==='orange'?orangeSpeed:greenSpeed) + jitterTarget) * fatigueMul * timeScale;
-    // Speed smoothing
-    const alphaJ = 1 - Math.exp(-6*dt);
+    // Fatigue / jitter
+    if (b.kind === 'green') b.fatigue = clamp(b.fatigue + parseFloat(fatigueRateEl.value || '0.004') * dt, 0, 1);
+    const fatigueMul = (b.kind === 'green') ? (1 - 0.6 * b.fatigue) : 1.0;
+    const jitterTarget = (rng()*2 - 1) * (b.kind === 'green' ? parseFloat(speedJitterEl.value || '0.3') : 0.15);
+    const baseTarget = ((b.kind === 'orange' ? orangeSpeed : greenSpeed) + jitterTarget) * fatigueMul * timeScale;
+
+    // Smooth speed & velocity
+    const alphaJ = 1 - Math.exp(-6 * dt);
     b.speedSmoothed += (baseTarget - b.speedSmoothed) * alphaJ;
-    // Velocity smoothing
-    const dvx=ux*b.speedSmoothed, dvy=uy*b.speedSmoothed, dvz=uz*b.speedSmoothed;
-    const alphaV = 1 - Math.exp(-(b.kind==='green'?7:9)*dt);
-    b.vx += (dvx - b.vx) * alphaV;
-    b.vy += (dvy - b.vy) * alphaV;
-    b.vz += (dvz - b.vz) * alphaV;
+
+    const dvx = ux * b.speedSmoothed, dvy = uy * b.speedSmoothed, dvz = uz * b.speedSmoothed;
+    const alphaV = 1 - Math.exp(-(b.kind === 'green' ? 7 : 9) * dt);
+    b.vx += (dvx - b.vx) * alphaV; b.vy += (dvy - b.vy) * alphaV; b.vz += (dvz - b.vz) * alphaV;
 
     // Integrate
     const prevZ = Math.round(b.z);
-    b.x += b.vx*dt; b.y += b.vy*dt; b.z += b.vz*dt;
-    b.x=clamp(b.x,0,SIZE-1); b.y=clamp(b.y,0,SIZE-1); b.z=clamp(b.z,0,WORLD_H-1);
+    b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt;
+    b.x = clamp(b.x, 0, SIZE - 1); b.y = clamp(b.y, 0, SIZE - 1); b.z = clamp(b.z, 0, WORLD_H - 1);
 
-    // Arrive & bookkeeping
-    if(Math.hypot(t.x-b.x,t.y-b.y,t.z-b.z) < 0.2){
-      b.x=t.x; b.y=t.y; b.z=t.z; b.lastDir={dx:dx,dy:dy,dz:dz}; b.pathIndex++;
-      const newZ=t.z;
-      if(b.kind==='green' && newZ!==prevZ){
-        if(newZ>prevZ){ // up
-          if(isCornerRampAt(t.x,t.y,prevZ)){ greenAscents++; statBox.textContent=`Green ascents: ${greenAscents} · descents: ${greenDescents}`; }
-        } else { // down
-          if(isCornerStairAt(t.x,t.y,newZ) || isCornerRampAt(t.x,t.y,newZ)){ greenDescents++; statBox.textContent=`Green ascents: ${greenAscents} · descents: ${greenDescents}`; }
+    // Snap to node when close
+    if (Math.hypot(t.x - b.x, t.y - b.y, t.z - b.z) < 0.2) {
+      b.x = t.x; b.y = t.y; b.z = t.z; b.lastDir = { dx: dx, dy: dy, dz: dz };
+      b.pathIndex++;
+      const newZ = t.z;
+      if (b.kind === 'green' && newZ !== prevZ) {
+        if (newZ > prevZ) {
+          if (isCornerRampAt(t.x, t.y, prevZ)) { greenAscents++; statBox.textContent = `Green ascents: ${greenAscents} · descents: ${greenDescents}`; }
+        } else {
+          if (isCornerStairAt(t.x, t.y, newZ) || isCornerRampAt(t.x, t.y, newZ)) { greenDescents++; statBox.textContent = `Green ascents: ${greenAscents} · descents: ${greenDescents}`; }
         }
       }
-      if(b.pathIndex>=b.path.length){ b.reached=true; goalState.reachedBy.add(b); }
+      if (b.pathIndex >= b.path.length) { b.reached = true; goalState.reachedBy.add(b); }
     }
   }
 
@@ -416,7 +489,7 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
   function drawTop(){
     const W=cvTop.width,H=cvTop.height; const tile=Math.max(2, Math.floor(Math.min(W,H)/SIZE * zoomTop));
     ctxTop.clearRect(0,0,W,H);
-    // choose a layer to visualize (cycle slowly to show per-layer structures)
+    // visualize a layer (cycle slowly)
     const z = (Date.now()/1500|0)%WORLD_H;
     for(let y=0;y<SIZE;y++){
       for(let x=0;x<SIZE;x++){
@@ -445,7 +518,7 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
     drawPathOverlayTop();
     // goal
     ctxTop.strokeStyle=COL_GOAL; ctxTop.lineWidth=2; ctxTop.strokeRect(goalState.current.x*tile+1, goalState.current.y*tile+1, tile-2, tile-2);
-    // bots + leave trail
+    // bots + trail
     for(const b of bots){
       const px=b.x*tile, py=b.y*tile; const r=Math.max(3,tile*0.3);
       ctxTop.fillStyle=(b.kind==='orange')?COL_ORANGE:COL_GREEN;
@@ -525,12 +598,10 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
 
   function drawTopZoom(){
     const g=bots.find(b=>b.kind==='green')||bots[0]; const W=cvTopZoom.width,H=cvTopZoom.height; ctxTopZoom.clearRect(0,0,W,H); if(!g) return;
-    // compute tiles visible from zoomScale
     const tilesAcross = clamp(Math.round(VIEW_BASE_TILES/ clamp(zoomScale,0.5,4)), 6, 60);
     const tile = Math.max(4, Math.floor(Math.min(W,H)/tilesAcross));
     const tilesX=Math.ceil(W/tile)+2, tilesY=Math.ceil(H/tile)+2;
     const halfX=tilesX/2, halfY=tilesY/2;
-    // smooth camera already updated in updateCamera; clamp window
     camX=clamp(camX,halfX,SIZE-halfX); camY=clamp(camY,halfY,SIZE-halfY);
     const cz=Math.round(camZ);
     const startXf=camX-halfX, startYf=camY-halfY; const sx0=Math.floor(startXf), sy0=Math.floor(startYf);
@@ -628,3 +699,4 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
 </script>
 </body>
 </html>
+
