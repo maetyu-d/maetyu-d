@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>100×100×100 Grid Bot Sim — 3D Grid & 2D Top-Down Modes</title>
+<title>100×100×100 Grid Bot Sim — 3D Grid & 2D Top-Down Modes (+ Zoom Trails)</title>
 <style>
   :root { --ui:#e7edf4; --bg1:#0b0d10; --bg2:#0a0d11; --p1:#11151a; --p2:#0f1318; }
   html,body{height:100%}
@@ -33,7 +33,6 @@
   .dot.orange{background:#ffa726}
   .dot.green{background:#20e37a}
   .stat{font-size:12px;color:#cfe6ff;border:1px solid #24415e;background:#0a1320;border-radius:10px;padding:6px 8px;margin-top:8px}
-  .dim{opacity:.5}
 </style>
 </head>
 <body>
@@ -123,8 +122,8 @@
         <div></div>
       </div>
 
-      <div class="legend"><span class="dot.orange dot"></span> Orange = shortest paths</div>
-      <div class="legend"><span class="dot.green dot"></span> Green = accessibility-aware + gait bias</div>
+      <div class="legend"><span class="dot orange"></span> Orange = shortest paths</div>
+      <div class="legend"><span class="dot green"></span> Green = accessibility-aware + gait bias</div>
       <div class="stat" id="statBox">Green ascents: 0 · descents: 0</div>
 
       <label style="margin-top:12px">World / Bots / Goals / Cameras — DSL</label>
@@ -165,7 +164,7 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
       </div>
       <div class="fullrow">
         <canvas id="cvTopZoom" width="1440" height="480" title="Top-down (zoom-follow on first green)"></canvas>
-        <div class="mini">Zoomed Top-down: follows first green bot. Wireframe & Path Overlay apply.</div>
+        <div class="mini">Zoomed Top-down: follows first green bot with persistent trails. Wireframe & Path Overlay apply.</div>
       </div>
     </div>
   </section>
@@ -194,7 +193,7 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
   const statBox=$('statBox');
 
   // ---------- State ----------
-  let mode = MODE_3D;                 // 3d or 2d
+  let mode = MODE_3D;
   let running=true, timeScale=1, tPrev=0;
   let showWireTop=false, showWireSide=false, showWireIso=false, showPaths=false;
   let orangeSpeed=1.0, greenSpeed=0.9;
@@ -268,7 +267,7 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
   }
 
   // ---------- Pathfinding ----------
-  // 3D A* with constraints (greens up via ramps only; down via stairs/ramps)
+  // 3D
   const DIRS3D=[ [1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1] ];
   const heuristic3D=(a,b)=>Math.abs(a.x-b.x)+Math.abs(a.y-b.y)+Math.abs(a.z-b.z);
   function canMove3D(bot,x,y,z,nx,ny,nz){
@@ -278,13 +277,9 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
     if(dz===-1){ return isCornerStairAt(nx,ny,nz) || isCornerRampAt(nx,ny,nz); }
     return true;
   }
-  function accCost(nx,ny,nz){
-    const acc=world.access[IDX(nx,ny,nz)];
-    return 1 + (10-acc)*0.2;
-  }
-  function moveCost3D(bot,nx,ny,nz){ return (bot.kind==='orange') ? 1 : accCost(nx,ny,nz); }
+  function moveCost3D(bot,nx,ny,nz){ if(bot.kind==='orange') return 1; const acc=world.access[IDX(nx,ny,nz)]; return 1 + (10-acc)*0.2; }
 
-  // 2D A* with diagonals, cost from z=0 access; followed by line-of-sight smoothing
+  // 2D
   const DIRS2D = [
     [ 1, 0],[ -1, 0],[ 0, 1],[ 0,-1],
     [ 1, 1],[ 1,-1],[-1, 1],[-1,-1]
@@ -292,16 +287,11 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
   const heuristic2D=(a,b)=>Math.hypot(a.x-b.x, a.y-b.y);
   function inBounds2D(x,y){ return x>=0 && x<SIZE && y>=0 && y<SIZE; }
   function cost2D(bot,nx,ny){
-    const baseDiag = 1.0; // we handle diagonal with real Euclidean in neighbor step
-    if(bot.kind==='orange') return baseDiag;
+    if(bot.kind==='orange') return 1.0;
     const acc=world.access[IDX(nx,ny,0)];
-    return baseDiag + (10-acc)*0.15;
+    return 1.0 + (10-acc)*0.15;
   }
-  function losClear2D(ax,ay,bx,by){
-    // Bresenham-style sampling for map boundaries only (no solid obstacles, so always true)
-    // Kept for future extension; for now we always return true.
-    return true;
-  }
+  function losClear2D(){ return true; } // placeholder for future obstacles
   function smoothPath2D(path){
     if(path.length<=2) return path;
     const out=[ path[0] ];
@@ -311,8 +301,7 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
       for(; j>i+1; j--){
         if(losClear2D(path[i].x,path[i].y, path[j].x,path[j].y)){ break; }
       }
-      out.push(path[j]);
-      i=j;
+      out.push(path[j]); i=j;
     }
     return out;
   }
@@ -350,7 +339,7 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
         }
       }
     }
-    // Fallback: legal corner route (as earlier)
+    // Fallback: vertical corner route
     function nearestCornerTo(x,y){ const cs=[{c:0,x:0,y:0},{c:1,x:SIZE-1,y:0},{c:2,x:0,y:SIZE-1},{c:3,x:SIZE-1,y:SIZE-1}]; let best=cs[0],bd=1e9; for(const p of cs){ const d=Math.abs(p.x-x)+Math.abs(p.y-y); if(d<bd){bd=d;best=p;} } return best; }
     function pushLine(path,from,to){ let {x,y,z}=from; while(x!==to.x){ x+= (to.x>x?1:-1); path.push({x,y,z}); } while(y!==to.y){ y+= (to.y>y?1:-1); path.push({x,y,z}); } }
     const path=[{x:start.x,y:start.y,z:start.z}]; let cx=start.x,cy=start.y,cz=start.z;
@@ -363,7 +352,7 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
   }
 
   function findPath2D(bot, start, goal, maxNodes=400000){
-    const key=(i)=> i.x | (i.y<<7); // 100x100 fits
+    const key=(i)=> i.x | (i.y<<7);
     const open=new TinyQueue([], (a,b)=>a.f-b.f);
     const gScore=new Map(), came=new Map();
     const s={x:start.x,y:start.y}, g={x:goal.x,y:goal.y};
@@ -391,15 +380,36 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
         }
       }
     }
-    // Fallback: straight line
     return [ {x:start.x,y:start.y,z:0}, {x:goal.x,y:goal.y,z:0} ];
   }
 
-  // ---------- Trails ----------
+  // Dispatcher
+  function findPath(bot, start, goal){
+    return (mode===MODE_2D) ? findPath2D(bot,start,goal) : findPath3D(bot,start,goal);
+  }
+
+  // ---------- Trails (Top, Side, Iso as before) ----------
   const trailTop=document.createElement('canvas'); trailTop.width=cvTop.width; trailTop.height=cvTop.height; const trailTopCtx=trailTop.getContext('2d');
   const trailSide=document.createElement('canvas'); trailSide.width=cvSide.width; trailSide.height=cvSide.height; const trailSideCtx=trailSide.getContext('2d');
   const trailIso=document.createElement('canvas'); trailIso.width=cvIso.width; trailIso.height=cvIso.height; const trailIsoCtx=trailIso.getContext('2d');
-  function clearTrails(){ trailTopCtx.clearRect(0,0,trailTop.width,trailTop.height); trailSideCtx.clearRect(0,0,trailSide.width,trailSide.height); trailIsoCtx.clearRect(0,0,trailIso.width,trailIso.height); }
+
+  // NEW: World-layer trails for 4th view (per z)
+  const trailLayer = new Map(); // z -> canvas SIZE×SIZE
+  function getTrailLayer(z){
+    const zi = (mode===MODE_2D?0: (z|0));
+    if(!trailLayer.has(zi)){
+      const c=document.createElement('canvas'); c.width=SIZE; c.height=SIZE;
+      trailLayer.set(zi, c);
+    }
+    return trailLayer.get(zi);
+  }
+  function clearTrails(){
+    trailTopCtx.clearRect(0,0,trailTop.width,trailTop.height);
+    trailSideCtx.clearRect(0,0,trailSide.width,trailSide.height);
+    trailIsoCtx.clearRect(0,0,trailIso.width,trailIso.height);
+    // Clear all layer trails
+    for(const [,c] of trailLayer){ const g=c.getContext('2d'); g.clearRect(0,0,c.width,c.height); }
+  }
 
   // ---------- Init Bots ----------
   function initBots(){
@@ -411,11 +421,7 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
     const g=bots.find(b=>b.kind==='green')||bots[0]; if(g){ camX=g.x; camY=g.y; camZ=Math.round(g.z); }
   }
 
-  function findPath(bot, start, goal){
-    return (mode===MODE_2D) ? findPath2D(bot,start,goal) : findPath3D(bot,start,goal);
-  }
-
-  // ---------- Bot Update (with stuck detector) ----------
+  // ---------- Bot Update ----------
   function updateBot(b, dt) {
     // Stuck detection
     b._stuckT = (b._stuckT ?? 0) + dt;
@@ -439,7 +445,7 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
 
     let ux = dx / dist, uy = dy / dist, uz = dz / dist;
 
-    // Green gait shaping (2D still applies)
+    // Green gait shaping
     if (b.kind === 'green') {
       const bias = parseFloat(biasLeftEl.value || '0.25');
       const wob  = parseFloat(wobbleEl.value   || '0.35');
@@ -469,6 +475,13 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
     b.x += b.vx * dt; b.y += b.vy * dt; b.z += (mode===MODE_2D ? 0 : b.vz * dt);
     b.x = clamp(b.x, 0, SIZE - 1); b.y = clamp(b.y, 0, SIZE - 1); b.z = clamp(b.z, 0, mode===MODE_2D?0:WORLD_H - 1);
 
+    // Stamp trail for 4th view (world-layer)
+    const zLayer = (mode===MODE_2D?0:Math.round(b.z));
+    const layerCanvas = getTrailLayer(zLayer);
+    const lctx = layerCanvas.getContext('2d');
+    lctx.fillStyle = (b.kind==='orange')?'rgba(255,167,38,0.55)':'rgba(32,227,122,0.55)';
+    lctx.fillRect(Math.floor(b.x), Math.floor(b.y), 1, 1);
+
     // Snap to node when close
     if (Math.hypot(t.x - b.x, t.y - b.y, (mode===MODE_2D?0:(t.z - b.z))) < 0.2) {
       b.x = t.x; b.y = t.y; b.z = (mode===MODE_2D?0:t.z); b.lastDir = { dx: dx, dy: dy, dz: dz };
@@ -483,6 +496,19 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
       }
       if (b.pathIndex >= b.path.length) { b.reached = true; goalState.reachedBy.add(b); }
     }
+
+    // Also stamp classic trails for the other views
+    const tileTop = Math.max(2, Math.floor(Math.min(cvTop.width,cvTop.height)/SIZE * zoomTop));
+    trailTopCtx.fillStyle=(b.kind==='orange')?'rgba(255,167,38,0.55)':'rgba(32,227,122,0.55)';
+    trailTopCtx.fillRect(Math.floor(b.x*tileTop+tileTop/2), Math.floor(b.y*tileTop+tileTop/2), 1,1);
+    const sx=(cvSide.width/SIZE)*zoomSide, sz=(cvSide.height/Math.max(1,WORLD_H))*zoomSide;
+    trailSideCtx.fillStyle=(b.kind==='orange')?'rgba(255,167,38,0.6)':'rgba(32,227,122,0.6)';
+    trailSideCtx.fillRect(Math.floor(b.x*sx), Math.floor(cvSide.height - (mode===MODE_2D?0:b.z*sz)), 1,1);
+    const tw=8*zoomIso, th=4*zoomIso, hz=3*zoomIso;
+    const ix=(x,y)=>(x-y)*(tw/2)+cvIso.width/2;
+    const iy=(x,y,z)=>(x+y)*(th/2)-(mode===MODE_2D?0:z)*hz+120;
+    trailIsoCtx.fillStyle=(b.kind==='orange')?'rgba(255,167,38,0.5)':'rgba(32,227,122,0.5)';
+    trailIsoCtx.fillRect(Math.floor(ix(b.x+0.5,b.y+0.5)), Math.floor(iy(b.x+0.5,b.y+0.5,(mode===MODE_2D?0:b.z)+0.5)), 1,1);
   }
 
   // ---------- Camera Update ----------
@@ -496,16 +522,17 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
   }
 
   // ---------- Goal Renewal ----------
+  function setPathsForAll(){ for(const x of bots){ x.reached=false; x.path=findPath(x,{x:Math.round(x.x),y:Math.round(x.y),z:(mode===MODE_2D?0:Math.round(x.z))},goalState.current); x.pathIndex=0; } }
   function maybeRenewGoal(){
     if(goalPolicy==='random'){
-      for(const b of bots){ if(b.reached){ setNewGoal(); for(const x of bots){ x.reached=false; x.path=findPath(x,{x:Math.round(x.x),y:Math.round(x.y),z:(mode===MODE_2D?0:Math.round(x.z))},goalState.current); x.pathIndex=0; } break; } }
+      for(const b of bots){ if(b.reached){ setNewGoal(); setPathsForAll(); break; } }
     } else {
       const allReached=bots.length>0 && bots.every(b=>b.reached);
-      if(allReached){ setNewGoal(); for(const x of bots){ x.reached=false; x.path=findPath(x,{x:Math.round(x.x),y:Math.round(x.y),z:(mode===MODE_2D?0:Math.round(x.z))},goalState.current); x.pathIndex=0; } }
+      if(allReached){ setNewGoal(); setPathsForAll(); }
     }
   }
 
-  // ---------- Path Overlay ----------
+  // ---------- Path Overlay (planned nodes in red) ----------
   function drawPathOverlayTop(tile){
     if(!showPaths) return; ctxTop.save(); ctxTop.globalAlpha=0.9; ctxTop.strokeStyle='#ff5252'; ctxTop.fillStyle='#ff5252';
     for(const b of bots){ if(!b.path||b.path.length<2) continue;
@@ -517,7 +544,7 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
     } ctxTop.restore();
   }
   function drawPathOverlaySide(){ if(!showPaths) return; const W=cvSide.width,H=cvSide.height; const sx=(W/SIZE)*zoomSide, sz=(H/Math.max(1,WORLD_H))*zoomSide; ctxSide.save(); ctxSide.globalAlpha=0.9; ctxSide.strokeStyle='#ff5252'; for(const b of bots){ if(!b.path||b.path.length<2) continue; ctxSide.beginPath(); let started=false; for(let i=b.pathIndex;i<b.path.length;i++){ const n=b.path[i]; const cx=n.x*sx, cz=H - ( (mode===MODE_2D?0:n.z) )*sz; if(!started){ ctxSide.moveTo(cx,cz); started=true; } else ctxSide.lineTo(cx,cz); } ctxSide.stroke(); } ctxSide.restore(); }
-  function drawPathOverlayIso(){ if(!showPaths) return; const W=cvIso.width,H=cvIso.height; const tw=8*zoomIso, th=4*zoomIso, hz=3*zoomIso; const ix=(x,y)=>(x-y)*(tw/2)+W/2; const iy=(x,y,z)=>(x+y)*(th/2)-z*hz+120; ctxIso.save(); ctxIso.globalAlpha=0.9; ctxIso.strokeStyle='#ff5252'; for(const b of bots){ if(!b.path||b.path.length<2) continue; ctxIso.beginPath(); let started=false; for(let i=b.pathIndex;i<b.path.length;i++){ const n=b.path[i]; const cx=ix(n.x+0.5,n.y+0.5), cy=iy(n.x+0.5,n.y+0.5,(mode===MODE_2D?0:n.z)+0.5); if(!started){ ctxIso.moveTo(cx,cy); started=true; } else ctxIso.lineTo(cx,cy); } ctxIso.stroke(); } ctxIso.restore(); }
+  function drawPathOverlayIso(){ if(!showPaths) return; const W=cvIso.width; const tw=8*zoomIso, th=4*zoomIso, hz=3*zoomIso; const ix=(x,y)=>(x-y)*(tw/2)+W/2; const iy=(x,y,z)=>(x+y)*(th/2)-z*hz+120; ctxIso.save(); ctxIso.globalAlpha=0.9; ctxIso.strokeStyle='#ff5252'; for(const b of bots){ if(!b.path||b.path.length<2) continue; ctxIso.beginPath(); let started=false; for(let i=b.pathIndex;i<b.path.length;i++){ const n=b.path[i]; const cx=ix(n.x+0.5,n.y+0.5), cy=iy(n.x+0.5,n.y+0.5,(mode===MODE_2D?0:n.z)+0.5); if(!started){ ctxIso.moveTo(cx,cy); started=true; } else ctxIso.lineTo(cx,cy); } ctxIso.stroke(); } ctxIso.restore(); }
   function drawPathOverlayTopZoom(view){ if(!showPaths) return; const {tile,startXf,startYf,W,H}=view; ctxTopZoom.save(); ctxTopZoom.globalAlpha=0.9; ctxTopZoom.strokeStyle='#ff5252'; for(const b of bots){ if(!b.path||b.path.length<2) continue; ctxTopZoom.beginPath(); let started=false; for(let i=b.pathIndex;i<b.path.length;i++){ const n=b.path[i]; const xi=(n.x-startXf)*tile+tile/2, yi=(n.y-startYf)*tile+tile/2; if(xi<-10||yi<-10||xi>W+10||yi>H+10) continue; if(!started){ ctxTopZoom.moveTo(xi,yi); started=true; } else ctxTopZoom.lineTo(xi,yi); } if(started) ctxTopZoom.stroke(); } ctxTopZoom.restore(); }
 
   // ---------- Rendering ----------
@@ -555,8 +582,6 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
       const px=b.x*tile, py=b.y*tile; const r=Math.max(3,tile*0.3);
       ctxTop.fillStyle=(b.kind==='orange')?COL_ORANGE:COL_GREEN;
       ctxTop.beginPath(); ctxTop.arc(px+tile/2, py+tile/2, r, 0, Math.PI*2); ctxTop.fill();
-      trailTopCtx.fillStyle=(b.kind==='orange')?'rgba(255,167,38,0.55)':'rgba(32,227,122,0.55)';
-      trailTopCtx.fillRect(Math.floor(px+tile/2), Math.floor(py+tile/2), 1,1);
     }
   }
 
@@ -576,7 +601,6 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
         ctxSide.restore();
       }
     } else {
-      // 2D mode: flat hint line at z=0
       ctxSide.fillStyle='rgba(120,140,160,0.15)';
       ctxSide.fillRect(0,H-1*sz, W, 2);
       if(showWireSide){
@@ -591,8 +615,6 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
       const px=b.x*sx, pz=H - (mode===MODE_2D?0:b.z*sz);
       ctxSide.fillStyle=(b.kind==='orange')?COL_ORANGE:COL_GREEN;
       ctxSide.fillRect(px-3,pz-3,6,6);
-      trailSideCtx.fillStyle=(b.kind==='orange')?'rgba(255,167,38,0.6)':'rgba(32,227,122,0.6)';
-      trailSideCtx.fillRect(Math.floor(px), Math.floor(pz), 1,1);
     }
   }
 
@@ -626,8 +648,6 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
       const cx=ix(b.x+0.5,b.y+0.5), cy=iy(b.x+0.5,b.y+0.5,z+0.5);
       ctxIso.fillStyle=(b.kind==='orange')?COL_ORANGE:COL_GREEN;
       ctxIso.beginPath(); ctxIso.arc(cx,cy,Math.max(3,3*zoomIso),0,Math.PI*2); ctxIso.fill();
-      trailIsoCtx.fillStyle=(b.kind==='orange')?'rgba(255,167,38,0.5)':'rgba(32,227,122,0.5)';
-      trailIsoCtx.fillRect(Math.floor(cx),Math.floor(cy),1,1);
     }
   }
 
@@ -642,6 +662,7 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
     const startXf=camX-halfX, startYf=camY-halfY; const sx0=Math.floor(startXf), sy0=Math.floor(startYf);
     const offX=(startXf-sx0)*tile, offY=(startYf-sy0)*tile;
 
+    // Floor tiles
     for(let yi=0; yi<tilesY; yi++){
       const y=sy0+yi; if(y<0||y>=SIZE) continue;
       for(let xi=0; xi<tilesX; xi++){
@@ -651,12 +672,35 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
         ctxTopZoom.fillRect(xi*tile-offX, yi*tile-offY, tile, tile);
       }
     }
+
+    // Trails from world-layer canvas (only current layer)
+    const layerCanvas = getTrailLayer(cz);
+    // Source rect in world pixels
+    const srcX = clamp(sx0,0,SIZE), srcY=clamp(sy0,0,SIZE);
+    const srcW = clamp(Math.ceil(tilesX),0,SIZE-srcX);
+    const srcH = clamp(Math.ceil(tilesY),0,SIZE-srcY);
+    if(srcW>0 && srcH>0){
+      ctxTopZoom.save();
+      ctxTopZoom.globalAlpha=0.9;
+      ctxTopZoom.imageSmoothingEnabled=false;
+      // Destination where the source rect should land
+      const destX = (srcX - startXf)*tile;
+      const destY = (srcY - startYf)*tile;
+      ctxTopZoom.drawImage(layerCanvas, srcX, srcY, srcW, srcH, Math.round(destX), Math.round(destY), Math.round(srcW*tile), Math.round(srcH*tile));
+      ctxTopZoom.restore();
+    }
+
+    // Wireframe
     if(showWireTop){
       ctxTopZoom.strokeStyle='rgba(255,255,255,0.15)'; ctxTopZoom.lineWidth=0.5;
       for(let xi=0; xi<=tilesX; xi++){ ctxTopZoom.beginPath(); ctxTopZoom.moveTo(xi*tile-offX+0.5,0); ctxTopZoom.lineTo(xi*tile-offX+0.5,H); ctxTopZoom.stroke(); }
       for(let yi=0; yi<=tilesY; yi++){ ctxTopZoom.beginPath(); ctxTopZoom.moveTo(0, yi*tile-offY+0.5); ctxTopZoom.lineTo(W, yi*tile-offY+0.5); ctxTopZoom.stroke(); }
     }
+
+    // Path overlay (planned nodes)
     drawPathOverlayTopZoom({tile,startXf,startYf,W,H});
+
+    // Bots on current layer
     for(const b of bots){
       if((mode===MODE_3D && Math.round(b.z)!==cz)) continue;
       const xi=(b.x-startXf)*tile+tile/2, yi=(b.y-startYf)*tile+tile/2;
@@ -697,29 +741,22 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
   btnStart.onclick=()=>{ running=true; };
   btnPause.onclick=()=>{ running=false; };
   btnReset.onclick=()=>{ running=false; reseed(seedInputEl.value||'ark100'); genWorld(); setNewGoal(); initBots(); clearTrails(); running=true; };
-  btnNewGoal.onclick=()=>{ setNewGoal(); for(const b of bots){ b.reached=false; b.path=findPath(b,{x:Math.round(b.x),y:Math.round(b.y),z:(mode===MODE_2D?0:Math.round(b.z))},goalState.current); b.pathIndex=0;} };
+  btnNewGoal.onclick=()=>{ setNewGoal(); setPathsForAll(); };
   btnClearTrails.onclick=()=>{ clearTrails(); };
-
   btnWireTop.onclick =()=>{ showWireTop=!showWireTop; btnWireTop.dataset.on=showWireTop?'1':''; };
   btnWireSide.onclick=()=>{ showWireSide=!showWireSide; btnWireSide.dataset.on=showWireSide?'1':''; };
   btnWireIso.onclick =()=>{ showWireIso=!showWireIso; btnWireIso.dataset.on=showWireIso?'1':''; };
   btnTogglePaths.onclick=()=>{ showPaths=!showPaths; btnTogglePaths.dataset.on=showPaths?'1':''; };
-
   btnMode.onclick=()=>{
     mode = (mode===MODE_3D)?MODE_2D:MODE_3D;
     btnMode.textContent = '↔ Mode: ' + (mode===MODE_2D?'2D Top-Down':'3D Grid');
-    // force bots/goals to consistent z in 2D; allow anywhere in 3D
     if(mode===MODE_2D){ for(const b of bots){ b.z=0; } goalState.current.z=0; }
-    setNewGoal(); for(const b of bots){ b.reached=false; b.path=findPath(b,{x:Math.round(b.x),y:Math.round(b.y),z:(mode===MODE_2D?0:Math.round(b.z))},goalState.current); b.pathIndex=0; }
-    clearTrails();
+    setNewGoal(); setPathsForAll(); clearTrails();
   };
-
   btnExportTop.onclick =()=> exportCanvas2x(cvTop, 'top');
   btnExportSide.onclick=()=> exportCanvas2x(cvSide, 'side');
   btnExportIso.onclick =()=> exportCanvas2x(cvIso, 'iso');
-
   btnApplyDSL.onclick =()=> applyDSL(dslEl.value);
-
   timeScaleButtons.forEach(btn=>{ btn.onclick=()=>{ timeScaleButtons.forEach(b=>b.dataset.on=''); btn.dataset.on='1'; timeScale=parseInt(btn.dataset.scale,10)||1; }; });
 
   const fmt=n=>(+n).toFixed(1);
@@ -738,4 +775,5 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
 </script>
 </body>
 </html>
+
 
