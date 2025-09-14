@@ -94,15 +94,13 @@
         </div>
       </details>
 
+      <!-- Removed Follow Stiffness slider; fixed at 12.0 -->
       <div class="row" style="margin-top:10px">
-        <div>
-          <label>Follow stiffness <span class="mini">(<span id="lblFollow">6.0</span>)</span></label>
-          <input type="range" id="sFollow" min="1" max="12" step="0.1" value="6" />
-        </div>
         <div>
           <label>Zoom (fourth view) <span class="mini">(<span id="lblZoom">1.0×</span>)</span></label>
           <input type="range" id="sZoom" min="0.5" max="4" step="0.1" value="1.0" />
         </div>
+        <div></div>
       </div>
 
       <div class="row" style="margin-top:10px">
@@ -135,7 +133,7 @@ bots.orange=12 bots.green=12
 goals.policy=random
 orange.speed=1.0
 green.speed=0.9 green.bias=0.25 green.wobble=0.35 green.fatigue=0.004 green.jitter=0.3
-camera.follow=6.0 camera.zoom4=1.0
+camera.zoom4=1.0
 camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
       <div class="btns">
         <button class="pill" id="btnApplyDSL">Apply DSL</button>
@@ -187,9 +185,9 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
   const btnApplyDSL=$('btnApplyDSL'), dslEl=$('dsl');
   const orangeCountEl=$('orangeCount'), greenCountEl=$('greenCount'), goalPolicyEl=$('goalPolicy'), seedInputEl=$('seedInput');
   const biasLeftEl=$('biasLeft'), wobbleEl=$('wobble'), fatigueRateEl=$('fatigueRate'), speedJitterEl=$('speedJitter');
-  const sFollow=$('sFollow'), sZoom=$('sZoom'), lblFollow=$('lblFollow'), lblZoom=$('lblZoom');
-  const sZoomTop=$('sZoomTop'), sZoomSide=$('sZoomSide'), sZoomIso=$('sZoomIso');
-  const lblZoomTop=$('lblZoomTop'), lblZoomSide=$('lblZoomSide'), lblZoomIso=$('lblZoomIso');
+
+  const sZoom=$('sZoom'), sZoomTop=$('sZoomTop'), sZoomSide=$('sZoomSide'), sZoomIso=$('sZoomIso');
+  const lblZoom=$('lblZoom'), lblZoomTop=$('lblZoomTop'), lblZoomSide=$('lblZoomSide'), lblZoomIso=$('lblZoomIso');
   const statBox=$('statBox');
   const timeScaleButtons=Array.from(document.querySelectorAll('[data-scale]'));
 
@@ -198,8 +196,8 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
   let showWireTop=false, showWireSide=false, showWireIso=false, showPaths=false;
   let orangeSpeed=1.0, greenSpeed=0.9;
   let goalPolicy='random';
-  // Follow-cam (4th view)
-  let camX=SIZE/2, camY=SIZE/2, camZ=0, followSpeed=6.0, zoomScale=1.0, VIEW_BASE_TILES=16;
+  // Follow-cam (4th view) — fixed follow stiffness at 12.0
+  let camX=SIZE/2, camY=SIZE/2, camZ=0, followSpeed=12.0, zoomScale=1.0, VIEW_BASE_TILES=16;
   // Per-view zooms
   let zoomTop=1.0, zoomSide=1.0, zoomIso=1.0;
   // Counters
@@ -463,7 +461,7 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
   function updateCamera(dt){
     const g=bots.find(b=>b.kind==='green')||bots[0]; if(!g) return;
     camZ = Math.round(g.z);
-    const alpha = 1 - Math.exp(-followSpeed * dt);
+    const alpha = 1 - Math.exp(-followSpeed * dt); // followSpeed fixed at 12.0
     camX += (g.x - camX) * alpha;
     camY += (g.y - camY) * alpha;
     camX = clamp(camX,0,SIZE-1); camY = clamp(camY,0,SIZE-1);
@@ -483,7 +481,7 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
   function drawPathOverlayTop(){ if(!showPaths) return; const W=cvTop.width,H=cvTop.height; const tile=Math.max(1, Math.floor(Math.min(W,H)/SIZE * zoomTop)); ctxTop.save(); ctxTop.globalAlpha=0.9; ctxTop.strokeStyle='#ff5252'; ctxTop.fillStyle='#ff5252'; for(const b of bots){ if(!b.path||b.path.length<2) continue; ctxTop.beginPath(); let started=false; for(let i=b.pathIndex;i<b.path.length;i++){ const n=b.path[i]; const cx=n.x*tile+tile/2, cy=n.y*tile+tile/2; if(!started){ ctxTop.moveTo(cx,cy); started=true; } else ctxTop.lineTo(cx,cy); if(tile>=6) ctxTop.fillRect(cx-1,cy-1,2,2); } ctxTop.stroke(); } ctxTop.restore(); }
   function drawPathOverlaySide(){ if(!showPaths) return; const W=cvSide.width,H=cvSide.height; const sx=(W/SIZE)*zoomSide, sz=(H/WORLD_H)*zoomSide; ctxSide.save(); ctxSide.globalAlpha=0.9; ctxSide.strokeStyle='#ff5252'; ctxSide.fillStyle='#ff5252'; for(const b of bots){ if(!b.path||b.path.length<2) continue; ctxSide.beginPath(); let started=false; for(let i=b.pathIndex;i<b.path.length;i++){ const n=b.path[i]; const cx=n.x*sx, cz=H - n.z*sz; if(!started){ ctxSide.moveTo(cx,cz); started=true; } else ctxSide.lineTo(cx,cz); ctxSide.fillRect(cx-1,cz-1,2,2); } ctxSide.stroke(); } ctxSide.restore(); }
   function drawPathOverlayIso(){ if(!showPaths) return; const W=cvIso.width,H=cvIso.height; const tw=8*zoomIso, th=4*zoomIso, hz=3*zoomIso; const ix=(x,y)=>(x-y)*(tw/2)+W/2; const iy=(x,y,z)=>(x+y)*(th/2)-z*hz+120; ctxIso.save(); ctxIso.globalAlpha=0.9; ctxIso.strokeStyle='#ff5252'; ctxIso.fillStyle='#ff5252'; for(const b of bots){ if(!b.path||b.path.length<2) continue; ctxIso.beginPath(); let started=false; for(let i=b.pathIndex;i<b.path.length;i++){ const n=b.path[i]; const cx=ix(n.x+0.5,n.y+0.5), cy=iy(n.x+0.5,n.y+0.5,n.z+0.5); if(!started){ ctxIso.moveTo(cx,cy); started=true; } else ctxIso.lineTo(cx,cy); ctxIso.fillRect(cx-1,cy-1,2,2); } ctxIso.stroke(); } ctxIso.restore(); }
-  function drawPathOverlayTopZoom(view){ if(!showPaths) return; const {tile,startXf,startYf,W,H}=view; ctxTopZoom.save(); ctxTopZoom.globalAlpha=0.9; ctxTopZoom.strokeStyle='#ff5252'; ctxTopZoom.fillStyle='#ff5252'; for(const b of bots){ if(!b.path||b.path.length<2) continue; ctxTopZoom.beginPath(); let started=false; for(let i=b.pathIndex;i<b.path.length;i++){ const n=b.path[i]; const xi=(n.x-startXf)*tile+tile/2, yi=(n.y-startYf)*tile+tile/2; if(xi<-10||yi<-10||xi>W+10||yi>H+10) continue; if(!started){ ctxTopZoom.moveTo(xi,yi); started=true; } else ctxTopZoom.lineTo(xi,yi); ctxTopZoom.fillRect(xi-1,yi-1,2,2); } if(started) ctxTopZoom.stroke(); } ctxTopZoom.restore(); }
+  function drawPathOverlayTopZoom(view){ if(!showPaths) return; const {tile,startXf,startYf,W,H}=view; ctxTopZoom.save(); ctxTopZoom.globalAlpha=0.9; ctxTopZoom.strokeStyle='#ff5252'; ctxTopZoom.fillStyle='#ff5252'; for(const b of bots){ if(!b.path||b.path.length<2) continue; ctxTopZoom.beginPath(); let started=false; for(let i=b.pathIndex;i*b.path.length;i++){ /* guard */ } for(let i=b.pathIndex;i<b.path.length;i++){ const n=b.path[i]; const xi=(n.x-startXf)*tile+tile/2, yi=(n.y-startYf)*tile+tile/2; if(xi<-10||yi<-10||xi>W+10||yi>H+10) continue; if(!started){ ctxTopZoom.moveTo(xi,yi); started=true; } else ctxTopZoom.lineTo(xi,yi); ctxTopZoom.fillRect(xi-1,yi-1,2,2); } if(started) ctxTopZoom.stroke(); } ctxTopZoom.restore(); }
 
   // ------------------ Rendering ------------------
   function drawTop(){
@@ -652,11 +650,12 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
     if(kv['green.fatigue'])fatigueRateEl.value= String(Math.max(0, Math.min(0.02, parseFloat(kv['green.fatigue'])||0)));
     if(kv['green.jitter']) speedJitterEl.value= String(Math.max(0, Math.min(1, parseFloat(kv['green.jitter'])||0)));
 
-    if(kv['camera.follow']){ const v=parseFloat(kv['camera.follow']); if(Number.isFinite(v)){ sFollow.value=String(v); followSpeed=v; lblFollow.textContent=v.toFixed(1); } }
     if(kv['camera.zoom4']) { const v=parseFloat(kv['camera.zoom4']); if(Number.isFinite(v)){ sZoom.value=String(v); zoomScale=v; lblZoom.textContent=v.toFixed(1)+'×'; } }
     if(kv['camera.top.zoom']) { const v=parseFloat(kv['camera.top.zoom']);  if(Number.isFinite(v)&&v>0){ zoomTop = v; sZoomTop.value=String(v); lblZoomTop.textContent=v.toFixed(1)+'×'; } }
     if(kv['camera.side.zoom']){ const v=parseFloat(kv['camera.side.zoom']); if(Number.isFinite(v)&&v>0){ zoomSide= v; sZoomSide.value=String(v); lblZoomSide.textContent=v.toFixed(1)+'×'; } }
     if(kv['camera.iso.zoom']) { const v=parseFloat(kv['camera.iso.zoom']);  if(Number.isFinite(v)&&v>0){ zoomIso = v; sZoomIso.value=String(v); lblZoomIso.textContent=v.toFixed(1)+'×'; } }
+
+    // Follow stiffness is fixed at 12.0 by design now.
 
     // Rebuild world & bots
     reseed(seedInputEl.value||'ark100'); genWorld(); setNewGoal(); initBots();
@@ -683,7 +682,6 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
   timeScaleButtons.forEach(btn=>{ btn.onclick=()=>{ timeScaleButtons.forEach(b=>b.dataset.on=''); btn.dataset.on='1'; timeScale=parseInt(btn.dataset.scale,10)||1; }; });
 
   const fmt=n=>(+n).toFixed(1);
-  sFollow.oninput=()=>{ followSpeed=parseFloat(sFollow.value); lblFollow.textContent=fmt(followSpeed); };
   sZoom.oninput  =()=>{ zoomScale =parseFloat(sZoom.value); lblZoom.textContent=fmt(zoomScale)+'×'; };
   sZoomTop.oninput =()=>{ zoomTop = parseFloat(sZoomTop.value); lblZoomTop.textContent = fmt(zoomTop)+'×'; };
   sZoomSide.oninput=()=>{ zoomSide= parseFloat(sZoomSide.value); lblZoomSide.textContent=fmt(zoomSide)+'×'; };
