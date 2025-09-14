@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>100×100×100 Grid Bot Sim — 3D Grid & 2D Top-Down Modes (+ Zoom Trails)</title>
+<title>100×100×100 Grid Bot Sim — 3D Grid & 2D Top-Down (Stable Zoom Trails)</title>
 <style>
   :root { --ui:#e7edf4; --bg1:#0b0d10; --bg2:#0a0d11; --p1:#11151a; --p2:#0f1318; }
   html,body{height:100%}
@@ -164,7 +164,7 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
       </div>
       <div class="fullrow">
         <canvas id="cvTopZoom" width="1440" height="480" title="Top-down (zoom-follow on first green)"></canvas>
-        <div class="mini">Zoomed Top-down: follows first green bot with persistent trails. Wireframe & Path Overlay apply.</div>
+        <div class="mini">Zoomed Top-down: follows first green bot with stable thin trails. Wireframe & Path Overlay apply.</div>
       </div>
     </div>
   </section>
@@ -291,7 +291,7 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
     const acc=world.access[IDX(nx,ny,0)];
     return 1.0 + (10-acc)*0.15;
   }
-  function losClear2D(){ return true; } // placeholder for future obstacles
+  function losClear2D(){ return true; } // placeholder for obstacles
   function smoothPath2D(path){
     if(path.length<=2) return path;
     const out=[ path[0] ];
@@ -388,27 +388,24 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
     return (mode===MODE_2D) ? findPath2D(bot,start,goal) : findPath3D(bot,start,goal);
   }
 
-  // ---------- Trails (Top, Side, Iso as before) ----------
+  // ---------- Trails (Top, Side, Iso) ----------
   const trailTop=document.createElement('canvas'); trailTop.width=cvTop.width; trailTop.height=cvTop.height; const trailTopCtx=trailTop.getContext('2d');
   const trailSide=document.createElement('canvas'); trailSide.width=cvSide.width; trailSide.height=cvSide.height; const trailSideCtx=trailSide.getContext('2d');
   const trailIso=document.createElement('canvas'); trailIso.width=cvIso.width; trailIso.height=cvIso.height; const trailIsoCtx=trailIso.getContext('2d');
 
-  // NEW: World-layer trails for 4th view (per z)
-  const trailLayer = new Map(); // z -> canvas SIZE×SIZE
-  function getTrailLayer(z){
-    const zi = (mode===MODE_2D?0: (z|0));
-    if(!trailLayer.has(zi)){
-      const c=document.createElement('canvas'); c.width=SIZE; c.height=SIZE;
-      trailLayer.set(zi, c);
-    }
-    return trailLayer.get(zi);
-  }
+  // ---------- NEW: Screen-space persistent trail for 4th view ----------
+  const zoomTrail = document.createElement('canvas');
+  zoomTrail.width = cvTopZoom.width; zoomTrail.height = cvTopZoom.height;
+  const zoomTrailCtx = zoomTrail.getContext('2d');
+  zoomTrailCtx.imageSmoothingEnabled = false;
+  let prevOriginPX=null, prevOriginPY=null, prevTilePx=null, prevLayerZ=null;
+
   function clearTrails(){
     trailTopCtx.clearRect(0,0,trailTop.width,trailTop.height);
     trailSideCtx.clearRect(0,0,trailSide.width,trailSide.height);
     trailIsoCtx.clearRect(0,0,trailIso.width,trailIso.height);
-    // Clear all layer trails
-    for(const [,c] of trailLayer){ const g=c.getContext('2d'); g.clearRect(0,0,c.width,c.height); }
+    zoomTrailCtx.clearRect(0,0,zoomTrail.width,zoomTrail.height);
+    prevOriginPX=prevOriginPY=prevTilePx=prevLayerZ=null;
   }
 
   // ---------- Init Bots ----------
@@ -475,13 +472,6 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
     b.x += b.vx * dt; b.y += b.vy * dt; b.z += (mode===MODE_2D ? 0 : b.vz * dt);
     b.x = clamp(b.x, 0, SIZE - 1); b.y = clamp(b.y, 0, SIZE - 1); b.z = clamp(b.z, 0, mode===MODE_2D?0:WORLD_H - 1);
 
-    // Stamp trail for 4th view (world-layer)
-    const zLayer = (mode===MODE_2D?0:Math.round(b.z));
-    const layerCanvas = getTrailLayer(zLayer);
-    const lctx = layerCanvas.getContext('2d');
-    lctx.fillStyle = (b.kind==='orange')?'rgba(255,167,38,0.55)':'rgba(32,227,122,0.55)';
-    lctx.fillRect(Math.floor(b.x), Math.floor(b.y), 1, 1);
-
     // Snap to node when close
     if (Math.hypot(t.x - b.x, t.y - b.y, (mode===MODE_2D?0:(t.z - b.z))) < 0.2) {
       b.x = t.x; b.y = t.y; b.z = (mode===MODE_2D?0:t.z); b.lastDir = { dx: dx, dy: dy, dz: dz };
@@ -497,7 +487,7 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
       if (b.pathIndex >= b.path.length) { b.reached = true; goalState.reachedBy.add(b); }
     }
 
-    // Also stamp classic trails for the other views
+    // Classic trails for other views
     const tileTop = Math.max(2, Math.floor(Math.min(cvTop.width,cvTop.height)/SIZE * zoomTop));
     trailTopCtx.fillStyle=(b.kind==='orange')?'rgba(255,167,38,0.55)':'rgba(32,227,122,0.55)';
     trailTopCtx.fillRect(Math.floor(b.x*tileTop+tileTop/2), Math.floor(b.y*tileTop+tileTop/2), 1,1);
@@ -532,7 +522,7 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
     }
   }
 
-  // ---------- Path Overlay (planned nodes in red) ----------
+  // ---------- Path Overlay ----------
   function drawPathOverlayTop(tile){
     if(!showPaths) return; ctxTop.save(); ctxTop.globalAlpha=0.9; ctxTop.strokeStyle='#ff5252'; ctxTop.fillStyle='#ff5252';
     for(const b of bots){ if(!b.path||b.path.length<2) continue;
@@ -653,60 +643,96 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
 
   function drawTopZoom(){
     const g=bots.find(b=>b.kind==='green')||bots[0]; const W=cvTopZoom.width,H=cvTopZoom.height; ctxTopZoom.clearRect(0,0,W,H); if(!g) return;
+
+    // Tiles & camera window
     const tilesAcross = clamp(Math.round(VIEW_BASE_TILES/ clamp(zoomScale,0.5,4)), 6, 60);
     const tile = Math.max(4, Math.floor(Math.min(W,H)/tilesAcross));
     const tilesX=Math.ceil(W/tile)+2, tilesY=Math.ceil(H/tile)+2;
     const halfX=tilesX/2, halfY=tilesY/2;
+
+    // Bounds and layer
     camX=clamp(camX,halfX,SIZE-halfX); camY=clamp(camY,halfY,SIZE-halfY);
     const cz=(mode===MODE_2D?0:Math.round(camZ));
-    const startXf=camX-halfX, startYf=camY-halfY; const sx0=Math.floor(startXf), sy0=Math.floor(startYf);
-    const offX=(startXf-sx0)*tile, offY=(startYf-sy0)*tile;
+
+    const startXf=camX-halfX, startYf=camY-halfY;
+    const originPX = startXf * tile;
+    const originPY = startYf * tile;
+
+    // Reset trail if layer/zoom tile changed
+    if (prevLayerZ !== cz || prevTilePx === null || Math.abs((prevTilePx||tile) - tile) > 0.5) {
+      zoomTrailCtx.clearRect(0,0,zoomTrail.width, zoomTrail.height);
+      prevOriginPX = originPX; prevOriginPY = originPY; prevTilePx = tile; prevLayerZ = cz;
+    }
+
+    // Shift the persistent trail by camera's pixel delta
+    if (prevOriginPX !== null && prevOriginPY !== null) {
+      const dx = originPX - prevOriginPX;
+      const dy = originPY - prevOriginPY;
+      if (dx !== 0 || dy !== 0) {
+        const tmp = document.createElement('canvas');
+        tmp.width = zoomTrail.width; tmp.height = zoomTrail.height;
+        const tctx = tmp.getContext('2d');
+        tctx.drawImage(zoomTrail, 0, 0);
+        zoomTrailCtx.clearRect(0,0,zoomTrail.width,zoomTrail.height);
+        zoomTrailCtx.drawImage(tmp, -dx, -dy);
+      }
+    }
+    prevOriginPX = originPX; prevOriginPY = originPY; prevTilePx = tile; prevLayerZ = cz;
 
     // Floor tiles
+    const fracX = (startXf - Math.floor(startXf)) * tile;
+    const fracY = (startYf - Math.floor(startYf)) * tile;
+    const sx0=Math.floor(startXf), sy0=Math.floor(startYf);
+
     for(let yi=0; yi<tilesY; yi++){
       const y=sy0+yi; if(y<0||y>=SIZE) continue;
       for(let xi=0; xi<tilesX; xi++){
         const x=sx0+xi; if(x<0||x>=SIZE) continue;
         const noisy=world.floors[IDX(x,y,cz)]; const g2=Math.round(22+(1-noisy)*28);
         ctxTopZoom.fillStyle=`rgb(${g2},${g2+5},${g2+10})`;
-        ctxTopZoom.fillRect(xi*tile-offX, yi*tile-offY, tile, tile);
+        ctxTopZoom.fillRect(xi*tile - fracX, yi*tile - fracY, tile, tile);
       }
     }
 
-    // Trails from world-layer canvas (only current layer)
-    const layerCanvas = getTrailLayer(cz);
-    // Source rect in world pixels
-    const srcX = clamp(sx0,0,SIZE), srcY=clamp(sy0,0,SIZE);
-    const srcW = clamp(Math.ceil(tilesX),0,SIZE-srcX);
-    const srcH = clamp(Math.ceil(tilesY),0,SIZE-srcY);
-    if(srcW>0 && srcH>0){
-      ctxTopZoom.save();
-      ctxTopZoom.globalAlpha=0.9;
-      ctxTopZoom.imageSmoothingEnabled=false;
-      // Destination where the source rect should land
-      const destX = (srcX - startXf)*tile;
-      const destY = (srcY - startYf)*tile;
-      ctxTopZoom.drawImage(layerCanvas, srcX, srcY, srcW, srcH, Math.round(destX), Math.round(destY), Math.round(srcW*tile), Math.round(srcH*tile));
-      ctxTopZoom.restore();
+    // Stamp thin persistent trails (screen-space)
+    zoomTrailCtx.save();
+    zoomTrailCtx.globalAlpha = 0.9;
+    for (const b of bots){
+      if (mode===MODE_3D && Math.round(b.z) !== cz) continue;
+      const xi = (b.x - startXf) * tile;
+      const yi = (b.y - startYf) * tile;
+      if (xi < -2 || yi < -2 || xi > W+2 || yi > H+2) continue;
+      zoomTrailCtx.fillStyle = (b.kind==='orange') ? 'rgba(255,167,38,0.65)' : 'rgba(32,227,122,0.65)';
+      zoomTrailCtx.fillRect((xi|0), (yi|0), 1, 1); // crisp dot
     }
+    zoomTrailCtx.restore();
+
+    // Composite the trail
+    ctxTopZoom.drawImage(zoomTrail, 0, 0);
 
     // Wireframe
     if(showWireTop){
       ctxTopZoom.strokeStyle='rgba(255,255,255,0.15)'; ctxTopZoom.lineWidth=0.5;
-      for(let xi=0; xi<=tilesX; xi++){ ctxTopZoom.beginPath(); ctxTopZoom.moveTo(xi*tile-offX+0.5,0); ctxTopZoom.lineTo(xi*tile-offX+0.5,H); ctxTopZoom.stroke(); }
-      for(let yi=0; yi<=tilesY; yi++){ ctxTopZoom.beginPath(); ctxTopZoom.moveTo(0, yi*tile-offY+0.5); ctxTopZoom.lineTo(W, yi*tile-offY+0.5); ctxTopZoom.stroke(); }
+      for(let xi=0; xi<=tilesX; xi++){
+        const xpx = xi*tile - fracX + 0.5;
+        ctxTopZoom.beginPath(); ctxTopZoom.moveTo(xpx,0); ctxTopZoom.lineTo(xpx,H); ctxTopZoom.stroke();
+      }
+      for(let yi=0; yi<=tilesY; yi++){
+        const ypx = yi*tile - fracY + 0.5;
+        ctxTopZoom.beginPath(); ctxTopZoom.moveTo(0,ypx); ctxTopZoom.lineTo(W,ypx); ctxTopZoom.stroke();
+      }
     }
 
-    // Path overlay (planned nodes)
+    // Planned path overlay
     drawPathOverlayTopZoom({tile,startXf,startYf,W,H});
 
-    // Bots on current layer
+    // Bots
     for(const b of bots){
       if((mode===MODE_3D && Math.round(b.z)!==cz)) continue;
       const xi=(b.x-startXf)*tile+tile/2, yi=(b.y-startYf)*tile+tile/2;
       if(xi<-10||yi<-10||xi>W+10||yi>H+10) continue;
       ctxTopZoom.fillStyle=(b.kind==='orange')?COL_ORANGE:COL_GREEN;
-      ctxTopZoom.beginPath(); ctxTopZoom.arc(xi,yi,Math.max(4,tile*0.3),0,Math.PI*2); ctxTopZoom.fill();
+      ctxTopZoom.beginPath(); ctxTopZoom.arc(xi,yi,Math.max(3,tile*0.28),0,Math.PI*2); ctxTopZoom.fill();
     }
   }
 
@@ -775,5 +801,3 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
 </script>
 </body>
 </html>
-
-
