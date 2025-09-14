@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>100×100×100 Grid Bot Sim — Top/Side/Iso + Zoom (Full)</title>
+<title>100×100×100 Grid Bot Sim — 3D Grid & 2D Top-Down Modes</title>
 <style>
   :root { --ui:#e7edf4; --bg1:#0b0d10; --bg2:#0a0d11; --p1:#11151a; --p2:#0f1318; }
   html,body{height:100%}
@@ -33,11 +33,12 @@
   .dot.orange{background:#ffa726}
   .dot.green{background:#20e37a}
   .stat{font-size:12px;color:#cfe6ff;border:1px solid #24415e;background:#0a1320;border-radius:10px;padding:6px 8px;margin-top:8px}
+  .dim{opacity:.5}
 </style>
 </head>
 <body>
 <header>
-  <h1>100×100×100 Cube World — Top / Side / Iso / Zoom · Orange vs Green · Paths · Trails · PNG Export · DSL</h1>
+  <h1>100×100×100 Cube World — 3D Grid & 2D Top-Down · Orange vs Green · Paths · Trails · PNG Export · DSL</h1>
 </header>
 
 <div class="wrap">
@@ -48,6 +49,7 @@
         <button class="pill" id="btnStart">▶ Start</button>
         <button class="pill" id="btnPause">⏸ Pause</button>
         <button class="pill" id="btnReset">⟲ Reset</button>
+        <button class="pill" id="btnMode">↔ Mode: 3D Grid</button>
         <button class="pill" id="btnNewGoal">🎯 New Goal</button>
         <button class="pill" id="btnClearTrails">🧹 Clear Trails</button>
         <button class="pill" id="btnWireTop">☰ Wire: Top</button>
@@ -94,7 +96,6 @@
         </div>
       </details>
 
-      <!-- Removed Follow Stiffness slider; fixed at 12.0 -->
       <div class="row" style="margin-top:10px">
         <div>
           <label>Zoom (fourth view) <span class="mini">(<span id="lblZoom">1.0×</span>)</span></label>
@@ -122,12 +123,13 @@
         <div></div>
       </div>
 
-      <div class="legend"><span class="dot orange"></span> Orange = shortest paths (stairs or ramps)</div>
-      <div class="legend"><span class="dot green"></span> Green = accessibility-aware (ramps only up; stairs/ramps down) + gait</div>
+      <div class="legend"><span class="dot.orange dot"></span> Orange = shortest paths</div>
+      <div class="legend"><span class="dot.green dot"></span> Green = accessibility-aware + gait bias</div>
       <div class="stat" id="statBox">Green ascents: 0 · descents: 0</div>
 
       <label style="margin-top:12px">World / Bots / Goals / Cameras — DSL</label>
       <textarea id="dsl" spellcheck="false">seed=ark100
+mode=3d
 world.size=100
 bots.orange=12 bots.green=12
 goals.policy=random
@@ -150,20 +152,20 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
       <div class="grid">
         <div>
           <canvas id="cvTop" width="720" height="720" title="Top-down (x,y)"></canvas>
-          <div class="mini">Top-down: floors (x,y); bots projected ignoring z. Per-layer stairs ▲ / ramps ▭.</div>
+          <div class="mini">Top-down: full map; in 2D mode bots & goals live on z=0 only.</div>
         </div>
         <div>
           <canvas id="cvSide" width="720" height="360" title="Side-on (x,z)"></canvas>
-          <div class="mini">Side-on: x horizontal, z vertical (0 bottom→99 top), y collapsed.</div>
+          <div class="mini">Side-on: in 2D mode, shows a flat plane hint.</div>
         </div>
         <div>
           <canvas id="cvIso" width="720" height="540" title="Isometric"></canvas>
-          <div class="mini">Isometric: 3D rhombic projection, trails, and Z-slice planes (every 10) when wireframe is on.</div>
+          <div class="mini">Isometric: in 2D mode, displays a flat layer.</div>
         </div>
       </div>
       <div class="fullrow">
         <canvas id="cvTopZoom" width="1440" height="480" title="Top-down (zoom-follow on first green)"></canvas>
-        <div class="mini">Zoomed Top-down: follows the first green bot with smooth camera. Wireframe & Path Overlay apply.</div>
+        <div class="mini">Zoomed Top-down: follows first green bot. Wireframe & Path Overlay apply.</div>
       </div>
     </div>
   </section>
@@ -171,27 +173,28 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
 
 <script>
 (() => {
-  // ------------------ Constants & Colors ------------------
+  // ---------- Constants & Colors ----------
   const SIZE=100, WORLD_H=100;
   const COL_ORANGE="#ffa726", COL_GREEN="#20e37a", COL_GOAL="#ffd54f";
-  // DOM
+  const MODE_3D='3d', MODE_2D='2d';
+
+  // ---------- DOM ----------
   const $=id=>document.getElementById(id);
   const cvTop=$('cvTop'), cvSide=$('cvSide'), cvIso=$('cvIso'), cvTopZoom=$('cvTopZoom');
   const ctxTop=cvTop.getContext('2d'), ctxSide=cvSide.getContext('2d'), ctxIso=cvIso.getContext('2d'), ctxTopZoom=cvTopZoom.getContext('2d');
-
   const btnStart=$('btnStart'), btnPause=$('btnPause'), btnReset=$('btnReset'), btnNewGoal=$('btnNewGoal'), btnClearTrails=$('btnClearTrails');
   const btnWireTop=$('btnWireTop'), btnWireSide=$('btnWireSide'), btnWireIso=$('btnWireIso'), btnTogglePaths=$('btnTogglePaths');
   const btnExportTop=$('btnExportTop'), btnExportSide=$('btnExportSide'), btnExportIso=$('btnExportIso');
-  const btnApplyDSL=$('btnApplyDSL'), dslEl=$('dsl');
+  const btnApplyDSL=$('btnApplyDSL'), dslEl=$('dsl'), btnMode=$('btnMode');
   const orangeCountEl=$('orangeCount'), greenCountEl=$('greenCount'), goalPolicyEl=$('goalPolicy'), seedInputEl=$('seedInput');
   const biasLeftEl=$('biasLeft'), wobbleEl=$('wobble'), fatigueRateEl=$('fatigueRate'), speedJitterEl=$('speedJitter');
-
   const sZoom=$('sZoom'), sZoomTop=$('sZoomTop'), sZoomSide=$('sZoomSide'), sZoomIso=$('sZoomIso');
   const lblZoom=$('lblZoom'), lblZoomTop=$('lblZoomTop'), lblZoomSide=$('lblZoomSide'), lblZoomIso=$('lblZoomIso');
-  const statBox=$('statBox');
   const timeScaleButtons=Array.from(document.querySelectorAll('[data-scale]'));
+  const statBox=$('statBox');
 
-  // ------------------ State ------------------
+  // ---------- State ----------
+  let mode = MODE_3D;                 // 3d or 2d
   let running=true, timeScale=1, tPrev=0;
   let showWireTop=false, showWireSide=false, showWireIso=false, showPaths=false;
   let orangeSpeed=1.0, greenSpeed=0.9;
@@ -203,7 +206,7 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
   // Counters
   let greenAscents=0, greenDescents=0;
 
-  // ------------------ RNG & Noise ------------------
+  // ---------- RNG & Noise ----------
   function hashStr(s){ let h=1779033703 ^ s.length; for(let i=0;i<s.length;i++){ h=Math.imul(h ^ s.charCodeAt(i),3432918353); h=(h<<13)|(h>>>19);} return (h>>>0); }
   function mulberry32(a){ return function(){ let t=a+=0x6D2B79F5; t=Math.imul(t^(t>>>15),t|1); t^=t+Math.imul(t^(t>>>7),t|61); return ((t^(t>>>14))>>>0)/4294967296; } }
   let seed='ark100', rng=mulberry32(hashStr(seed));
@@ -218,7 +221,7 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
     const x00=lerp(c000,c100,u), x10=lerp(c010,c110,u), x01=lerp(c001,c101,u), x11=lerp(c011,c111,u); const y0=lerp(x00,x10,v), y1=lerp(x01,x11,v); return lerp(y0,y1,w);
   }
 
-  // ------------------ World ------------------
+  // ---------- World ----------
   const world={ size:SIZE, floors:new Float32Array(SIZE*SIZE*WORLD_H), access:new Uint8Array(SIZE*SIZE*WORLD_H), stairs:new Uint8Array(WORLD_H*4), ramps:new Uint8Array(WORLD_H*4) };
   function cornerXY(c){ return c===0?{x:0,y:0}:c===1?{x:SIZE-1,y:0}:c===2?{x:0,y:SIZE-1}:{x:SIZE-1,y:SIZE-1}; }
   function isCornerStairAt(x,y,z){ for(let c=0;c<4;c++) if(world.stairs[z*4+c]){ const p=cornerXY(c); if(p.x===x && p.y===y) return true; } return false; }
@@ -237,7 +240,6 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
           world.access[IDX(x,y,z)] = Math.round((1-noisy)*10); // 10 = most accessible
         }
       }
-      // stairs & ramps: different corners each layer
       const corners=[0,1,2,3];
       for(let i=corners.length-1;i>0;i--){ const j=(rng()*(i+1))|0; [corners[i],corners[j]]=[corners[j],corners[i]]; }
       const sCorner=corners[0], rCorner=corners[1];
@@ -247,138 +249,159 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
     }
   }
 
-  // ------------------ Goals ------------------
+  // ---------- Goals ----------
   const goalState={ current:{x:50,y:50,z:50}, reachedBy:new Set() };
-  const randomGoal=()=>({x:(rng()*SIZE)|0,y:(rng()*SIZE)|0,z:(rng()*WORLD_H)|0});
-  function setNewGoal(){ goalState.current=randomGoal(); goalState.reachedBy.clear(); }
+  const randomGoal3D=()=>({x:(rng()*SIZE)|0,y:(rng()*SIZE)|0,z:(rng()*WORLD_H)|0});
+  const randomGoal2D=()=>({x:(rng()*SIZE)|0,y:(rng()*SIZE)|0,z:0});
+  function setNewGoal(){
+    goalState.current = (mode===MODE_2D) ? randomGoal2D() : randomGoal3D();
+    goalState.reachedBy.clear();
+  }
 
-  // ------------------ Bots ------------------
+  // ---------- Bots ----------
   const bots=[];
   function newBot(kind){
-    const x=(rng()*SIZE)|0, y=(rng()*SIZE)|0, z=(rng()*WORLD_H)|0;
+    const x=(rng()*SIZE)|0, y=(rng()*SIZE)|0, z=(mode===MODE_2D?0:((rng()*WORLD_H)|0));
     return { kind,x,y,z, path:[], pathIndex:0, reached:false,
              vx:0,vy:0,vz:0, speedBase:(kind==='orange'?orangeSpeed:greenSpeed), speedSmoothed:(kind==='orange'?orangeSpeed:greenSpeed),
              fatigue:0, lastDir:{dx:1,dy:0,dz:0} };
   }
 
-  // A* + Fallback Pathfinding
-  const DIRS=[ [1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1] ];
-  const heuristic=(a,b)=>Math.abs(a.x-b.x)+Math.abs(a.y-b.y)+Math.abs(a.z-b.z);
-  function canMove(bot,x,y,z,nx,ny,nz){
+  // ---------- Pathfinding ----------
+  // 3D A* with constraints (greens up via ramps only; down via stairs/ramps)
+  const DIRS3D=[ [1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1] ];
+  const heuristic3D=(a,b)=>Math.abs(a.x-b.x)+Math.abs(a.y-b.y)+Math.abs(a.z-b.z);
+  function canMove3D(bot,x,y,z,nx,ny,nz){
     if(nx<0||ny<0||nz<0||nx>=SIZE||ny>=SIZE||nz>=WORLD_H) return false;
     const dz=nz-z;
-    if(dz===1){ // going up
-      const stair=isCornerStairAt(x,y,z), ramp=isCornerRampAt(x,y,z);
-      return bot.kind==='green' ? ramp : (stair||ramp);
-    }
-    if(dz===-1){ // going down
-      return isCornerStairAt(nx,ny,nz) || isCornerRampAt(nx,ny,nz);
-    }
+    if(dz===1){ const stair=isCornerStairAt(x,y,z), ramp=isCornerRampAt(x,y,z); return bot.kind==='green' ? ramp : (stair||ramp); }
+    if(dz===-1){ return isCornerStairAt(nx,ny,nz) || isCornerRampAt(nx,ny,nz); }
     return true;
   }
-  function moveCost(bot,nx,ny,nz){
-    if(bot.kind==='orange') return 1;
+  function accCost(nx,ny,nz){
     const acc=world.access[IDX(nx,ny,nz)];
     return 1 + (10-acc)*0.2;
   }
+  function moveCost3D(bot,nx,ny,nz){ return (bot.kind==='orange') ? 1 : accCost(nx,ny,nz); }
+
+  // 2D A* with diagonals, cost from z=0 access; followed by line-of-sight smoothing
+  const DIRS2D = [
+    [ 1, 0],[ -1, 0],[ 0, 1],[ 0,-1],
+    [ 1, 1],[ 1,-1],[-1, 1],[-1,-1]
+  ];
+  const heuristic2D=(a,b)=>Math.hypot(a.x-b.x, a.y-b.y);
+  function inBounds2D(x,y){ return x>=0 && x<SIZE && y>=0 && y<SIZE; }
+  function cost2D(bot,nx,ny){
+    const baseDiag = 1.0; // we handle diagonal with real Euclidean in neighbor step
+    if(bot.kind==='orange') return baseDiag;
+    const acc=world.access[IDX(nx,ny,0)];
+    return baseDiag + (10-acc)*0.15;
+  }
+  function losClear2D(ax,ay,bx,by){
+    // Bresenham-style sampling for map boundaries only (no solid obstacles, so always true)
+    // Kept for future extension; for now we always return true.
+    return true;
+  }
+  function smoothPath2D(path){
+    if(path.length<=2) return path;
+    const out=[ path[0] ];
+    let i=0;
+    while(i<path.length-1){
+      let j=path.length-1;
+      for(; j>i+1; j--){
+        if(losClear2D(path[i].x,path[i].y, path[j].x,path[j].y)){ break; }
+      }
+      out.push(path[j]);
+      i=j;
+    }
+    return out;
+  }
+
   function TinyQueue(data,cmp){ this.data=data||[]; this.length=this.data.length; this.cmp=cmp||( (a,b)=>a<b?-1:a>b?1:0 ); if(this.length){ for(let i=(this.length>>1); i>=0; i--) this._down(i);} }
   TinyQueue.prototype.push=function(it){ this.data.push(it); this.length++; this._up(this.length-1); };
   TinyQueue.prototype.pop=function(){ if(!this.length) return; const top=this.data[0], bot=this.data.pop(); this.length--; if(this.length){ this.data[0]=bot; this._down(0);} return top; };
   TinyQueue.prototype._up=function(p){ const d=this.data,c=this.cmp, it=d[p]; while(p>0){ const parent=(p-1)>>1, cur=d[parent]; if(c(it,cur)>=0) break; d[p]=cur; p=parent;} d[p]=it; };
   TinyQueue.prototype._down=function(p){ const d=this.data,c=this.cmp, half=this.length>>1, it=d[p]; while(p<half){ let left=(p<<1)+1, right=left+1, best=d[left]; if(right<this.length && c(d[right],best)<0){ left=right; best=d[right]; } if(c(best,it)>=0) break; d[p]=best; p=left;} d[p]=it; };
 
-  function findPath(bot, start, goal, maxNodes = 1200000) {
-    // Primary A*
-    const key = (i) => i.x | (i.y << 7) | (i.z << 14); // 100×100×100 safe packing
-    const open = new TinyQueue([], (a, b) => a.f - b.f);
-    const gScore = new Map();
-    const came = new Map();
-    gScore.set(key(start), 0);
-    open.push({ x: start.x, y: start.y, z: start.z, f: heuristic(start, goal) });
-    let visited = 0;
-    while (open.length && visited < maxNodes) {
-      const cur = open.pop(); visited++;
-      if (cur.x === goal.x && cur.y === goal.y && cur.z === goal.z) {
-        const path = [];
-        let node = cur, k = key(cur);
-        while (true) {
-          path.push({ x: node.x, y: node.y, z: node.z });
-          const prev = came.get(k); if (!prev) break;
-          node = prev; k = key(node);
-        }
+  function findPath3D(bot, start, goal, maxNodes=1200000){
+    const key=(i)=> i.x | (i.y<<7) | (i.z<<14);
+    const open=new TinyQueue([], (a,b)=>a.f-b.f);
+    const gScore=new Map(), came=new Map();
+    gScore.set(key(start),0);
+    open.push({x:start.x,y:start.y,z:start.z,f:heuristic3D(start,goal)});
+    let visited=0;
+    while(open.length && visited<maxNodes){
+      const cur=open.pop(); visited++;
+      if(cur.x===goal.x && cur.y===goal.y && cur.z===goal.z){
+        const path=[]; let node=cur, k=key(cur);
+        while(true){ path.push({x:node.x,y:node.y,z:node.z}); const prev=came.get(k); if(!prev) break; node=prev; k=key(node); }
         path.reverse(); return path;
       }
-      const cKey = key(cur), cG = gScore.get(cKey) ?? Infinity;
-      for (const d of DIRS) {
-        const nx = cur.x + d[0], ny = cur.y + d[1], nz = cur.z + d[2];
-        if (!canMove(bot, cur.x, cur.y, cur.z, nx, ny, nz)) continue;
-        const tentative = cG + moveCost(bot, nx, ny, nz);
-        const nKey = key({ x: nx, y: ny, z: nz });
-        if (tentative < (gScore.get(nKey) ?? Infinity)) {
-          gScore.set(nKey, tentative);
-          came.set(nKey, cur);
-          open.push({ x: nx, y: ny, z: nz, f: tentative + heuristic({ x: nx, y: ny, z: nz }, goal) });
+      const cKey=key(cur), cG=gScore.get(cKey) ?? Infinity;
+      for(const d of DIRS3D){
+        const nx=cur.x+d[0], ny=cur.y+d[1], nz=cur.z+d[2];
+        if(!canMove3D(bot, cur.x,cur.y,cur.z, nx,ny,nz)) continue;
+        const tentative = cG + moveCost3D(bot,nx,ny,nz);
+        const nKey=key({x:nx,y:ny,z:nz});
+        if(tentative < (gScore.get(nKey) ?? Infinity)){
+          gScore.set(nKey,tentative);
+          came.set(nKey,cur);
+          open.push({x:nx,y:ny,z:nz, f: tentative + heuristic3D({x:nx,y:ny,z:nz},goal)});
         }
       }
     }
-
-    // ----- Fallback: legal corner-route between floors -----
-    function nearestCornerTo(x, y) {
-      const cs = [ {c:0,x:0,y:0}, {c:1,x:SIZE-1,y:0}, {c:2,x:0,y:SIZE-1}, {c:3,x:SIZE-1,y:SIZE-1} ];
-      let best = cs[0], bd = Infinity;
-      for (const p of cs) { const d = Math.abs(p.x - x) + Math.abs(p.y - y); if (d < bd) { bd = d; best = p; } }
-      return best;
-    }
-    function pushLine(path, from, to) {
-      let { x, y, z } = from;
-      while (x !== to.x) { x += (to.x > x ? 1 : -1); path.push({ x, y, z }); }
-      while (y !== to.y) { y += (to.y > y ? 1 : -1); path.push({ x, y, z }); }
-    }
-
-    const path = [{ x: start.x, y: start.y, z: start.z }];
-    let cx = start.x, cy = start.y, cz = start.z;
-
-    const stepVert = (up) => {
-      let targetCorner = -1;
-      if (up) {
-        for (let c = 0; c < 4; c++) {
-          const p = cornerXY(c);
-          if (bot.kind === 'green') { if (isCornerRampAt(p.x, p.y, cz)) { targetCorner = c; break; } }
-          else { if (isCornerRampAt(p.x, p.y, cz) || isCornerStairAt(p.x, p.y, cz)) { targetCorner = c; break; } }
-        }
-      } else {
-        for (let c = 0; c < 4; c++) {
-          const p = cornerXY(c);
-          if (isCornerRampAt(p.x, p.y, cz - 1) || isCornerStairAt(p.x, p.y, cz - 1)) { targetCorner = c; break; }
-        }
-      }
-      if (targetCorner < 0) targetCorner = nearestCornerTo(cx, cy).c;
-      const pc = cornerXY(targetCorner);
-      pushLine(path, { x: cx, y: cy, z: cz }, { x: pc.x, y: pc.y, z: cz });
-      const nz = cz + (up ? 1 : -1);
-      path.push({ x: pc.x, y: pc.y, z: nz });
-      cx = pc.x; cy = pc.y; cz = nz;
-    };
-
-    while (cz < goal.z) stepVert(true);
-    while (cz > goal.z) stepVert(false);
-    pushLine(path, { x: cx, y: cy, z: cz }, { x: goal.x, y: goal.y, z: goal.z });
-
-    const cleaned = [path[0]];
-    for (let i = 1; i < path.length; i++) {
-      const a = cleaned[cleaned.length - 1], b = path[i];
-      if (a.x !== b.x || a.y !== b.y || a.z !== b.z) cleaned.push(b);
-    }
+    // Fallback: legal corner route (as earlier)
+    function nearestCornerTo(x,y){ const cs=[{c:0,x:0,y:0},{c:1,x:SIZE-1,y:0},{c:2,x:0,y:SIZE-1},{c:3,x:SIZE-1,y:SIZE-1}]; let best=cs[0],bd=1e9; for(const p of cs){ const d=Math.abs(p.x-x)+Math.abs(p.y-y); if(d<bd){bd=d;best=p;} } return best; }
+    function pushLine(path,from,to){ let {x,y,z}=from; while(x!==to.x){ x+= (to.x>x?1:-1); path.push({x,y,z}); } while(y!==to.y){ y+= (to.y>y?1:-1); path.push({x,y,z}); } }
+    const path=[{x:start.x,y:start.y,z:start.z}]; let cx=start.x,cy=start.y,cz=start.z;
+    const stepVert=(up)=>{ let tc=-1; if(up){ for(let c=0;c<4;c++){ const p=cornerXY(c); if(bot.kind==='green'){ if(isCornerRampAt(p.x,p.y,cz)){tc=c;break;} } else { if(isCornerRampAt(p.x,p.y,cz)||isCornerStairAt(p.x,p.y,cz)){tc=c;break;} } } } else { for(let c=0;c<4;c++){ const p=cornerXY(c); if(isCornerRampAt(p.x,p.y,cz-1)||isCornerStairAt(p.x,p.y,cz-1)){tc=c;break;} } } if(tc<0) tc=nearestCornerTo(cx,cy).c; const pc=cornerXY(tc); pushLine(path,{x:cx,y:cy,z:cz},{x:pc.x,y:pc.y,z:cz}); const nz=cz+(up?1:-1); path.push({x:pc.x,y:pc.y,z:nz}); cx=pc.x; cy=pc.y; cz=nz; };
+    while(cz<goal.z) stepVert(true);
+    while(cz>goal.z) stepVert(false);
+    pushLine(path,{x:cx,y:cy,z:cz},{x:goal.x,y:goal.y,z:goal.z});
+    const cleaned=[path[0]]; for(let i=1;i<path.length;i++){ const a=cleaned[cleaned.length-1], b=path[i]; if(a.x!==b.x||a.y!==b.y||a.z!==b.z) cleaned.push(b); }
     return cleaned;
   }
 
-  // ------------------ Trails ------------------
+  function findPath2D(bot, start, goal, maxNodes=400000){
+    const key=(i)=> i.x | (i.y<<7); // 100x100 fits
+    const open=new TinyQueue([], (a,b)=>a.f-b.f);
+    const gScore=new Map(), came=new Map();
+    const s={x:start.x,y:start.y}, g={x:goal.x,y:goal.y};
+    gScore.set(key(s),0);
+    open.push({x:s.x,y:s.y,f:heuristic2D(s,g)});
+    let visited=0;
+    while(open.length && visited<maxNodes){
+      const cur=open.pop(); visited++;
+      if(cur.x===g.x && cur.y===g.y){
+        const path=[]; let node=cur, k=key(cur);
+        while(true){ path.push({x:node.x,y:node.y,z:0}); const prev=came.get(k); if(!prev) break; node=prev; k=key(node); }
+        path.reverse(); return smoothPath2D(path);
+      }
+      const cKey=key(cur), cG=gScore.get(cKey) ?? Infinity;
+      for(const d of DIRS2D){
+        const nx=cur.x+d[0], ny=cur.y+d[1];
+        if(!inBounds2D(nx,ny)) continue;
+        const stepCost = Math.hypot(d[0],d[1])*cost2D(bot,nx,ny);
+        const tentative = cG + stepCost;
+        const nKey=key({x:nx,y:ny});
+        if(tentative < (gScore.get(nKey) ?? Infinity)){
+          gScore.set(nKey,tentative);
+          came.set(nKey,cur);
+          open.push({x:nx,y:ny,f: tentative + heuristic2D({x:nx,y:ny},g)});
+        }
+      }
+    }
+    // Fallback: straight line
+    return [ {x:start.x,y:start.y,z:0}, {x:goal.x,y:goal.y,z:0} ];
+  }
+
+  // ---------- Trails ----------
   const trailTop=document.createElement('canvas'); trailTop.width=cvTop.width; trailTop.height=cvTop.height; const trailTopCtx=trailTop.getContext('2d');
   const trailSide=document.createElement('canvas'); trailSide.width=cvSide.width; trailSide.height=cvSide.height; const trailSideCtx=trailSide.getContext('2d');
   const trailIso=document.createElement('canvas'); trailIso.width=cvIso.width; trailIso.height=cvIso.height; const trailIsoCtx=trailIso.getContext('2d');
   function clearTrails(){ trailTopCtx.clearRect(0,0,trailTop.width,trailTop.height); trailSideCtx.clearRect(0,0,trailSide.width,trailSide.height); trailIsoCtx.clearRect(0,0,trailIso.width,trailIso.height); }
 
-  // ------------------ Init Bots ------------------
+  // ---------- Init Bots ----------
   function initBots(){
     bots.length=0;
     const oc=parseInt(orangeCountEl.value||'12',10), gc=parseInt(greenCountEl.value||'12',10);
@@ -388,9 +411,13 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
     const g=bots.find(b=>b.kind==='green')||bots[0]; if(g){ camX=g.x; camY=g.y; camZ=Math.round(g.z); }
   }
 
-  // ------------------ Bot Update (with stuck detector) ------------------
+  function findPath(bot, start, goal){
+    return (mode===MODE_2D) ? findPath2D(bot,start,goal) : findPath3D(bot,start,goal);
+  }
+
+  // ---------- Bot Update (with stuck detector) ----------
   function updateBot(b, dt) {
-    // Stuck detection: if no progress for ~2 seconds, force replan
+    // Stuck detection
     b._stuckT = (b._stuckT ?? 0) + dt;
     const lastPX = b._lastPX ?? b.x, lastPY = b._lastPY ?? b.y, lastPZ = b._lastPZ ?? b.z;
     const progressed = Math.hypot(b.x - lastPX, b.y - lastPY) + Math.abs(b.z - lastPZ);
@@ -398,20 +425,21 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
     b._lastPX = b.x; b._lastPY = b.y; b._lastPZ = b.z;
 
     if (!b.path || b.pathIndex >= b.path.length || b._stuckT > 2.0) {
-      b.path = findPath(b, { x: Math.round(b.x), y: Math.round(b.y), z: Math.round(b.z) }, goalState.current);
-      b.pathIndex = 0;
-      b._stuckT = 0;
+      const sx=Math.round(b.x), sy=Math.round(b.y), sz=(mode===MODE_2D?0:Math.round(b.z));
+      const s={x:sx,y:sy,z:sz};
+      b.path = findPath(b, s, goalState.current);
+      b.pathIndex = 0; b._stuckT = 0;
     }
     if (!b.path || !b.path.length) return;
 
+    // Move toward current node (continuous)
     const t = b.path[b.pathIndex];
-    const dx = t.x - b.x, dy = t.y - b.y, dz = t.z - b.z;
+    const dx = t.x - b.x, dy = t.y - b.y, dz = (mode===MODE_2D? 0 : (t.z - b.z));
     const dist = Math.hypot(dx, dy, dz) || 1;
 
-    // Desired direction
     let ux = dx / dist, uy = dy / dist, uz = dz / dist;
 
-    // Green gait shaping
+    // Green gait shaping (2D still applies)
     if (b.kind === 'green') {
       const bias = parseFloat(biasLeftEl.value || '0.25');
       const wob  = parseFloat(wobbleEl.value   || '0.35');
@@ -438,15 +466,15 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
 
     // Integrate
     const prevZ = Math.round(b.z);
-    b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt;
-    b.x = clamp(b.x, 0, SIZE - 1); b.y = clamp(b.y, 0, SIZE - 1); b.z = clamp(b.z, 0, WORLD_H - 1);
+    b.x += b.vx * dt; b.y += b.vy * dt; b.z += (mode===MODE_2D ? 0 : b.vz * dt);
+    b.x = clamp(b.x, 0, SIZE - 1); b.y = clamp(b.y, 0, SIZE - 1); b.z = clamp(b.z, 0, mode===MODE_2D?0:WORLD_H - 1);
 
     // Snap to node when close
-    if (Math.hypot(t.x - b.x, t.y - b.y, t.z - b.z) < 0.2) {
-      b.x = t.x; b.y = t.y; b.z = t.z; b.lastDir = { dx: dx, dy: dy, dz: dz };
+    if (Math.hypot(t.x - b.x, t.y - b.y, (mode===MODE_2D?0:(t.z - b.z))) < 0.2) {
+      b.x = t.x; b.y = t.y; b.z = (mode===MODE_2D?0:t.z); b.lastDir = { dx: dx, dy: dy, dz: dz };
       b.pathIndex++;
-      const newZ = t.z;
-      if (b.kind === 'green' && newZ !== prevZ) {
+      const newZ = b.z|0;
+      if (mode===MODE_3D && b.kind === 'green' && newZ !== prevZ) {
         if (newZ > prevZ) {
           if (isCornerRampAt(t.x, t.y, prevZ)) { greenAscents++; statBox.textContent = `Green ascents: ${greenAscents} · descents: ${greenDescents}`; }
         } else {
@@ -457,52 +485,61 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
     }
   }
 
-  // ------------------ Camera Update (4th view) ------------------
+  // ---------- Camera Update ----------
   function updateCamera(dt){
     const g=bots.find(b=>b.kind==='green')||bots[0]; if(!g) return;
-    camZ = Math.round(g.z);
-    const alpha = 1 - Math.exp(-followSpeed * dt); // followSpeed fixed at 12.0
+    camZ = (mode===MODE_2D?0:Math.round(g.z));
+    const alpha = 1 - Math.exp(-followSpeed * dt);
     camX += (g.x - camX) * alpha;
     camY += (g.y - camY) * alpha;
     camX = clamp(camX,0,SIZE-1); camY = clamp(camY,0,SIZE-1);
   }
 
-  // ------------------ Goal Renewal ------------------
+  // ---------- Goal Renewal ----------
   function maybeRenewGoal(){
     if(goalPolicy==='random'){
-      for(const b of bots){ if(b.reached){ setNewGoal(); for(const x of bots){ x.reached=false; x.path=findPath(x,{x:Math.round(x.x),y:Math.round(x.y),z:Math.round(x.z)},goalState.current); x.pathIndex=0; } break; } }
+      for(const b of bots){ if(b.reached){ setNewGoal(); for(const x of bots){ x.reached=false; x.path=findPath(x,{x:Math.round(x.x),y:Math.round(x.y),z:(mode===MODE_2D?0:Math.round(x.z))},goalState.current); x.pathIndex=0; } break; } }
     } else {
       const allReached=bots.length>0 && bots.every(b=>b.reached);
-      if(allReached){ setNewGoal(); for(const x of bots){ x.reached=false; x.path=findPath(x,{x:Math.round(x.x),y:Math.round(x.y),z:Math.round(x.z)},goalState.current); x.pathIndex=0; } }
+      if(allReached){ setNewGoal(); for(const x of bots){ x.reached=false; x.path=findPath(x,{x:Math.round(x.x),y:Math.round(x.y),z:(mode===MODE_2D?0:Math.round(x.z))},goalState.current); x.pathIndex=0; } }
     }
   }
 
-  // ------------------ Path Overlay (planned nodes in red) ------------------
-  function drawPathOverlayTop(){ if(!showPaths) return; const W=cvTop.width,H=cvTop.height; const tile=Math.max(1, Math.floor(Math.min(W,H)/SIZE * zoomTop)); ctxTop.save(); ctxTop.globalAlpha=0.9; ctxTop.strokeStyle='#ff5252'; ctxTop.fillStyle='#ff5252'; for(const b of bots){ if(!b.path||b.path.length<2) continue; ctxTop.beginPath(); let started=false; for(let i=b.pathIndex;i<b.path.length;i++){ const n=b.path[i]; const cx=n.x*tile+tile/2, cy=n.y*tile+tile/2; if(!started){ ctxTop.moveTo(cx,cy); started=true; } else ctxTop.lineTo(cx,cy); if(tile>=6) ctxTop.fillRect(cx-1,cy-1,2,2); } ctxTop.stroke(); } ctxTop.restore(); }
-  function drawPathOverlaySide(){ if(!showPaths) return; const W=cvSide.width,H=cvSide.height; const sx=(W/SIZE)*zoomSide, sz=(H/WORLD_H)*zoomSide; ctxSide.save(); ctxSide.globalAlpha=0.9; ctxSide.strokeStyle='#ff5252'; ctxSide.fillStyle='#ff5252'; for(const b of bots){ if(!b.path||b.path.length<2) continue; ctxSide.beginPath(); let started=false; for(let i=b.pathIndex;i<b.path.length;i++){ const n=b.path[i]; const cx=n.x*sx, cz=H - n.z*sz; if(!started){ ctxSide.moveTo(cx,cz); started=true; } else ctxSide.lineTo(cx,cz); ctxSide.fillRect(cx-1,cz-1,2,2); } ctxSide.stroke(); } ctxSide.restore(); }
-  function drawPathOverlayIso(){ if(!showPaths) return; const W=cvIso.width,H=cvIso.height; const tw=8*zoomIso, th=4*zoomIso, hz=3*zoomIso; const ix=(x,y)=>(x-y)*(tw/2)+W/2; const iy=(x,y,z)=>(x+y)*(th/2)-z*hz+120; ctxIso.save(); ctxIso.globalAlpha=0.9; ctxIso.strokeStyle='#ff5252'; ctxIso.fillStyle='#ff5252'; for(const b of bots){ if(!b.path||b.path.length<2) continue; ctxIso.beginPath(); let started=false; for(let i=b.pathIndex;i<b.path.length;i++){ const n=b.path[i]; const cx=ix(n.x+0.5,n.y+0.5), cy=iy(n.x+0.5,n.y+0.5,n.z+0.5); if(!started){ ctxIso.moveTo(cx,cy); started=true; } else ctxIso.lineTo(cx,cy); ctxIso.fillRect(cx-1,cy-1,2,2); } ctxIso.stroke(); } ctxIso.restore(); }
-  function drawPathOverlayTopZoom(view){ if(!showPaths) return; const {tile,startXf,startYf,W,H}=view; ctxTopZoom.save(); ctxTopZoom.globalAlpha=0.9; ctxTopZoom.strokeStyle='#ff5252'; ctxTopZoom.fillStyle='#ff5252'; for(const b of bots){ if(!b.path||b.path.length<2) continue; ctxTopZoom.beginPath(); let started=false; for(let i=b.pathIndex;i*b.path.length;i++){ /* guard */ } for(let i=b.pathIndex;i<b.path.length;i++){ const n=b.path[i]; const xi=(n.x-startXf)*tile+tile/2, yi=(n.y-startYf)*tile+tile/2; if(xi<-10||yi<-10||xi>W+10||yi>H+10) continue; if(!started){ ctxTopZoom.moveTo(xi,yi); started=true; } else ctxTopZoom.lineTo(xi,yi); ctxTopZoom.fillRect(xi-1,yi-1,2,2); } if(started) ctxTopZoom.stroke(); } ctxTopZoom.restore(); }
+  // ---------- Path Overlay ----------
+  function drawPathOverlayTop(tile){
+    if(!showPaths) return; ctxTop.save(); ctxTop.globalAlpha=0.9; ctxTop.strokeStyle='#ff5252'; ctxTop.fillStyle='#ff5252';
+    for(const b of bots){ if(!b.path||b.path.length<2) continue;
+      ctxTop.beginPath(); let started=false;
+      for(let i=b.pathIndex;i<b.path.length;i++){ const n=b.path[i]; const cx=n.x*tile+tile/2, cy=n.y*tile+tile/2;
+        if(!started){ ctxTop.moveTo(cx,cy); started=true; } else ctxTop.lineTo(cx,cy);
+        if(tile>=6) ctxTop.fillRect(cx-1,cy-1,2,2);
+      } ctxTop.stroke();
+    } ctxTop.restore();
+  }
+  function drawPathOverlaySide(){ if(!showPaths) return; const W=cvSide.width,H=cvSide.height; const sx=(W/SIZE)*zoomSide, sz=(H/Math.max(1,WORLD_H))*zoomSide; ctxSide.save(); ctxSide.globalAlpha=0.9; ctxSide.strokeStyle='#ff5252'; for(const b of bots){ if(!b.path||b.path.length<2) continue; ctxSide.beginPath(); let started=false; for(let i=b.pathIndex;i<b.path.length;i++){ const n=b.path[i]; const cx=n.x*sx, cz=H - ( (mode===MODE_2D?0:n.z) )*sz; if(!started){ ctxSide.moveTo(cx,cz); started=true; } else ctxSide.lineTo(cx,cz); } ctxSide.stroke(); } ctxSide.restore(); }
+  function drawPathOverlayIso(){ if(!showPaths) return; const W=cvIso.width,H=cvIso.height; const tw=8*zoomIso, th=4*zoomIso, hz=3*zoomIso; const ix=(x,y)=>(x-y)*(tw/2)+W/2; const iy=(x,y,z)=>(x+y)*(th/2)-z*hz+120; ctxIso.save(); ctxIso.globalAlpha=0.9; ctxIso.strokeStyle='#ff5252'; for(const b of bots){ if(!b.path||b.path.length<2) continue; ctxIso.beginPath(); let started=false; for(let i=b.pathIndex;i<b.path.length;i++){ const n=b.path[i]; const cx=ix(n.x+0.5,n.y+0.5), cy=iy(n.x+0.5,n.y+0.5,(mode===MODE_2D?0:n.z)+0.5); if(!started){ ctxIso.moveTo(cx,cy); started=true; } else ctxIso.lineTo(cx,cy); } ctxIso.stroke(); } ctxIso.restore(); }
+  function drawPathOverlayTopZoom(view){ if(!showPaths) return; const {tile,startXf,startYf,W,H}=view; ctxTopZoom.save(); ctxTopZoom.globalAlpha=0.9; ctxTopZoom.strokeStyle='#ff5252'; for(const b of bots){ if(!b.path||b.path.length<2) continue; ctxTopZoom.beginPath(); let started=false; for(let i=b.pathIndex;i<b.path.length;i++){ const n=b.path[i]; const xi=(n.x-startXf)*tile+tile/2, yi=(n.y-startYf)*tile+tile/2; if(xi<-10||yi<-10||xi>W+10||yi>H+10) continue; if(!started){ ctxTopZoom.moveTo(xi,yi); started=true; } else ctxTopZoom.lineTo(xi,yi); } if(started) ctxTopZoom.stroke(); } ctxTopZoom.restore(); }
 
-  // ------------------ Rendering ------------------
+  // ---------- Rendering ----------
   function drawTop(){
     const W=cvTop.width,H=cvTop.height; const tile=Math.max(2, Math.floor(Math.min(W,H)/SIZE * zoomTop));
     ctxTop.clearRect(0,0,W,H);
-    // visualize a layer (cycle slowly)
-    const z = (Date.now()/1500|0)%WORLD_H;
+    const zTop = (mode===MODE_2D? 0 : (Date.now()/1500|0)%WORLD_H);
     for(let y=0;y<SIZE;y++){
       for(let x=0;x<SIZE;x++){
-        const noisy = world.floors[IDX(x,y,z)];
+        const noisy = world.floors[IDX(x,y,zTop)];
         const g = Math.round(22 + (1-noisy)*28);
         ctxTop.fillStyle = `rgb(${g},${g+5},${g+10})`;
         ctxTop.fillRect(x*tile, y*tile, tile, tile);
       }
     }
-    // stairs / ramps glyphs
-    ctxTop.font='12px system-ui, sans-serif';
-    for(let c=0;c<4;c++){
-      const p=cornerXY(c);
-      if(world.stairs[z*4+c]){ ctxTop.fillStyle='#97b0ff'; ctxTop.fillText('▲', p.x*tile+3, p.y*tile+3); }
-      if(world.ramps [z*4+c]){ ctxTop.fillStyle='#7cf0c4'; ctxTop.fillText('▭', p.x*tile+12, p.y*tile+3); }
+    if(mode===MODE_3D){
+      ctxTop.font='12px system-ui, sans-serif';
+      for(let c=0;c<4;c++){
+        const p=cornerXY(c);
+        if(world.stairs[zTop*4+c]){ ctxTop.fillStyle='#97b0ff'; ctxTop.fillText('▲', p.x*tile+3, p.y*tile+3); }
+        if(world.ramps [zTop*4+c]){ ctxTop.fillStyle='#7cf0c4'; ctxTop.fillText('▭', p.x*tile+12, p.y*tile+3); }
+      }
     }
     if(showWireTop){
       ctxTop.strokeStyle='rgba(255,255,255,0.15)'; ctxTop.lineWidth=0.5;
@@ -511,12 +548,9 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
         ctxTop.beginPath(); ctxTop.moveTo(0,i*tile+0.5); ctxTop.lineTo(W,i*tile+0.5); ctxTop.stroke();
       }
     }
-    // trails
     ctxTop.drawImage(trailTop,0,0);
-    drawPathOverlayTop();
-    // goal
+    drawPathOverlayTop(tile);
     ctxTop.strokeStyle=COL_GOAL; ctxTop.lineWidth=2; ctxTop.strokeRect(goalState.current.x*tile+1, goalState.current.y*tile+1, tile-2, tile-2);
-    // bots + trail
     for(const b of bots){
       const px=b.x*tile, py=b.y*tile; const r=Math.max(3,tile*0.3);
       ctxTop.fillStyle=(b.kind==='orange')?COL_ORANGE:COL_GREEN;
@@ -527,27 +561,34 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
   }
 
   function drawSide(){
-    const W=cvSide.width,H=cvSide.height; const sx=(W/SIZE)*zoomSide, sz=(H/WORLD_H)*zoomSide;
+    const W=cvSide.width,H=cvSide.height; const sx=(W/SIZE)*zoomSide, sz=(H/Math.max(1,WORLD_H))*zoomSide;
     ctxSide.clearRect(0,0,W,H);
-    // background accessibility bands per z
-    for(let z=0; z<WORLD_H; z++){
-      let acc=0; for(let x=0;x<SIZE;x++){ for(let y=0;y<SIZE;y+=5) acc+=world.access[IDX(x,y,z)]; }
-      acc/=(SIZE*(SIZE/5)); const g=Math.round(16+(acc/10)*26);
-      ctxSide.fillStyle=`rgb(${g},${g+4},${g+8})`;
-      ctxSide.fillRect(0, H-(z+1)*sz, W, sz+1);
+    if(mode===MODE_3D){
+      for(let z=0; z<WORLD_H; z++){
+        let acc=0; for(let x=0;x<SIZE;x++){ for(let y=0;y<SIZE;y+=5) acc+=world.access[IDX(x,y,z)]; }
+        acc/=(SIZE*(SIZE/5)); const g=Math.round(16+(acc/10)*26);
+        ctxSide.fillStyle=`rgb(${g},${g+4},${g+8})`; ctxSide.fillRect(0, H-(z+1)*sz, W, sz+1);
+      }
+      if(showWireSide){
+        ctxSide.save(); ctxSide.strokeStyle='rgba(255,255,255,0.15)'; ctxSide.lineWidth=0.5;
+        for(let x=0;x<=SIZE;x+=10){ ctxSide.beginPath(); ctxSide.moveTo(x*sx+0.5,0); ctxSide.lineTo(x*sx+0.5,H); ctxSide.stroke(); }
+        for(let z=0;z<=WORLD_H;z+=10){ ctxSide.beginPath(); ctxSide.moveTo(0,H-z*sz+0.5); ctxSide.lineTo(W,H-z*sz+0.5); ctxSide.stroke(); }
+        ctxSide.restore();
+      }
+    } else {
+      // 2D mode: flat hint line at z=0
+      ctxSide.fillStyle='rgba(120,140,160,0.15)';
+      ctxSide.fillRect(0,H-1*sz, W, 2);
+      if(showWireSide){
+        ctxSide.save(); ctxSide.strokeStyle='rgba(255,255,255,0.12)'; ctxSide.lineWidth=0.5;
+        for(let x=0;x<=SIZE;x+=10){ ctxSide.beginPath(); ctxSide.moveTo(x*sx+0.5,0); ctxSide.lineTo(x*sx+0.5,H); ctxSide.stroke(); }
+        ctxSide.restore();
+      }
     }
-    if(showWireSide){
-      ctxSide.save(); ctxSide.strokeStyle='rgba(255,255,255,0.15)'; ctxSide.lineWidth=0.5;
-      for(let x=0;x<=SIZE;x+=10){ ctxSide.beginPath(); ctxSide.moveTo(x*sx+0.5,0); ctxSide.lineTo(x*sx+0.5,H); ctxSide.stroke(); }
-      for(let z=0;z<=WORLD_H;z+=10){ ctxSide.beginPath(); ctxSide.moveTo(0,H-z*sz+0.5); ctxSide.lineTo(W,H-z*sz+0.5); ctxSide.stroke(); }
-      ctxSide.restore();
-    }
-    // trails & overlay
     ctxSide.drawImage(trailSide,0,0);
     drawPathOverlaySide();
-    // bots + trail
     for(const b of bots){
-      const px=b.x*sx, pz=H - b.z*sz;
+      const px=b.x*sx, pz=H - (mode===MODE_2D?0:b.z*sz);
       ctxSide.fillStyle=(b.kind==='orange')?COL_ORANGE:COL_GREEN;
       ctxSide.fillRect(px-3,pz-3,6,6);
       trailSideCtx.fillStyle=(b.kind==='orange')?'rgba(255,167,38,0.6)':'rgba(32,227,122,0.6)';
@@ -560,33 +601,29 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
     const tw=8*zoomIso, th=4*zoomIso, hz=3*zoomIso;
     const ix=(x,y)=>(x-y)*(tw/2)+W/2;
     const iy=(x,y,z)=>(x+y)*(th/2)-z*hz+120;
-
     if(showWireIso){
       ctxIso.save();
-      // X/Y grid
       ctxIso.strokeStyle='rgba(255,255,255,0.12)'; ctxIso.lineWidth=0.5;
       for(let x=0;x<=SIZE;x+=10){ ctxIso.beginPath(); ctxIso.moveTo(ix(x,0), iy(x,0,0)); ctxIso.lineTo(ix(x,SIZE), iy(x,SIZE,0)); ctxIso.stroke(); }
       for(let y=0;y<=SIZE;y+=10){ ctxIso.beginPath(); ctxIso.moveTo(ix(0,y), iy(0,y,0)); ctxIso.lineTo(ix(SIZE,y,0), iy(SIZE,y,0)); ctxIso.stroke(); }
-      // Z slices
-      ctxIso.strokeStyle='rgba(255,255,255,0.08)';
-      for(let z=0; z<=WORLD_H; z+=10){
-        ctxIso.beginPath();
-        ctxIso.moveTo(ix(0,0),       iy(0,0,z));
-        ctxIso.lineTo(ix(SIZE,0),    iy(SIZE,0,z));
-        ctxIso.lineTo(ix(SIZE,SIZE), iy(SIZE,SIZE,z));
-        ctxIso.lineTo(ix(0,SIZE),    iy(0,SIZE,z));
-        ctxIso.closePath(); ctxIso.stroke();
+      if(mode===MODE_3D){
+        ctxIso.strokeStyle='rgba(255,255,255,0.08)';
+        for(let z=0; z<=WORLD_H; z+=10){
+          ctxIso.beginPath();
+          ctxIso.moveTo(ix(0,0),       iy(0,0,z));
+          ctxIso.lineTo(ix(SIZE,0),    iy(SIZE,0,z));
+          ctxIso.lineTo(ix(SIZE,SIZE), iy(SIZE,SIZE,z));
+          ctxIso.lineTo(ix(0,SIZE),    iy(0,SIZE,z));
+          ctxIso.closePath(); ctxIso.stroke();
+        }
       }
       ctxIso.restore();
     }
-
-    // trails & overlay
     ctxIso.drawImage(trailIso,0,0);
     drawPathOverlayIso();
-
-    // bots + trails
     for(const b of bots){
-      const cx=ix(b.x+0.5,b.y+0.5), cy=iy(b.x+0.5,b.y+0.5,b.z+0.5);
+      const z=(mode===MODE_2D?0:b.z);
+      const cx=ix(b.x+0.5,b.y+0.5), cy=iy(b.x+0.5,b.y+0.5,z+0.5);
       ctxIso.fillStyle=(b.kind==='orange')?COL_ORANGE:COL_GREEN;
       ctxIso.beginPath(); ctxIso.arc(cx,cy,Math.max(3,3*zoomIso),0,Math.PI*2); ctxIso.fill();
       trailIsoCtx.fillStyle=(b.kind==='orange')?'rgba(255,167,38,0.5)':'rgba(32,227,122,0.5)';
@@ -601,7 +638,7 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
     const tilesX=Math.ceil(W/tile)+2, tilesY=Math.ceil(H/tile)+2;
     const halfX=tilesX/2, halfY=tilesY/2;
     camX=clamp(camX,halfX,SIZE-halfX); camY=clamp(camY,halfY,SIZE-halfY);
-    const cz=Math.round(camZ);
+    const cz=(mode===MODE_2D?0:Math.round(camZ));
     const startXf=camX-halfX, startYf=camY-halfY; const sx0=Math.floor(startXf), sy0=Math.floor(startYf);
     const offX=(startXf-sx0)*tile, offY=(startYf-sy0)*tile;
 
@@ -621,7 +658,7 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
     }
     drawPathOverlayTopZoom({tile,startXf,startYf,W,H});
     for(const b of bots){
-      if(Math.round(b.z)!==cz) continue;
+      if((mode===MODE_3D && Math.round(b.z)!==cz)) continue;
       const xi=(b.x-startXf)*tile+tile/2, yi=(b.y-startYf)*tile+tile/2;
       if(xi<-10||yi<-10||xi>W+10||yi>H+10) continue;
       ctxTopZoom.fillStyle=(b.kind==='orange')?COL_ORANGE:COL_GREEN;
@@ -629,49 +666,53 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
     }
   }
 
-  // ------------------ Export ------------------
+  // ---------- Export ----------
   function exportCanvas2x(canvas,name){ const out=document.createElement('canvas'); out.width=canvas.width*2; out.height=canvas.height*2; const o=out.getContext('2d'); o.scale(2,2); o.drawImage(canvas,0,0); const url=out.toDataURL('image/png'); const a=document.createElement('a'); a.href=url; a.download=name+'.png'; a.click(); }
 
-  // ------------------ DSL ------------------
+  // ---------- DSL ----------
   function applyDSL(text){
     const tokens=text.split(/[\s\r\n]+/).filter(Boolean);
     const kv={};
     for(const t of tokens){ const m=t.match(/^([^=]+)=(.+)$/); if(m) kv[m[1].trim()]=m[2].trim(); }
     if(kv['seed']) seedInputEl.value=kv['seed'];
-
+    if(kv['mode']) { mode = (kv['mode'].toLowerCase()==='2d')?MODE_2D:MODE_3D; btnMode.textContent = '↔ Mode: ' + (mode===MODE_2D?'2D Top-Down':'3D Grid'); }
     if(kv['bots.orange']) orangeCountEl.value = String(Math.max(0, Math.min(200, parseInt(kv['bots.orange'],10)||0)));
     if(kv['bots.green'])  greenCountEl.value  = String(Math.max(0, Math.min(200, parseInt(kv['bots.green'],10)||0)));
     if(kv['goals.policy']){ const v=kv['goals.policy']; goalPolicyEl.value=(v==='team'?'team':'random'); goalPolicy=goalPolicyEl.value; }
-
     if(kv['orange.speed']) orangeSpeed = Math.max(0.1, parseFloat(kv['orange.speed'])||orangeSpeed);
     if(kv['green.speed'])  greenSpeed  = Math.max(0.1, parseFloat(kv['green.speed']) ||greenSpeed);
     if(kv['green.bias'])   biasLeftEl.value   = String(Math.max(0, Math.min(1, parseFloat(kv['green.bias'])||0)));
     if(kv['green.wobble']) wobbleEl.value     = String(Math.max(0, Math.min(1, parseFloat(kv['green.wobble'])||0)));
     if(kv['green.fatigue'])fatigueRateEl.value= String(Math.max(0, Math.min(0.02, parseFloat(kv['green.fatigue'])||0)));
     if(kv['green.jitter']) speedJitterEl.value= String(Math.max(0, Math.min(1, parseFloat(kv['green.jitter'])||0)));
-
     if(kv['camera.zoom4']) { const v=parseFloat(kv['camera.zoom4']); if(Number.isFinite(v)){ sZoom.value=String(v); zoomScale=v; lblZoom.textContent=v.toFixed(1)+'×'; } }
     if(kv['camera.top.zoom']) { const v=parseFloat(kv['camera.top.zoom']);  if(Number.isFinite(v)&&v>0){ zoomTop = v; sZoomTop.value=String(v); lblZoomTop.textContent=v.toFixed(1)+'×'; } }
     if(kv['camera.side.zoom']){ const v=parseFloat(kv['camera.side.zoom']); if(Number.isFinite(v)&&v>0){ zoomSide= v; sZoomSide.value=String(v); lblZoomSide.textContent=v.toFixed(1)+'×'; } }
     if(kv['camera.iso.zoom']) { const v=parseFloat(kv['camera.iso.zoom']);  if(Number.isFinite(v)&&v>0){ zoomIso = v; sZoomIso.value=String(v); lblZoomIso.textContent=v.toFixed(1)+'×'; } }
 
-    // Follow stiffness is fixed at 12.0 by design now.
-
-    // Rebuild world & bots
-    reseed(seedInputEl.value||'ark100'); genWorld(); setNewGoal(); initBots();
+    reseed(seedInputEl.value||'ark100'); genWorld(); setNewGoal(); initBots(); clearTrails();
   }
 
-  // ------------------ Controls ------------------
+  // ---------- Controls ----------
   btnStart.onclick=()=>{ running=true; };
   btnPause.onclick=()=>{ running=false; };
   btnReset.onclick=()=>{ running=false; reseed(seedInputEl.value||'ark100'); genWorld(); setNewGoal(); initBots(); clearTrails(); running=true; };
-  btnNewGoal.onclick=()=>{ setNewGoal(); for(const b of bots){ b.reached=false; b.path=findPath(b,{x:Math.round(b.x),y:Math.round(b.y),z:Math.round(b.z)},goalState.current); b.pathIndex=0;} };
+  btnNewGoal.onclick=()=>{ setNewGoal(); for(const b of bots){ b.reached=false; b.path=findPath(b,{x:Math.round(b.x),y:Math.round(b.y),z:(mode===MODE_2D?0:Math.round(b.z))},goalState.current); b.pathIndex=0;} };
   btnClearTrails.onclick=()=>{ clearTrails(); };
 
   btnWireTop.onclick =()=>{ showWireTop=!showWireTop; btnWireTop.dataset.on=showWireTop?'1':''; };
   btnWireSide.onclick=()=>{ showWireSide=!showWireSide; btnWireSide.dataset.on=showWireSide?'1':''; };
   btnWireIso.onclick =()=>{ showWireIso=!showWireIso; btnWireIso.dataset.on=showWireIso?'1':''; };
   btnTogglePaths.onclick=()=>{ showPaths=!showPaths; btnTogglePaths.dataset.on=showPaths?'1':''; };
+
+  btnMode.onclick=()=>{
+    mode = (mode===MODE_3D)?MODE_2D:MODE_3D;
+    btnMode.textContent = '↔ Mode: ' + (mode===MODE_2D?'2D Top-Down':'3D Grid');
+    // force bots/goals to consistent z in 2D; allow anywhere in 3D
+    if(mode===MODE_2D){ for(const b of bots){ b.z=0; } goalState.current.z=0; }
+    setNewGoal(); for(const b of bots){ b.reached=false; b.path=findPath(b,{x:Math.round(b.x),y:Math.round(b.y),z:(mode===MODE_2D?0:Math.round(b.z))},goalState.current); b.pathIndex=0; }
+    clearTrails();
+  };
 
   btnExportTop.onclick =()=> exportCanvas2x(cvTop, 'top');
   btnExportSide.onclick=()=> exportCanvas2x(cvSide, 'side');
@@ -687,11 +728,11 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
   sZoomSide.oninput=()=>{ zoomSide= parseFloat(sZoomSide.value); lblZoomSide.textContent=fmt(zoomSide)+'×'; };
   sZoomIso.oninput =()=>{ zoomIso = parseFloat(sZoomIso.value); lblZoomIso.textContent = fmt(zoomIso)+'×'; };
 
-  // ------------------ Loop ------------------
+  // ---------- Loop ----------
   function render(){ drawTop(); drawSide(); drawIso(); drawTopZoom(); }
   function step(ts){ if(!tPrev) tPrev=ts; const dt=Math.min(0.05,(ts-tPrev)/1000); tPrev=ts; if(running){ for(const b of bots) updateBot(b,dt); updateCamera(dt); maybeRenewGoal(); } render(); requestAnimationFrame(step); }
 
-  // ------------------ Boot ------------------
+  // ---------- Boot ----------
   reseed(seedInputEl.value||'ark100'); genWorld(); setNewGoal(); initBots(); render(); requestAnimationFrame(step);
 })();
 </script>
