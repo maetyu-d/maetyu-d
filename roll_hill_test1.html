@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Asymmetric Toy Car — Damped Back-and-Forth Descent</title>
+  <title>Asymmetric Toy Car — Damped Descent with Bumpers (Green Trail)</title>
   <style>
     body { margin: 0; background: #fff; overflow: hidden; }
     canvas { display: block; }
@@ -13,24 +13,33 @@
 <body>
 <script>
 // +Y is DOWNHILL.
+//
+// Hybrid world/body model with damped back-and-forth descent,
+// green trail, and vertical bumpers down both sides of the ramp.
+// - World velocity (vx, vy) integrates gravity and resistances.
+// - Yaw uses signed forward speed s = v · ex (no spin at rest).
+// - Heading is second-order (under-damped) so it rings down naturally.
+// - Bumpers: vertical walls parallel to ramp centreline; collisions reflect vx,
+//   damp vy and angular velocity, and de-penetrate using wheel edge contact.
+//
+// Starts top-centre, nose down, right wheel > left so it naturally veers.
 
-// --- Parameters you can tweak ---
 let g = 480;          // gravity (px/s^2)
 let mu = 0.045;       // rolling resistance (Coulomb-like)
-let c_v = 0.8;        // small viscous drag on forward motion (1/s), damps oscillations
+let c_v = 0.8;        // viscous drag on forward motion (1/s)
 
-// Heading alignment (second-order: inertia + stiffness + damping)
-let k_align = 2.2;    // rad/s^2, "spring" to point downhill (HALF_PI)
-let c_align = 1.2;    // rad/s, angular damping; pick c_align < 2*sqrt(k) for underdamped
+let k_align = 2.2;    // spring to align nose to fall line (HALF_PI)
+let c_align = 1.2;    // angular damping
+let yaw_wheel_gain = 1.0;
 
-// Wheel yaw influence (scaled so it blends with angular acceleration)
-let yaw_wheel_gain = 1.0; // multiplier for wheel-induced yaw into angular accel
-
-// --------------------------------
+let bumperHalf = 180; // half-width from centreline to each bumper (px)
+let e_bounce = 0.35;  // coefficient of restitution for wall bounce
+let wall_damp_vy = 0.90; // damp vertical speed on bounce
+let wall_damp_w  = 0.70; // damp angular speed on bounce
 
 let car;
 const presets = [
-  {Rl: 24, Rr: 32, label: "Asymmetric (R > L)"}, // default: right wheel bigger
+  {Rl: 24, Rr: 32, label: "Asymmetric (R > L)"}, // default
   {Rl: 30, Rr: 30, label: "Symmetric"},
   {Rl: 18, Rr: 36, label: "Strong asymmetry"},
 ];
@@ -49,11 +58,11 @@ function windowResized(){ resizeCanvas(windowWidth, windowHeight); resetSim(); }
 function resetSim() {
   car = {
     x: width/2,
-    y: 60,                 // top of slope
-    theta: HALF_PI,        // heading (nose) angle; HALF_PI = straight down
-    w: 0,                  // angular velocity (rad/s)
-    s: 0,                  // signed forward speed along heading (px/s)
-    wbase: 70,             // axle separation proxy (px)
+    y: 60,              // top of slope
+    theta: HALF_PI,     // heading (nose) angle; HALF_PI = straight down
+    w: 0,               // angular velocity (rad/s)
+    vx: 0, vy: 0,       // world velocity
+    wbase: 70,          // axle separation proxy (px)
     Rl: presets[presetIdx].Rl,
     Rr: presets[presetIdx].Rr,
   };
@@ -65,113 +74,4 @@ function draw() {
   const dt = Math.min(1/30, (deltaTime || 0) / 1000);
   updatePhysics(dt);
   if (showTrail) recordTrail();
-  drawSlope();
-  drawTrail();
-  drawCar();
-  drawHUD();
-}
-
-function drawSlope() {
-  stroke(0); strokeWeight(2);
-  line(width/2, 0, width/2, height); // vertical slope centerline
-  strokeWeight(1);
-  for (let y = 40; y < height; y += 100) line(width/2 - 14, y, width/2 + 14, y);
-}
-
-// Wrap angle to [-PI, PI]
-function wrapAngle(a){
-  while (a >  Math.PI) a -= 2*Math.PI;
-  while (a < -Math.PI) a += 2*Math.PI;
-  return a;
-}
-
-function updatePhysics(dt) {
-  // Keep radii sane
-  car.Rl = constrain(car.Rl, 6, 100);
-  car.Rr = constrain(car.Rr, 6, 100);
-
-  // ---- 1) Forward dynamics along the car's axis ----
-  const sinTheta = Math.sin(car.theta);        // projection of gravity on forward axis
-  let a_s = g * sinTheta;                      // downhill component along the nose
-  if (Math.abs(car.s) > 1e-6) a_s -= mu * g * Math.sign(car.s); // rolling resistance
-  a_s -= c_v * car.s;                          // small viscous drag
-
-  car.s += a_s * dt;                           // signed forward speed can go ±
-
-  // ---- 2) Yaw dynamics (second-order) ----
-  // Wheel differential uses signed s (no motion -> no wheel yaw)
-  const Rref = 30;
-  const uL = car.s * (Rref / car.Rl);
-  const uR = car.s * (Rref / car.Rr);
-  const yaw_rate_from_wheels = (uR - uL) / Math.max(1e-6, car.wbase); // rad/s
-
-  // Alignment torque to point downhill (theta_target = HALF_PI)
-  const psi = wrapAngle(car.theta - HALF_PI); // deviation from fall line
-  let wdot = yaw_wheel_gain * yaw_rate_from_wheels   // wheel influence (as accel)
-           - k_align * psi                           // spring toward downhill
-           - c_align * car.w;                        // angular damping
-
-  car.w += wdot * dt;        // integrate angular velocity
-  car.theta += car.w * dt;   // integrate heading
-
-  // ---- 3) Advance position in world from signed forward speed ----
-  const ex = Math.cos(car.theta), ey = Math.sin(car.theta);
-  car.x += ex * car.s * dt;
-  car.y += ey * car.s * dt;
-
-  // ---- 4) Safety: reset if out of view ----
-  if (car.y > height + 140 || car.x < -140 || car.x > width + 140) resetSim();
-}
-
-function drawCar() {
-  const axle = car.wbase;
-  const L = createVector(0,  0.5 * axle);
-  const R = createVector(0, -0.5 * axle);
-  const pC = createVector(car.x, car.y);
-  const ex = createVector(Math.cos(car.theta), Math.sin(car.theta));
-  const ey = createVector(-Math.sin(car.theta), Math.cos(car.theta));
-
-  const pL = p5.Vector.add(pC, p5.Vector.add(p5.Vector.mult(ey, L.y), p5.Vector.mult(ex, L.x)));
-  const pR = p5.Vector.add(pC, p5.Vector.add(p5.Vector.mult(ey, R.y), p5.Vector.mult(ex, R.x)));
-
-  stroke(0); strokeWeight(2); noFill();
-  line(pL.x, pL.y, pR.x, pR.y);
-  circle(pL.x, pL.y, 2 * car.Rl);
-  circle(pR.x, pR.y, 2 * car.Rr);
-  const nose = p5.Vector.add(pC, p5.Vector.mult(ex, 28));
-  line(pC.x, pC.y, nose.x, nose.y);
-}
-
-function recordTrail() {
-  trail.push(createVector(car.x, car.y));
-  if (trail.length > 900) trail.shift();
-}
-function drawTrail() {
-  if (trail.length < 2) return;
-  stroke(0, 80); strokeWeight(1); noFill();
-  beginShape(); for (let v of trail) vertex(v.x, v.y); endShape();
-}
-
-function drawHUD() {
-  noStroke(); fill(0); textSize(14);
-  text(`Preset: ${presets[presetIdx].label}`, 12, 22);
-  text(`Wheel radii L/R: ${car.Rl} / ${car.Rr}`, 12, 40);
-  text("SPACE: change preset   R: reset   T: toggle trail", 12, 58);
-}
-
-function keyPressed() {
-  if (key === ' ') {
-    presetIdx = (presetIdx + 1) % presets.length;
-    car.Rl = presets[presetIdx].Rl;
-    car.Rr = presets[presetIdx].Rr;
-  } else if (key === 'R' || key === 'r') {
-    resetSim();
-  } else if (key === 'T' || key === 't') {
-    showTrail = !showTrail;
-  }
-}
-</script>
-</body>
-</html>
-
-
+  drawSlopeAn
