@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Asymmetric Toy Car — Minimal Line Simulation</title>
+  <style>
+    body {
+      margin: 0;
+      background: #fff;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+</head>
+<body>
+<script>
+// Minimalist Asymmetric Toy Car on a Slope — p5.js
+// Line-drawing style; no fills, just strokes.
+
+let slopeAngle = radians(18); // slope tilt relative to horizontal
+let g = 800;   // gravity magnitude (px/s^2)
+let mu = 0.08; // rolling resistance coefficient
+let dt;        // seconds per frame
+
+// Car state in slope-plane coordinates:
+// x = down-slope distance, y = across-slope (left-right).
+let car = {
+  x: 80,
+  y: 0,
+  heading: 0,    // yaw relative to down-slope axis
+  v: 0,          // forward speed along heading (px/s)
+  wbase: 70,     // wheelbase (distance between left/right contact points)
+  Rl: 22,        // left wheel radius (px)
+  Rr: 30,        // right wheel radius (px)
+};
+
+let presets = [
+  {Rl: 30, Rr: 30, label: "Symmetric"},
+  {Rl: 24, Rr: 30, label: "Mild asymmetry"},
+  {Rl: 18, Rr: 32, label: "Strong asymmetry"},
+  {Rl: 12, Rr: 34, label: "Extreme asymmetry"},
+];
+let presetIdx = 1;
+
+let trail = [];
+let showTrail = true;
+let showHelp = true;
+
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  stroke(20);
+  noFill();
+  resetSim();
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+}
+
+function resetSim() {
+  // Start near the top-left along the slope.
+  car.x = 80;
+  car.y = 0;
+  car.heading = 0;
+  car.v = 0;
+  trail = [];
+}
+
+function applyPreset(i) {
+  presetIdx = (i + presets.length) % presets.length;
+  car.Rl = presets[presetIdx].Rl;
+  car.Rr = presets[presetIdx].Rr;
+}
+
+function draw() {
+  background(255);
+  dt = min(1/30, deltaTime / 1000); // clamp dt for stability
+
+  drawSlope();
+  updatePhysics(dt);
+  if (showTrail) recordTrail();
+  drawTrail();
+  drawCar();
+  drawHUD();
+}
+
+function drawSlope() {
+  push();
+  translate(0, height * 0.35);
+  // Draw a long slope line
+  let x1 = -2000, x2 = width + 2000;
+  let y1 = tan(slopeAngle) * x1;
+  let y2 = tan(slopeAngle) * x2;
+  strokeWeight(2);
+  line(x1, y1, x2, y2);
+
+  // Minimal tick marks normal to slope for sense of plane
+  strokeWeight(1);
+  for (let i = -2000; i <= width + 2000; i += 120) {
+    let y = tan(slopeAngle) * i;
+    let n = createVector(0, -1).rotate(slopeAngle); // unit normal
+    line(i, y, i + n.x * 18, y + n.y * 18);
+  }
+  pop();
+}
+
+function slopeFrameToScreen(x, y) {
+  // Convert slope coordinates (down, across) to screen coordinates
+  let origin = createVector(0, height * 0.35);
+  // Basis vectors
+  let eDown = createVector(1, tan(slopeAngle)); // not normalized
+  let eAcross = createVector(0, -1).rotate(slopeAngle);
+  let p = p5.Vector.add(
+    p5.Vector.add(origin, p5.Vector.mult(eDown, x)),
+    p5.Vector.mult(eAcross, y)
+  );
+  return p;
+}
+
+function updatePhysics(dt) {
+  // Forward acceleration down the slope
+  let a_down = g * sin(slopeAngle);
+  let a_resist = mu * g * cos(slopeAngle) * (car.v >= 0 ? 1 : -1);
+  let a = a_down - a_resist;
+
+  // Integrate forward speed
+  car.v += a * dt;
+  car.v = max(car.v, 0);
+
+  // Differential-like kinematics from asymmetric wheel radii
+  let Rref = 30;
+  let uL = car.v * (Rref / car.Rl);
+  let uR = car.v * (Rref / car.Rr);
+
+  let v_body = (uL + uR) * 0.5;
+  let yawRate = (uR - uL) / car.wbase;
+
+  car.heading += yawRate * dt;
+  car.x += v_body * cos(car.heading) * dt;
+  car.y += v_body * sin(car.heading) * dt;
+
+  // Bounds
+  let band = 0.45 * height;
+  if (abs(car.y) > band) {
+    car.y = constrain(car.y, -band, band);
+    car.heading *= 0.8;
+  }
+
+  let p = slopeFrameToScreen(car.x, car.y);
+  if (p.x > width + 120 || p.y > height + 120) resetSim();
+}
+
+function drawCar() {
+  let axle = car.wbase;
+  let L = createVector(0, 0.5 * axle);
+  let R = createVector(0, -0.5 * axle);
+  let pC = slopeFrameToScreen(car.x, car.y);
+
+  let eDown = createVector(1, tan(slopeAngle)).normalize();
+  let eAcross = createVector(0, -1).rotate(slopeAngle).normalize();
+
+  let ex = p5.Vector.add(p5.Vector.mult(eDown, cos(car.heading)), p5.Vector.mult(eAcross, sin(car.heading)));
+  let ey = p5.Vector.add(p5.Vector.mult(eDown, -sin(car.heading)), p5.Vector.mult(eAcross,  cos(car.heading)));
+
+  let pL = p5.Vector.add(pC, p5.Vector.add(p5.Vector.mult(ey, L.y), p5.Vector.mult(ex, L.x)));
+  let pR = p5.Vector.add(pC, p5.Vector.add(p5.Vector.mult(ey, R.y), p5.Vector.mult(ex, R.x)));
+
+  push();
+  stroke(20);
+  strokeWeight(2);
+  line(pL.x, pL.y, pR.x, pR.y);
+  noFill();
+  circle(pL.x, pL.y, 2 * car.Rl);
+  circle(pR.x, pR.y, 2 * car.Rr);
+  let bodyShift = p5.Vector.mult(ey, -10);
+  line(pL.x + bodyShift.x, pL.y + bodyShift.y, pR.x + bodyShift.x, pR.y + bodyShift.y);
+  let nose = p5.Vector.add(pC, p5.Vector.mult(ex, 28));
+  line(pC.x, pC.y, nose.x, nose.y);
+  pop();
+}
+
+function recordTrail() {
+  let p = slopeFrameToScreen(car.x, car.y);
+  trail.push(createVector(p.x, p.y));
+  if (trail.length > 1200) trail.shift();
+}
+
+function drawTrail() {
+  if (!showTrail || trail.length < 2) return;
+  push();
+  stroke(20, 80);
+  strokeWeight(1);
+  noFill();
+  beginShape();
+  for (let v of trail) vertex(v.x, v.y);
+  endShape();
+  pop();
+}
+
+function drawHUD() {
+  push();
+  noFill();
+  stroke(20, 80);
+  strokeWeight(1);
+  let pad = 14;
+  let y = 16;
+  let lines = [
+    "Asymmetric Toy Car — Minimal Line Simulation",
+    `Preset: ${presets[presetIdx].label}`,
+    `Wheel radii (L/R): ${nf(car.Rl,2,0)} / ${nf(car.Rr,2,0)} px`,
+    "SPACE: cycle presets   ←/→: tweak L/R   R: reset   T: trail   H: help"
+  ];
+  for (let i = 0; i < lines.length; i++) {
+    drawMonoText(lines[i], pad, y + i * 18);
+  }
+
+  if (showHelp) {
+    let help = [
+      "How it works:",
+      "- Gravity accelerates the car down the slope.",
+      "- Different wheel radii cause unequal contact speeds.",
+      "- Like a differential-drive toy, this induces yaw (it steers).",
+      "- Stronger asymmetry = tighter curve."
+    ];
+    let hx = pad, hy = y + lines.length * 18 + 10;
+    for (let i = 0; i < help.length; i++) {
+      drawMonoText(help[i], hx, hy + i * 18);
+    }
+  }
+  pop();
+}
+
+function drawMonoText(s, x, y) {
+  push();
+  noStroke();
+  fill(20);
+  textFont('monospace');
+  textSize(13);
+  text(s, x, y);
+  pop();
+}
+
+function keyPressed() {
+  if (key === ' ') {
+    applyPreset(presetIdx + 1);
+  } else if (key === 'R' || key === 'r') {
+    resetSim();
+  } else if (keyCode === LEFT_ARROW) {
+    car.Rl = max(8, car.Rl - 1);
+  } else if (keyCode === RIGHT_ARROW) {
+    car.Rr = max(8, car.Rr - 1);
+  } else if (key === 'T' || key === 't') {
+    showTrail = !showTrail;
+  } else if (key === 'H' || key === 'h') {
+    showHelp = !showHelp;
+  }
+}
+</script>
+</body>
+</html>
