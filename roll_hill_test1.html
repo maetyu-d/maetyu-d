@@ -1,226 +1,80 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Asymmetric Toy Car — Minimal Steering + Bumpers (Green Trail)</title>
-  <style>
-    body { margin: 0; background: #fff; overflow: hidden; }
-    canvas { display: block; }
-  </style>
-  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
-</head>
-<body>
-<script>
-// +Y is DOWNHILL.
-// Classic steering model (back to basics):
-//  - Signed forward speed s (can go negative -> roll back).
-//  - a_s = g * sin(theta) - mu*g*sign(s)  (no viscous drag, no alignment torque).
-//  - Yaw from wheel asymmetry: yawRate = (uR - uL)/wbase using signed s.
-//  - Position advance uses v_body along heading.
-// Added: vertical side bumpers that reflect the X component of motion, with damping.
-//        This preserves steering; it does NOT pull the car straight down.
-
-let g  = 500;     // gravity (px/s^2)
-let mu = 0.05;    // rolling resistance coefficient
-
-// Bumper settings
-let bumperHalf   = 180; // px from centreline to each bumper
-let e_bounce_x   = 0.4; // coefficient of restitution for X component
-let s_damp_wall  = 0.85; // damp overall forward speed on wall hit
-let yaw_damp_wall= 0.85; // damp yaw response (via s) on impact
-
 let car;
-
-const presets = [
-  {Rl: 24, Rr: 32, label: "Asymmetric (R > L)"}, // default (steers rightwards initially)
-  {Rl: 30, Rr: 30, label: "Symmetric"},
-  {Rl: 18, Rr: 36, label: "Strong asymmetry"},
-];
-let presetIdx = 0;
-
-let trail = [];
-let showTrail = true;
+let slopeTopY = 100;
+let slopeBottomY;
+let slopeWidthTop = 200;
+let slopeWidthBottom = 400;
 
 function setup() {
-  createCanvas(windowWidth, windowHeight);
-  textFont("monospace");
-  resetSim();
-}
-function windowResized(){ resizeCanvas(windowWidth, windowHeight); resetSim(); }
+  createCanvas(600, 400);
+  slopeBottomY = height - 50;
 
-function resetSim() {
-  car = {
-    x: width/2,
-    y: 60,             // top centre
-    theta: HALF_PI,    // nose straight down
-    s: 0,              // signed forward speed (px/s)
-    wbase: 70,         // axle separation proxy (px)
-    Rl: presets[presetIdx].Rl,
-    Rr: presets[presetIdx].Rr,
-  };
-  trail = [];
+  // Car starts at the middle top of slope
+  car = new Car(width / 2, slopeTopY + 20);
 }
 
 function draw() {
-  background(255);
-  const dt = Math.min(1/30, (deltaTime || 0) / 1000);
-  updatePhysics(dt);
-  if (showTrail) recordTrail();
-  drawSlopeAndBumpers();
-  drawTrail();
-  drawCar();
-  drawHUD();
+  background(220);
+
+  // Draw slope (a trapezoid narrowing to the top)
+  noStroke();
+  fill(180);
+  quad(
+    width/2 - slopeWidthTop/2, slopeTopY,   // top left
+    width/2 + slopeWidthTop/2, slopeTopY,   // top right
+    width/2 + slopeWidthBottom/2, slopeBottomY, // bottom right
+    width/2 - slopeWidthBottom/2, slopeBottomY  // bottom left
+  );
+
+  // Update and draw car
+  car.update();
+  car.show();
 }
 
-function drawSlopeAndBumpers() {
-  const cx = width/2;
-  stroke(0);
-  strokeWeight(2);
-  // centreline
-  line(cx, 0, cx, height);
-  // bumpers
-  const L = cx - bumperHalf;
-  const R = cx + bumperHalf;
-  strokeWeight(3);
-  line(L, 0, L, height);
-  line(R, 0, R, height);
-  // ticks
-  strokeWeight(1);
-  for (let y = 40; y < height; y += 100) {
-    line(cx - 14, y, cx + 14, y);
+class Car {
+  constructor(x, y) {
+    this.pos = createVector(x, y);
+    this.speed = 2;   // downward speed
+    this.drift = -0.5; // left drift caused by bigger right wheels
+    this.size = 40;
+    this.trail = []; // store trail positions
+  }
+
+  update() {
+    if (this.pos.y < slopeBottomY - this.size/2) {
+      this.pos.y += this.speed;
+      this.pos.x += this.drift;
+      this.trail.push(this.pos.copy()); // save current position
+    }
+  }
+
+  show() {
+    // Draw trail (permanent)
+    noFill();
+    stroke(0, 200, 0); // green
+    strokeWeight(3);
+    beginShape();
+    for (let p of this.trail) {
+      vertex(p.x, p.y);
+    }
+    endShape();
+
+    // Draw car body
+    push();
+    rectMode(CENTER);
+    fill(200, 50, 50);
+    rect(this.pos.x, this.pos.y, this.size, this.size*0.6, 5);
+
+    // Wheels - left side (smaller)
+    fill(0);
+    ellipse(this.pos.x - this.size/2, this.pos.y - this.size*0.25, 8, 8); // top-left
+    ellipse(this.pos.x - this.size/2, this.pos.y + this.size*0.25, 8, 8); // bottom-left
+
+    // Wheels - right side (bigger)
+    ellipse(this.pos.x + this.size/2, this.pos.y - this.size*0.25, 14, 14); // top-right
+    ellipse(this.pos.x + this.size/2, this.pos.y + this.size*0.25, 14, 14); // bottom-right
+    pop();
   }
 }
 
-function updatePhysics(dt) {
-  // keep radii sane
-  car.Rl = constrain(car.Rl, 6, 100);
-  car.Rr = constrain(car.Rr, 6, 100);
-
-  // ---- Forward dynamics along body axis ----
-  const sinTheta = Math.sin(car.theta);
-  let a_s = g * sinTheta;                       // gravity along heading
-  if (Math.abs(car.s) > 1e-6) a_s -= mu * g * Math.sign(car.s); // rolling resistance only if moving
-
-  // integrate signed forward speed (can go negative -> roll back)
-  car.s += a_s * dt;
-
-  // ---- Yaw from asymmetric wheels (uses signed s) ----
-  const Rref = 30;
-  const uL = car.s * (Rref / car.Rl);
-  const uR = car.s * (Rref / car.Rr);
-  const yawRate = (uR - uL) / Math.max(1e-6, car.wbase);
-
-  // integrate heading
-  car.theta += yawRate * dt;
-
-  // ---- Advance position by body speed along heading ----
-  const exx = Math.cos(car.theta), exy = Math.sin(car.theta);
-  const v_body = 0.5 * (uL + uR); // signed forward speed along heading
-  let vx = exx * v_body;
-  let vy = exy * v_body;
-
-  // Tentative move
-  let newX = car.x + vx * dt;
-  let newY = car.y + vy * dt;
-
-  // ---- Bumper collisions (vertical walls at cx ± bumperHalf) ----
-  const cx = width/2;
-  const L = cx - bumperHalf;
-  const R = cx + bumperHalf;
-
-  // compute wheel-edge X extents at the tentative pose
-  const eyx = -Math.sin(car.theta), eyy = Math.cos(car.theta); // lateral axis
-  const pC_x = newX, pC_y = newY;
-  const pL_x = pC_x + eyx * ( 0.5 * car.wbase);
-  const pR_x = pC_x + eyx * (-0.5 * car.wbase);
-  const minEdgeX = Math.min(pL_x - car.Rl, pR_x - car.Rr);
-  const maxEdgeX = Math.max(pL_x + car.Rl, pR_x + car.Rr);
-
-  let hit = false;
-  if (minEdgeX < L) {
-    // de-penetrate and reflect X component of velocity
-    const penetration = L - minEdgeX + 0.1;
-    newX += penetration;         // push inward
-    vx = Math.abs(vx) * e_bounce_x;
-    hit = true;
-  } else if (maxEdgeX > R) {
-    const penetration = maxEdgeX - R + 0.1;
-    newX -= penetration;
-    vx = -Math.abs(vx) * e_bounce_x;
-    hit = true;
-  }
-
-  if (hit) {
-    // Recompose forward speed s from new (vx, vy) relative to current heading.
-    // This preserves steering and removes energy a bit.
-    const s_after = vx * exx + vy * exy;
-    car.s = s_after * s_damp_wall;
-
-    // Also tame yaw response by slightly reducing s (already damped) — keeps it natural
-    // (no extra change needed beyond s_damp_wall; kept for clarity)
-  }
-
-  // Commit pose
-  car.x = newX;
-  car.y = newY;
-
-  // Reset if out of view (bottom)
-  if (car.y > height + 140) resetSim();
-}
-
-function drawCar() {
-  const axle = car.wbase;
-  const L = createVector(0,  0.5 * axle);
-  const R = createVector(0, -0.5 * axle);
-  const pC = createVector(car.x, car.y);
-
-  const ex = createVector(Math.cos(car.theta), Math.sin(car.theta));
-  const ey = createVector(-Math.sin(car.theta), Math.cos(car.theta));
-
-  const pL = p5.Vector.add(pC, p5.Vector.add(p5.Vector.mult(ey, L.y), p5.Vector.mult(ex, L.x)));
-  const pR = p5.Vector.add(pC, p5.Vector.add(p5.Vector.mult(ey, R.y), p5.Vector.mult(ex, R.x)));
-
-  stroke(0); strokeWeight(2); noFill();
-  line(pL.x, pL.y, pR.x, pR.y);
-  circle(pL.x, pL.y, 2 * car.Rl);
-  circle(pR.x, pR.y, 2 * car.Rr);
-  const nose = p5.Vector.add(pC, p5.Vector.mult(ex, 28));
-  line(pC.x, pC.y, nose.x, nose.y);
-}
-
-function recordTrail() {
-  trail.push(createVector(car.x, car.y));
-  if (trail.length > 900) trail.shift();
-}
-function drawTrail() {
-  if (trail.length < 2) return;
-  stroke(0, 200, 0, 120); // GREEN trail
-  strokeWeight(1.8);
-  noFill();
-  beginShape(); for (let v of trail) vertex(v.x, v.y); endShape();
-}
-
-function drawHUD() {
-  noStroke(); fill(0); textSize(14);
-  text(`Preset: ${presets[presetIdx].label}`, 12, 22);
-  text(`Wheel radii L/R: ${car.Rl} / ${car.Rr}`, 12, 40);
-  text("SPACE: change preset   R: reset   T: toggle trail", 12, 58);
-}
-
-function keyPressed() {
-  if (key === ' ') {
-    presetIdx = (presetIdx + 1) % presets.length;
-    car.Rl = presets[presetIdx].Rl;
-    car.Rr = presets[presetIdx].Rr;
-  } else if (key === 'R' || key === 'r') {
-    resetSim();
-  } else if (key === 'T' || key === 't') {
-    showTrail = !showTrail;
-  }
-}
-</script>
-</body>
-</html>
 
 
