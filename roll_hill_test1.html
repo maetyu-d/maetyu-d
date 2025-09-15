@@ -3,60 +3,35 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Minimalist Top-Down Ball on Slope (p5.js)</title>
+  <title>Minimalist Top-Down Ball on Slope</title>
   <style>html,body{margin:0;height:100%;background:#fff}</style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
 </head>
 <body>
 <script>
-let A, B;              // slope endpoints (top -> bottom)
-let t = 0;             // 0..1 along the slope
-const r = 16;          // ball radius
-const speed = 0.12;    // fraction of canvas per second
+let y = 0;        // ball position along slope
+const r = 16;     // ball radius
+const speed = 100; // pixels per second
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
-  setSlope();
   stroke(0);
   noFill();
-}
-
-function windowResized(){
-  resizeCanvas(windowWidth, windowHeight);
-  setSlope();
-}
-
-function setSlope(){
-  // Slope that runs from top to bottom, slightly leaning
-  const x = width * 0.35;      // x-position at the top
-  const lean = width * 0.25;   // how much it drifts sideways by the bottom
-  A = createVector(x, 0);
-  B = createVector(x + lean, height);
 }
 
 function draw() {
   background(255);
 
-  // Draw the slope as a single minimalist line
+  // Draw the slope as a straight vertical line
   strokeWeight(2);
-  line(A.x, A.y, B.x, B.y);
+  line(width/2, 0, width/2, height);
 
-  // Direction along the slope
-  const dir = p5.Vector.sub(B, A).normalize();
-  // Perpendicular (to place the ball tangent to the slope)
-  const n = createVector(-dir.y, dir.x); // left-normal
+  // Draw the ball on the slope
+  circle(width/2, y, r*2);
 
-  // Ball center follows the slope from top to bottom
-  const P = p5.Vector.lerp(A, B, t);
-  const C = p5.Vector.add(P, p5.Vector.mult(n, r)); // offset so circle touches the line
-
-  // Draw the ball as a minimalist circle
-  strokeWeight(2);
-  circle(C.x, C.y, r * 2);
-
-  // Advance t based on frame time
-  t += (speed * (deltaTime / 1000));
-  if (t > 1) t = 0; // loop from top again
+  // Update ball position
+  y += speed * (deltaTime/1000);
+  if (y - r > height) y = -r; // reset to top when past bottom
 }
 </script>
 </body>
