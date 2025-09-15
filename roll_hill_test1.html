@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Asymmetric Toy Car — Vertical Slope (Roll-back Correct)</title>
+  <title>Asymmetric Toy Car — Vertical Slope (Proper Roll-back)</title>
   <style>
     body { margin: 0; background: #fff; overflow: hidden; }
     canvas { display: block; }
@@ -12,18 +12,18 @@
 </head>
 <body>
 <script>
-// +Y is DOWNHILL. Gravity is always downward, regardless of heading.
-// We integrate a signed downhill velocity vs. Positive vs => moving down the slope,
-// negative vs => moving upward. Gravity: a = g - mu*g*sign(vs).
-// This guarantees: roll up -> slow -> stop -> roll back down.
+// +Y is DOWNHILL. The car's forward axis is ex = (cosθ, sinθ).
+// Forward speed s is SIGNED (forward > 0, backward < 0).
+// Acceleration along the car's forward axis:
+//   a_s = g * sin(θ) - μ g * sign(s)  (friction opposes motion; zero when at rest)
+// This gives: point uphill -> slow -> stop -> reverse and roll back down.
 
 let g = 500;       // gravity (px/s^2)
 let mu = 0.05;     // rolling resistance coefficient
 let car;
 
-// Start with right wheel larger than left
 const presets = [
-  {Rl: 24, Rr: 32, label: "Asymmetric (R > L)"},
+  {Rl: 24, Rr: 32, label: "Asymmetric (R > L)"}, // default
   {Rl: 30, Rr: 30, label: "Symmetric"},
   {Rl: 18, Rr: 36, label: "Strong asymmetry"},
 ];
@@ -47,8 +47,8 @@ function resetSim() {
   car = {
     x: width/2,
     y: 60,              // top of slope
-    heading: HALF_PI,   // nose pointing straight down initially
-    vs: 0,              // signed downhill velocity (along slope, not along heading)
+    theta: HALF_PI,     // heading angle; HALF_PI means nose straight down
+    s: 0,               // signed forward speed along heading
     wbase: 70,
     Rl: presets[presetIdx].Rl,
     Rr: presets[presetIdx].Rr,
@@ -58,7 +58,7 @@ function resetSim() {
 
 function draw() {
   background(255);
-  const dt = min(1/30, (deltaTime||0)/1000);
+  const dt = Math.min(1/30, (deltaTime || 0) / 1000);
   updatePhysics(dt);
   if (showTrail) recordTrail();
   drawSlope();
@@ -73,49 +73,46 @@ function drawSlope() {
   line(width/2, 0, width/2, height); // vertical slope centerline
   strokeWeight(1);
   for (let y = 40; y < height; y += 100) {
-    line(width/2 - 14, y, width/2 + 14, y); // ticks
+    line(width/2 - 14, y, width/2 + 14, y);
   }
 }
 
-// Core physics:
-// - Gravity always accelerates downhill: a_g = g
-// - Rolling resistance opposes motion: a_mu = mu*g*sign(vs) if moving, else 0
-// - vs integrates with a = a_g - a_mu (so if vs<0, net accel is strongly +, causing roll-back)
 function updatePhysics(dt) {
-  // Guard radii
+  // protect radii
   car.Rl = constrain(car.Rl, 6, 100);
   car.Rr = constrain(car.Rr, 6, 100);
 
-  const moving = Math.abs(car.vs) > 1e-6;
-  const a_g = g;
-  const a_mu = moving ? mu * g * Math.sign(car.vs) : 0;
-  const a = a_g - a_mu;
+  // Gravity projected on car's heading (ex · down = sinθ)
+  const sinTheta = Math.sin(car.theta);
+  let a_g = g * sinTheta;
 
-  // Update signed downhill velocity
-  car.vs += a * dt;
+  // Rolling resistance opposes motion (none when essentially at rest)
+  let a_mu = 0;
+  if (Math.abs(car.s) > 1e-6) {
+    a_mu = mu * g * Math.sign(car.s);
+  }
 
-  // Convert downhill motion into motion along the car's heading:
-  // distance traveled along the car's forward axis is s = car.vs * dt
-  // (positive means move along +heading, negative means move backwards)
-  const s = car.vs; // speed along body used for wheel kinematics (signed)
+  // Net forward acceleration along body axis
+  let a_s = a_g - a_mu;
 
-  // Differential steering from asymmetric wheels
+  // Integrate signed forward speed (allow negative for roll-back)
+  car.s += a_s * dt;
+
+  // Differential-like yaw from asymmetric radii (uses signed speed)
   const Rref = 30;
-  const uL = s * (Rref / car.Rl);
-  const uR = s * (Rref / car.Rr);
-  const v_body = 0.5 * (uL + uR);                 // signed forward speed along heading
-  const yawRate = (uR - uL) / Math.max(1e-6, car.wbase); // rad/s
+  const uL = car.s * (Rref / car.Rl);
+  const uR = car.s * (Rref / car.Rr);
+  const v_body = 0.5 * (uL + uR); // signed forward speed along ex
+  const yawRate = (uR - uL) / Math.max(1e-6, car.wbase);
 
   // Update pose
-  car.heading += yawRate * dt;
-  const ex = Math.cos(car.heading), ey = Math.sin(car.heading);
+  car.theta += yawRate * dt;
+  const ex = Math.cos(car.theta), ey = Math.sin(car.theta);
   car.x += ex * v_body * dt;
   car.y += ey * v_body * dt;
 
   // Reset if out of view
-  if (car.y > height + 100 || car.x < -100 || car.x > width+100) {
-    resetSim();
-  }
+  if (car.y > height + 100 || car.x < -100 || car.x > width + 100) resetSim();
 }
 
 function drawCar() {
@@ -124,8 +121,8 @@ function drawCar() {
   const R = createVector(0, -0.5 * axle);
   const pC = createVector(car.x, car.y);
 
-  const ex = createVector(Math.cos(car.heading), Math.sin(car.heading));
-  const ey = createVector(-Math.sin(car.heading), Math.cos(car.heading));
+  const ex = createVector(Math.cos(car.theta), Math.sin(car.theta));
+  const ey = createVector(-Math.sin(car.theta), Math.cos(car.theta));
 
   const pL = p5.Vector.add(pC, p5.Vector.add(p5.Vector.mult(ey, L.y), p5.Vector.mult(ex, L.x)));
   const pR = p5.Vector.add(pC, p5.Vector.add(p5.Vector.mult(ey, R.y), p5.Vector.mult(ex, R.x)));
@@ -178,6 +175,7 @@ function keyPressed() {
 </script>
 </body>
 </html>
+
 
 
 
