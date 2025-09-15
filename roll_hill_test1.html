@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Asymmetric Toy Car — Damped Descent with Bumpers (Green Trail)</title>
+  <title>Asymmetric Toy Car — Minimal Steering + Bumpers (Green Trail)</title>
   <style>
     body { margin: 0; background: #fff; overflow: hidden; }
     canvas { display: block; }
@@ -13,33 +13,27 @@
 <body>
 <script>
 // +Y is DOWNHILL.
-//
-// Hybrid world/body model with damped back-and-forth descent,
-// green trail, and vertical bumpers down both sides of the ramp.
-// - World velocity (vx, vy) integrates gravity and resistances.
-// - Yaw uses signed forward speed s = v · ex (no spin at rest).
-// - Heading is second-order (under-damped) so it rings down naturally.
-// - Bumpers: vertical walls parallel to ramp centreline; collisions reflect vx,
-//   damp vy and angular velocity, and de-penetrate using wheel edge contact.
-//
-// Starts top-centre, nose down, right wheel > left so it naturally veers.
+// Classic steering model (back to basics):
+//  - Signed forward speed s (can go negative -> roll back).
+//  - a_s = g * sin(theta) - mu*g*sign(s)  (no viscous drag, no alignment torque).
+//  - Yaw from wheel asymmetry: yawRate = (uR - uL)/wbase using signed s.
+//  - Position advance uses v_body along heading.
+// Added: vertical side bumpers that reflect the X component of motion, with damping.
+//        This preserves steering; it does NOT pull the car straight down.
 
-let g = 480;          // gravity (px/s^2)
-let mu = 0.045;       // rolling resistance (Coulomb-like)
-let c_v = 0.8;        // viscous drag on forward motion (1/s)
+let g  = 500;     // gravity (px/s^2)
+let mu = 0.05;    // rolling resistance coefficient
 
-let k_align = 2.2;    // spring to align nose to fall line (HALF_PI)
-let c_align = 1.2;    // angular damping
-let yaw_wheel_gain = 1.0;
-
-let bumperHalf = 180; // half-width from centreline to each bumper (px)
-let e_bounce = 0.35;  // coefficient of restitution for wall bounce
-let wall_damp_vy = 0.90; // damp vertical speed on bounce
-let wall_damp_w  = 0.70; // damp angular speed on bounce
+// Bumper settings
+let bumperHalf   = 180; // px from centreline to each bumper
+let e_bounce_x   = 0.4; // coefficient of restitution for X component
+let s_damp_wall  = 0.85; // damp overall forward speed on wall hit
+let yaw_damp_wall= 0.85; // damp yaw response (via s) on impact
 
 let car;
+
 const presets = [
-  {Rl: 24, Rr: 32, label: "Asymmetric (R > L)"}, // default
+  {Rl: 24, Rr: 32, label: "Asymmetric (R > L)"}, // default (steers rightwards initially)
   {Rl: 30, Rr: 30, label: "Symmetric"},
   {Rl: 18, Rr: 36, label: "Strong asymmetry"},
 ];
@@ -58,11 +52,10 @@ function windowResized(){ resizeCanvas(windowWidth, windowHeight); resetSim(); }
 function resetSim() {
   car = {
     x: width/2,
-    y: 60,              // top of slope
-    theta: HALF_PI,     // heading (nose) angle; HALF_PI = straight down
-    w: 0,               // angular velocity (rad/s)
-    vx: 0, vy: 0,       // world velocity
-    wbase: 70,          // axle separation proxy (px)
+    y: 60,             // top centre
+    theta: HALF_PI,    // nose straight down
+    s: 0,              // signed forward speed (px/s)
+    wbase: 70,         // axle separation proxy (px)
     Rl: presets[presetIdx].Rl,
     Rr: presets[presetIdx].Rr,
   };
@@ -84,110 +77,93 @@ function drawSlopeAndBumpers() {
   const cx = width/2;
   stroke(0);
   strokeWeight(2);
-  // Centreline
+  // centreline
   line(cx, 0, cx, height);
-
-  // Bumpers
-  const leftB  = cx - bumperHalf;
-  const rightB = cx + bumperHalf;
-
-  // Draw bumpers as solid lines with subtle ticks
+  // bumpers
+  const L = cx - bumperHalf;
+  const R = cx + bumperHalf;
   strokeWeight(3);
-  line(leftB, 0, leftB, height);
-  line(rightB, 0, rightB, height);
-
+  line(L, 0, L, height);
+  line(R, 0, R, height);
+  // ticks
   strokeWeight(1);
   for (let y = 40; y < height; y += 100) {
-    // ticks across centreline
     line(cx - 14, y, cx + 14, y);
-    // small inward ticks from bumpers for visual texture
-    line(leftB + 6, y, leftB + 18, y);
-    line(rightB - 6, y, rightB - 18, y);
   }
-}
-
-// Wrap angle to [-PI, PI]
-function wrapAngle(a){
-  while (a >  Math.PI) a -= 2*Math.PI;
-  while (a < -Math.PI) a += 2*Math.PI;
-  return a;
 }
 
 function updatePhysics(dt) {
-  // Radii sanity
+  // keep radii sane
   car.Rl = constrain(car.Rl, 6, 100);
   car.Rr = constrain(car.Rr, 6, 100);
 
-  // --- World acceleration: gravity + resistances ---
-  // Gravity straight down the slope
-  let ax = 0;
-  let ay = g;
+  // ---- Forward dynamics along body axis ----
+  const sinTheta = Math.sin(car.theta);
+  let a_s = g * sinTheta;                       // gravity along heading
+  if (Math.abs(car.s) > 1e-6) a_s -= mu * g * Math.sign(car.s); // rolling resistance only if moving
 
-  // Rolling resistance opposes motion based on *forward* speed along the body axis
-  const exx = Math.cos(car.theta), exy = Math.sin(car.theta);
-  const s = car.vx * exx + car.vy * exy; // signed forward speed along heading
-  if (Math.abs(s) > 1e-6) {
-    const a_roll = mu * g * Math.sign(s);
-    // subtract along body axis, project back to world (small approx):
-    ax += -a_roll * exx;
-    ay += -a_roll * exy;
-  }
+  // integrate signed forward speed (can go negative -> roll back)
+  car.s += a_s * dt;
 
-  // Add small viscous drag (stability / damping)
-  ax += -c_v * (car.vx * 0.15);
-  ay += -c_v * (car.vy * 0.15);
-
-  // Integrate world velocity & position
-  car.vx += ax * dt;
-  car.vy += ay * dt;
-
-  // Update heading with second-order dynamics (under-damped to ring down)
+  // ---- Yaw from asymmetric wheels (uses signed s) ----
   const Rref = 30;
-  const uL = s * (Rref / car.Rl);
-  const uR = s * (Rref / car.Rr);
-  const yaw_rate_from_wheels = (uR - uL) / Math.max(1e-6, car.wbase); // rad/s
+  const uL = car.s * (Rref / car.Rl);
+  const uR = car.s * (Rref / car.Rr);
+  const yawRate = (uR - uL) / Math.max(1e-6, car.wbase);
 
-  const psi = wrapAngle(car.theta - HALF_PI); // deviation from fall line
-  let wdot = yaw_wheel_gain * yaw_rate_from_wheels
-           - k_align * psi
-           - c_align * car.w;
+  // integrate heading
+  car.theta += yawRate * dt;
 
-  car.w    += wdot * dt;
-  car.theta += car.w * dt;
+  // ---- Advance position by body speed along heading ----
+  const exx = Math.cos(car.theta), exy = Math.sin(car.theta);
+  const v_body = 0.5 * (uL + uR); // signed forward speed along heading
+  let vx = exx * v_body;
+  let vy = exy * v_body;
 
-  // Move by world velocity
-  car.x  += car.vx * dt;
-  car.y  += car.vy * dt;
+  // Tentative move
+  let newX = car.x + vx * dt;
+  let newY = car.y + vy * dt;
 
-  // --- BUMPER COLLISIONS (vertical walls) ---
+  // ---- Bumper collisions (vertical walls at cx ± bumperHalf) ----
   const cx = width/2;
-  const leftB  = cx - bumperHalf;
-  const rightB = cx + bumperHalf;
+  const L = cx - bumperHalf;
+  const R = cx + bumperHalf;
 
-  // Compute wheel-edge x-extents in world
-  const eyx = -Math.sin(car.theta), eyy =  Math.cos(car.theta); // lateral axis
-  const pC = {x: car.x, y: car.y};
-  const pL = {x: pC.x + eyx * ( 0.5 * car.wbase), y: pC.y + eyy * ( 0.5 * car.wbase)};
-  const pR = {x: pC.x + eyx * (-0.5 * car.wbase), y: pC.y + eyy * (-0.5 * car.wbase)};
-  const minEdgeX = Math.min(pL.x - car.Rl, pR.x - car.Rr);
-  const maxEdgeX = Math.max(pL.x + car.Rl, pR.x + car.Rr);
+  // compute wheel-edge X extents at the tentative pose
+  const eyx = -Math.sin(car.theta), eyy = Math.cos(car.theta); // lateral axis
+  const pC_x = newX, pC_y = newY;
+  const pL_x = pC_x + eyx * ( 0.5 * car.wbase);
+  const pR_x = pC_x + eyx * (-0.5 * car.wbase);
+  const minEdgeX = Math.min(pL_x - car.Rl, pR_x - car.Rr);
+  const maxEdgeX = Math.max(pL_x + car.Rl, pR_x + car.Rr);
 
-  // Left wall
-  if (minEdgeX < leftB) {
-    const penetration = leftB - minEdgeX + 0.1;
-    car.x += penetration;           // de-penetrate inward
-    car.vx = Math.abs(car.vx) * e_bounce; // reflect + damp
-    car.vy *= wall_damp_vy;
-    car.w  *= wall_damp_w;
+  let hit = false;
+  if (minEdgeX < L) {
+    // de-penetrate and reflect X component of velocity
+    const penetration = L - minEdgeX + 0.1;
+    newX += penetration;         // push inward
+    vx = Math.abs(vx) * e_bounce_x;
+    hit = true;
+  } else if (maxEdgeX > R) {
+    const penetration = maxEdgeX - R + 0.1;
+    newX -= penetration;
+    vx = -Math.abs(vx) * e_bounce_x;
+    hit = true;
   }
-  // Right wall
-  if (maxEdgeX > rightB) {
-    const penetration = maxEdgeX - rightB + 0.1;
-    car.x -= penetration;
-    car.vx = -Math.abs(car.vx) * e_bounce;
-    car.vy *= wall_damp_vy;
-    car.w  *= wall_damp_w;
+
+  if (hit) {
+    // Recompose forward speed s from new (vx, vy) relative to current heading.
+    // This preserves steering and removes energy a bit.
+    const s_after = vx * exx + vy * exy;
+    car.s = s_after * s_damp_wall;
+
+    // Also tame yaw response by slightly reducing s (already damped) — keeps it natural
+    // (no extra change needed beyond s_damp_wall; kept for clarity)
   }
+
+  // Commit pose
+  car.x = newX;
+  car.y = newY;
 
   // Reset if out of view (bottom)
   if (car.y > height + 140) resetSim();
@@ -198,6 +174,7 @@ function drawCar() {
   const L = createVector(0,  0.5 * axle);
   const R = createVector(0, -0.5 * axle);
   const pC = createVector(car.x, car.y);
+
   const ex = createVector(Math.cos(car.theta), Math.sin(car.theta));
   const ey = createVector(-Math.sin(car.theta), Math.cos(car.theta));
 
@@ -245,4 +222,5 @@ function keyPressed() {
 </script>
 </body>
 </html>
+
 
