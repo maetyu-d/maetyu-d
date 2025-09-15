@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Asymmetric Toy Car — Vertical Slope</title>
+  <title>Asymmetric Toy Car — Vertical Slope (Uphill-safe)</title>
   <style>
     body { margin: 0; background: #fff; overflow: hidden; }
     canvas { display: block; }
@@ -12,17 +12,23 @@
 </head>
 <body>
 <script>
-let g = 500;       // gravity (px/s^2)
-let mu = 0.05;     // rolling resistance
+// Vertical slope model where +Y is downhill.
+// If the car points uphill, gravity decelerates it until it stops.
+// It will never "pick up" speed when heading uphill.
+
+let g = 500;       // gravity magnitude (px/s^2)
+let mu = 0.05;     // rolling resistance coefficient
 let car;
 
-let presets = [
+const presets = [
+  {Rl: 24, Rr: 32, label: "Asymmetric (R > L)"}, // default: right wheel bigger
   {Rl: 30, Rr: 30, label: "Symmetric"},
-  {Rl: 22, Rr: 30, label: "Asymmetric"},
+  {Rl: 18, Rr: 36, label: "Strong asymmetry"},
 ];
 let presetIdx = 0;
 
 let trail = [];
+let showTrail = true;
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -37,10 +43,10 @@ function windowResized() {
 
 function resetSim() {
   car = {
-    x: width/2,         // centered horizontally
+    x: width/2,         // centered horizontally at top
     y: 60,              // near the top
-    heading: HALF_PI,   // facing downward
-    v: 0,
+    heading: HALF_PI,   // facing straight down the slope
+    v: 0,               // forward speed along car's heading
     wbase: 70,
     Rl: presets[presetIdx].Rl,
     Rr: presets[presetIdx].Rr,
@@ -50,8 +56,9 @@ function resetSim() {
 
 function draw() {
   background(255);
-  updatePhysics(deltaTime/1000);
-  recordTrail();
+  const dt = min(1/30, (deltaTime||0) / 1000);
+  updatePhysics(dt);
+  if (showTrail) recordTrail();
   drawSlope();
   drawTrail();
   drawCar();
@@ -61,53 +68,86 @@ function draw() {
 function drawSlope() {
   stroke(0);
   strokeWeight(2);
-  // Vertical slope line
+  // Vertical slope centerline
   line(width/2, 0, width/2, height);
+  // few perpendicular ticks
+  strokeWeight(1);
+  for (let y = 40; y < height; y += 100) {
+    line(width/2 - 14, y, width/2 + 14, y);
+  }
 }
 
+// Physics:
+// - Forward unit ex = (cos θ, sin θ). Down-slope unit d = (0,1).
+// - Gravity component along heading: a_g = g * dot(d, ex) = g * sin(θ).
+// - Rolling resistance opposes motion.
+// - Clamp so the car can’t accelerate uphill.
 function updatePhysics(dt) {
-  // Forward acceleration (downwards)
-  let a = g - mu * g;
+  // Guard radii
+  const Rmin = 6, Rmax = 100;
+  car.Rl = constrain(car.Rl, Rmin, Rmax);
+  car.Rr = constrain(car.Rr, Rmin, Rmax);
+
+  const sinHeading = Math.sin(car.heading);
+  let a_g = g * sinHeading; // projection of gravity on heading
+
+  // Rolling resistance (only if moving)
+  let a_mu = 0;
+  if (Math.abs(car.v) > 1e-6) {
+    a_mu = mu * g * Math.sign(car.v);
+  }
+
+  // Net acceleration
+  let a = a_g - a_mu;
+
+  // If pointing uphill (a_g < 0) and not already moving downhill, stop.
+  if (a_g < 0 && car.v <= 0) {
+    car.v = 0;
+    a = 0;
+  }
+
+  // Integrate forward speed
   car.v += a * dt;
-  car.v = max(car.v, 0);
+  if (car.v < 0) car.v = 0;
 
-  // Differential effect from wheel radii
-  let Rref = 30;
-  let uL = car.v * (Rref / car.Rl);
-  let uR = car.v * (Rref / car.Rr);
-  let v_body = 0.5 * (uL + uR);
-  let yawRate = (uR - uL) / car.wbase;
+  // Asymmetric wheel radii → yaw
+  const Rref = 30;
+  const uL = car.v * (Rref / car.Rl);
+  const uR = car.v * (Rref / car.Rr);
+  const v_body = 0.5 * (uL + uR);
+  const yawRate = (uR - uL) / Math.max(1e-6, car.wbase);
 
+  // Update heading and position
   car.heading += yawRate * dt;
-  car.x += cos(car.heading) * v_body * dt;
-  car.y += sin(car.heading) * v_body * dt;
+  const exx = Math.cos(car.heading), exy = Math.sin(car.heading);
+  car.x += exx * v_body * dt;
+  car.y += exy * v_body * dt;
 
-  // Reset if off-screen
+  // Reset when off-screen
   if (car.y > height + 100 || car.x < -100 || car.x > width+100) {
     resetSim();
   }
 }
 
 function drawCar() {
-  let axle = car.wbase;
-  let L = createVector(0, 0.5 * axle);
-  let R = createVector(0, -0.5 * axle);
-  let pC = createVector(car.x, car.y);
+  const axle = car.wbase;
+  const L = createVector(0,  0.5 * axle);
+  const R = createVector(0, -0.5 * axle);
+  const pC = createVector(car.x, car.y);
 
-  let ex = createVector(cos(car.heading), sin(car.heading));
-  let ey = createVector(-sin(car.heading), cos(car.heading));
+  const ex = createVector(Math.cos(car.heading), Math.sin(car.heading));
+  const ey = createVector(-Math.sin(car.heading), Math.cos(car.heading));
 
-  let pL = p5.Vector.add(pC, p5.Vector.add(p5.Vector.mult(ey, L.y), p5.Vector.mult(ex, L.x)));
-  let pR = p5.Vector.add(pC, p5.Vector.add(p5.Vector.mult(ey, R.y), p5.Vector.mult(ex, R.x)));
+  const pL = p5.Vector.add(pC, p5.Vector.add(p5.Vector.mult(ey, L.y), p5.Vector.mult(ex, L.x)));
+  const pR = p5.Vector.add(pC, p5.Vector.add(p5.Vector.mult(ey, R.y), p5.Vector.mult(ex, R.x)));
 
   stroke(0);
   strokeWeight(2);
   noFill();
   line(pL.x, pL.y, pR.x, pR.y);
-  circle(pL.x, pL.y, 2*car.Rl);
-  circle(pR.x, pR.y, 2*car.Rr);
-
-  let nose = p5.Vector.add(pC, p5.Vector.mult(ex, 28));
+  circle(pL.x, pL.y, 2 * car.Rl);
+  circle(pR.x, pR.y, 2 * car.Rr);
+  const nose = p5.Vector.add(pC, p5.Vector.mult(ex, 28));
   line(pC.x, pC.y, nose.x, nose.y);
 }
 
@@ -118,7 +158,7 @@ function recordTrail() {
 
 function drawTrail() {
   if (trail.length < 2) return;
-  stroke(0,80);
+  stroke(0, 80);
   strokeWeight(1);
   noFill();
   beginShape();
@@ -130,9 +170,9 @@ function drawHUD() {
   noStroke();
   fill(0);
   textSize(14);
-  text(`Preset: ${presets[presetIdx].label}`, 12, 20);
+  text(`Preset: ${presets[presetIdx].label}`, 12, 22);
   text(`Wheel radii L/R: ${car.Rl} / ${car.Rr}`, 12, 40);
-  text("SPACE: change preset   R: reset", 12, 60);
+  text("SPACE: change preset   R: reset   T: toggle trail", 12, 58);
 }
 
 function keyPressed() {
@@ -142,9 +182,12 @@ function keyPressed() {
     car.Rr = presets[presetIdx].Rr;
   } else if (key === 'R' || key === 'r') {
     resetSim();
+  } else if (key === 'T' || key === 't') {
+    showTrail = !showTrail;
   }
 }
 </script>
 </body>
 </html>
+
 
