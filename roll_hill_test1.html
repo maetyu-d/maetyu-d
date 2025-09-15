@@ -1,80 +1,66 @@
-let car;
-let slopeTopY = 100;
-let slopeBottomY;
-let slopeWidthTop = 200;
-let slopeWidthBottom = 400;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Minimalist Top-Down Ball on Slope (p5.js)</title>
+  <style>html,body{margin:0;height:100%;background:#fff}</style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
+</head>
+<body>
+<script>
+let A, B;              // slope endpoints (top -> bottom)
+let t = 0;             // 0..1 along the slope
+const r = 16;          // ball radius
+const speed = 0.12;    // fraction of canvas per second
 
 function setup() {
-  createCanvas(600, 400);
-  slopeBottomY = height - 50;
+  createCanvas(windowWidth, windowHeight);
+  setSlope();
+  stroke(0);
+  noFill();
+}
 
-  // Car starts at the middle top of slope
-  car = new Car(width / 2, slopeTopY + 20);
+function windowResized(){
+  resizeCanvas(windowWidth, windowHeight);
+  setSlope();
+}
+
+function setSlope(){
+  // Slope that runs from top to bottom, slightly leaning
+  const x = width * 0.35;      // x-position at the top
+  const lean = width * 0.25;   // how much it drifts sideways by the bottom
+  A = createVector(x, 0);
+  B = createVector(x + lean, height);
 }
 
 function draw() {
-  background(220);
+  background(255);
 
-  // Draw slope (a trapezoid narrowing to the top)
-  noStroke();
-  fill(180);
-  quad(
-    width/2 - slopeWidthTop/2, slopeTopY,   // top left
-    width/2 + slopeWidthTop/2, slopeTopY,   // top right
-    width/2 + slopeWidthBottom/2, slopeBottomY, // bottom right
-    width/2 - slopeWidthBottom/2, slopeBottomY  // bottom left
-  );
+  // Draw the slope as a single minimalist line
+  strokeWeight(2);
+  line(A.x, A.y, B.x, B.y);
 
-  // Update and draw car
-  car.update();
-  car.show();
+  // Direction along the slope
+  const dir = p5.Vector.sub(B, A).normalize();
+  // Perpendicular (to place the ball tangent to the slope)
+  const n = createVector(-dir.y, dir.x); // left-normal
+
+  // Ball center follows the slope from top to bottom
+  const P = p5.Vector.lerp(A, B, t);
+  const C = p5.Vector.add(P, p5.Vector.mult(n, r)); // offset so circle touches the line
+
+  // Draw the ball as a minimalist circle
+  strokeWeight(2);
+  circle(C.x, C.y, r * 2);
+
+  // Advance t based on frame time
+  t += (speed * (deltaTime / 1000));
+  if (t > 1) t = 0; // loop from top again
 }
-
-class Car {
-  constructor(x, y) {
-    this.pos = createVector(x, y);
-    this.speed = 2;   // downward speed
-    this.drift = -0.5; // left drift caused by bigger right wheels
-    this.size = 40;
-    this.trail = []; // store trail positions
-  }
-
-  update() {
-    if (this.pos.y < slopeBottomY - this.size/2) {
-      this.pos.y += this.speed;
-      this.pos.x += this.drift;
-      this.trail.push(this.pos.copy()); // save current position
-    }
-  }
-
-  show() {
-    // Draw trail (permanent)
-    noFill();
-    stroke(0, 200, 0); // green
-    strokeWeight(3);
-    beginShape();
-    for (let p of this.trail) {
-      vertex(p.x, p.y);
-    }
-    endShape();
-
-    // Draw car body
-    push();
-    rectMode(CENTER);
-    fill(200, 50, 50);
-    rect(this.pos.x, this.pos.y, this.size, this.size*0.6, 5);
-
-    // Wheels - left side (smaller)
-    fill(0);
-    ellipse(this.pos.x - this.size/2, this.pos.y - this.size*0.25, 8, 8); // top-left
-    ellipse(this.pos.x - this.size/2, this.pos.y + this.size*0.25, 8, 8); // bottom-left
-
-    // Wheels - right side (bigger)
-    ellipse(this.pos.x + this.size/2, this.pos.y - this.size*0.25, 14, 14); // top-right
-    ellipse(this.pos.x + this.size/2, this.pos.y + this.size*0.25, 14, 14); // bottom-right
-    pop();
-  }
-}
+</script>
+</body>
+</html>
 
 
 
