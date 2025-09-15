@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Asymmetric Toy Car — Vertical Slope (Gentle Descent)</title>
+  <title>Asymmetric Toy Car — Damped Back-and-Forth Descent</title>
   <style>
     body { margin: 0; background: #fff; overflow: hidden; }
     canvas { display: block; }
@@ -13,21 +13,22 @@
 <body>
 <script>
 // +Y is DOWNHILL.
-// World-velocity model with *gentle* downhill drift.
-// - Gravity: (0, g_soft)
-// - Static rolling resistance when nearly stopped: opposes gravity up to mu_s*g
-//   so the car only creeps a little at rest.
-// - Kinetic rolling resistance + light viscous drag when moving.
-// - Yaw only from forward rolling (no spin at rest). Subtle low-speed alignment.
 
-let g = 260;         // softer gravity (px/s^2)
-let mu_k = 0.06;     // kinetic rolling resistance coeff (moving)
-let mu_s = 0.985;    // static rolling resistance fraction (near rest) => tiny creep
-let gamma = 0.25;    // light viscous drag (1/s)
-let v_eps = 6;       // near-rest speed threshold (px/s)
+// --- Parameters you can tweak ---
+let g = 480;          // gravity (px/s^2)
+let mu = 0.045;       // rolling resistance (Coulomb-like)
+let c_v = 0.8;        // small viscous drag on forward motion (1/s), damps oscillations
+
+// Heading alignment (second-order: inertia + stiffness + damping)
+let k_align = 2.2;    // rad/s^2, "spring" to point downhill (HALF_PI)
+let c_align = 1.2;    // rad/s, angular damping; pick c_align < 2*sqrt(k) for underdamped
+
+// Wheel yaw influence (scaled so it blends with angular acceleration)
+let yaw_wheel_gain = 1.0; // multiplier for wheel-induced yaw into angular accel
+
+// --------------------------------
 
 let car;
-
 const presets = [
   {Rl: 24, Rr: 32, label: "Asymmetric (R > L)"}, // default: right wheel bigger
   {Rl: 30, Rr: 30, label: "Symmetric"},
@@ -43,15 +44,16 @@ function setup() {
   textFont("monospace");
   resetSim();
 }
-function windowResized() { resizeCanvas(windowWidth, windowHeight); resetSim(); }
+function windowResized(){ resizeCanvas(windowWidth, windowHeight); resetSim(); }
 
 function resetSim() {
   car = {
     x: width/2,
-    y: 60,              // top of slope
-    theta: HALF_PI,     // nose down
-    vx: 0, vy: 0,       // world velocities
-    wbase: 70,
+    y: 60,                 // top of slope
+    theta: HALF_PI,        // heading (nose) angle; HALF_PI = straight down
+    w: 0,                  // angular velocity (rad/s)
+    s: 0,                  // signed forward speed along heading (px/s)
+    wbase: 70,             // axle separation proxy (px)
     Rl: presets[presetIdx].Rl,
     Rr: presets[presetIdx].Rr,
   };
@@ -71,9 +73,16 @@ function draw() {
 
 function drawSlope() {
   stroke(0); strokeWeight(2);
-  line(width/2, 0, width/2, height);
+  line(width/2, 0, width/2, height); // vertical slope centerline
   strokeWeight(1);
   for (let y = 40; y < height; y += 100) line(width/2 - 14, y, width/2 + 14, y);
+}
+
+// Wrap angle to [-PI, PI]
+function wrapAngle(a){
+  while (a >  Math.PI) a -= 2*Math.PI;
+  while (a < -Math.PI) a += 2*Math.PI;
+  return a;
 }
 
 function updatePhysics(dt) {
@@ -81,52 +90,36 @@ function updatePhysics(dt) {
   car.Rl = constrain(car.Rl, 6, 100);
   car.Rr = constrain(car.Rr, 6, 100);
 
-  // --- World acceleration ---
-  let ax = 0;
-  let ay = g; // gravity straight down the slope
+  // ---- 1) Forward dynamics along the car's axis ----
+  const sinTheta = Math.sin(car.theta);        // projection of gravity on forward axis
+  let a_s = g * sinTheta;                      // downhill component along the nose
+  if (Math.abs(car.s) > 1e-6) a_s -= mu * g * Math.sign(car.s); // rolling resistance
+  a_s -= c_v * car.s;                          // small viscous drag
 
-  const speed = Math.hypot(car.vx, car.vy);
+  car.s += a_s * dt;                           // signed forward speed can go ±
 
-  if (speed > v_eps) {
-    // Kinetic rolling resistance opposes motion
-    const ux = car.vx / speed, uy = car.vy / speed;
-    ax += -mu_k * g * ux;
-    ay += -mu_k * g * uy;
-  } else {
-    // Near rest: static rolling resistance opposes gravity up to mu_s*g
-    // => net gentle creep: ay = g * (1 - mu_s)
-    ay = g * (1 - mu_s);
-    ax += -gamma * car.vx * 0.5; // extra calm near rest
-  }
-
-  // Light viscous drag (damps oscillations)
-  ax += -gamma * car.vx;
-  ay += -gamma * car.vy;
-
-  // Integrate world velocity & position
-  car.vx += ax * dt;
-  car.vy += ay * dt;
-  car.x  += car.vx * dt;
-  car.y  += car.vy * dt;
-
-  // --- Heading / yaw from actual forward rolling only ---
-  const exx = Math.cos(car.theta), exy = Math.sin(car.theta);
-  const s = car.vx * exx + car.vy * exy; // signed forward speed along heading
-
+  // ---- 2) Yaw dynamics (second-order) ----
+  // Wheel differential uses signed s (no motion -> no wheel yaw)
   const Rref = 30;
-  const uL = s * (Rref / car.Rl);
-  const uR = s * (Rref / car.Rr);
-  let yawRate = (uR - uL) / Math.max(1e-6, car.wbase);
+  const uL = car.s * (Rref / car.Rl);
+  const uR = car.s * (Rref / car.Rr);
+  const yaw_rate_from_wheels = (uR - uL) / Math.max(1e-6, car.wbase); // rad/s
 
-  // Very subtle low-speed alignment toward downhill; fades with speed
-  const alignGain = 0.2;
-  const speed0 = 80;
-  const alignWeight = Math.max(0, 1 - Math.min(1, speed / speed0));
-  yawRate += alignGain * Math.sin(car.theta) * alignWeight;
+  // Alignment torque to point downhill (theta_target = HALF_PI)
+  const psi = wrapAngle(car.theta - HALF_PI); // deviation from fall line
+  let wdot = yaw_wheel_gain * yaw_rate_from_wheels   // wheel influence (as accel)
+           - k_align * psi                           // spring toward downhill
+           - c_align * car.w;                        // angular damping
 
-  car.theta += yawRate * dt;
+  car.w += wdot * dt;        // integrate angular velocity
+  car.theta += car.w * dt;   // integrate heading
 
-  // Reset if out of view
+  // ---- 3) Advance position in world from signed forward speed ----
+  const ex = Math.cos(car.theta), ey = Math.sin(car.theta);
+  car.x += ex * car.s * dt;
+  car.y += ey * car.s * dt;
+
+  // ---- 4) Safety: reset if out of view ----
   if (car.y > height + 140 || car.x < -140 || car.x > width + 140) resetSim();
 }
 
@@ -180,6 +173,5 @@ function keyPressed() {
 </script>
 </body>
 </html>
-
 
 
