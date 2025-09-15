@@ -74,4 +74,175 @@ function draw() {
   const dt = Math.min(1/30, (deltaTime || 0) / 1000);
   updatePhysics(dt);
   if (showTrail) recordTrail();
-  drawSlopeAn
+  drawSlopeAndBumpers();
+  drawTrail();
+  drawCar();
+  drawHUD();
+}
+
+function drawSlopeAndBumpers() {
+  const cx = width/2;
+  stroke(0);
+  strokeWeight(2);
+  // Centreline
+  line(cx, 0, cx, height);
+
+  // Bumpers
+  const leftB  = cx - bumperHalf;
+  const rightB = cx + bumperHalf;
+
+  // Draw bumpers as solid lines with subtle ticks
+  strokeWeight(3);
+  line(leftB, 0, leftB, height);
+  line(rightB, 0, rightB, height);
+
+  strokeWeight(1);
+  for (let y = 40; y < height; y += 100) {
+    // ticks across centreline
+    line(cx - 14, y, cx + 14, y);
+    // small inward ticks from bumpers for visual texture
+    line(leftB + 6, y, leftB + 18, y);
+    line(rightB - 6, y, rightB - 18, y);
+  }
+}
+
+// Wrap angle to [-PI, PI]
+function wrapAngle(a){
+  while (a >  Math.PI) a -= 2*Math.PI;
+  while (a < -Math.PI) a += 2*Math.PI;
+  return a;
+}
+
+function updatePhysics(dt) {
+  // Radii sanity
+  car.Rl = constrain(car.Rl, 6, 100);
+  car.Rr = constrain(car.Rr, 6, 100);
+
+  // --- World acceleration: gravity + resistances ---
+  // Gravity straight down the slope
+  let ax = 0;
+  let ay = g;
+
+  // Rolling resistance opposes motion based on *forward* speed along the body axis
+  const exx = Math.cos(car.theta), exy = Math.sin(car.theta);
+  const s = car.vx * exx + car.vy * exy; // signed forward speed along heading
+  if (Math.abs(s) > 1e-6) {
+    const a_roll = mu * g * Math.sign(s);
+    // subtract along body axis, project back to world (small approx):
+    ax += -a_roll * exx;
+    ay += -a_roll * exy;
+  }
+
+  // Add small viscous drag (stability / damping)
+  ax += -c_v * (car.vx * 0.15);
+  ay += -c_v * (car.vy * 0.15);
+
+  // Integrate world velocity & position
+  car.vx += ax * dt;
+  car.vy += ay * dt;
+
+  // Update heading with second-order dynamics (under-damped to ring down)
+  const Rref = 30;
+  const uL = s * (Rref / car.Rl);
+  const uR = s * (Rref / car.Rr);
+  const yaw_rate_from_wheels = (uR - uL) / Math.max(1e-6, car.wbase); // rad/s
+
+  const psi = wrapAngle(car.theta - HALF_PI); // deviation from fall line
+  let wdot = yaw_wheel_gain * yaw_rate_from_wheels
+           - k_align * psi
+           - c_align * car.w;
+
+  car.w    += wdot * dt;
+  car.theta += car.w * dt;
+
+  // Move by world velocity
+  car.x  += car.vx * dt;
+  car.y  += car.vy * dt;
+
+  // --- BUMPER COLLISIONS (vertical walls) ---
+  const cx = width/2;
+  const leftB  = cx - bumperHalf;
+  const rightB = cx + bumperHalf;
+
+  // Compute wheel-edge x-extents in world
+  const eyx = -Math.sin(car.theta), eyy =  Math.cos(car.theta); // lateral axis
+  const pC = {x: car.x, y: car.y};
+  const pL = {x: pC.x + eyx * ( 0.5 * car.wbase), y: pC.y + eyy * ( 0.5 * car.wbase)};
+  const pR = {x: pC.x + eyx * (-0.5 * car.wbase), y: pC.y + eyy * (-0.5 * car.wbase)};
+  const minEdgeX = Math.min(pL.x - car.Rl, pR.x - car.Rr);
+  const maxEdgeX = Math.max(pL.x + car.Rl, pR.x + car.Rr);
+
+  // Left wall
+  if (minEdgeX < leftB) {
+    const penetration = leftB - minEdgeX + 0.1;
+    car.x += penetration;           // de-penetrate inward
+    car.vx = Math.abs(car.vx) * e_bounce; // reflect + damp
+    car.vy *= wall_damp_vy;
+    car.w  *= wall_damp_w;
+  }
+  // Right wall
+  if (maxEdgeX > rightB) {
+    const penetration = maxEdgeX - rightB + 0.1;
+    car.x -= penetration;
+    car.vx = -Math.abs(car.vx) * e_bounce;
+    car.vy *= wall_damp_vy;
+    car.w  *= wall_damp_w;
+  }
+
+  // Reset if out of view (bottom)
+  if (car.y > height + 140) resetSim();
+}
+
+function drawCar() {
+  const axle = car.wbase;
+  const L = createVector(0,  0.5 * axle);
+  const R = createVector(0, -0.5 * axle);
+  const pC = createVector(car.x, car.y);
+  const ex = createVector(Math.cos(car.theta), Math.sin(car.theta));
+  const ey = createVector(-Math.sin(car.theta), Math.cos(car.theta));
+
+  const pL = p5.Vector.add(pC, p5.Vector.add(p5.Vector.mult(ey, L.y), p5.Vector.mult(ex, L.x)));
+  const pR = p5.Vector.add(pC, p5.Vector.add(p5.Vector.mult(ey, R.y), p5.Vector.mult(ex, R.x)));
+
+  stroke(0); strokeWeight(2); noFill();
+  line(pL.x, pL.y, pR.x, pR.y);
+  circle(pL.x, pL.y, 2 * car.Rl);
+  circle(pR.x, pR.y, 2 * car.Rr);
+  const nose = p5.Vector.add(pC, p5.Vector.mult(ex, 28));
+  line(pC.x, pC.y, nose.x, nose.y);
+}
+
+function recordTrail() {
+  trail.push(createVector(car.x, car.y));
+  if (trail.length > 900) trail.shift();
+}
+function drawTrail() {
+  if (trail.length < 2) return;
+  stroke(0, 200, 0, 120); // GREEN trail
+  strokeWeight(1.8);
+  noFill();
+  beginShape(); for (let v of trail) vertex(v.x, v.y); endShape();
+}
+
+function drawHUD() {
+  noStroke(); fill(0); textSize(14);
+  text(`Preset: ${presets[presetIdx].label}`, 12, 22);
+  text(`Wheel radii L/R: ${car.Rl} / ${car.Rr}`, 12, 40);
+  text("SPACE: change preset   R: reset   T: toggle trail", 12, 58);
+}
+
+function keyPressed() {
+  if (key === ' ') {
+    presetIdx = (presetIdx + 1) % presets.length;
+    car.Rl = presets[presetIdx].Rl;
+    car.Rr = presets[presetIdx].Rr;
+  } else if (key === 'R' || key === 'r') {
+    resetSim();
+  } else if (key === 'T' || key === 't') {
+    showTrail = !showTrail;
+  }
+}
+</script>
+</body>
+</html>
+
