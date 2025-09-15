@@ -1,41 +1,262 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
+  <title>Non-normative Movement — Toy Car</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Minimalist Top-Down Ball on Slope</title>
-  <style>html,body{margin:0;height:100%;background:#fff}</style>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
+  <!-- p5.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+  <style>
+    html, body { margin: 0; padding: 0; background:#fff; overflow: hidden; }
+    .controls { position: fixed; top: 10px; left: 10px; z-index: 10; }
+    .readouts { position: fixed; top: 10px; left: 280px; font: 13px/1.4 system-ui, sans-serif; }
+  </style>
 </head>
 <body>
-<script>
-let y = 0;        // ball position along slope
-const r = 16;     // ball radius
-const speed = 100; // pixels per second
+  <div class="controls" id="controls"></div>
+  <div class="readouts" id="readouts">
+    <div id="r1"></div>
+    <div id="r2"></div>
+    <div id="r3"></div>
+  </div>
 
-function setup() {
-  createCanvas(windowWidth, windowHeight);
-  stroke(0);
-  noFill();
-}
+  <script>
+  let steepnessSlider, wheelDiffSlider, frictionSlider;
+  let car;
+  let trail = [];
 
-function draw() {
-  background(255);
+  // Canvas + world
+  let WORLD_W, WORLD_H;
+  let zoom = 0.6;
+  let FINISH_Y;
 
-  // Draw the slope as a straight vertical line
-  strokeWeight(2);
-  line(width/2, 0, width/2, height);
+  // Intro text control
+  let introShown = true;       // becomes false permanently after first 6s
+  let introStartFrame;
 
-  // Draw the ball on the slope
-  circle(width/2, y, r*2);
+  function setup() {
+    createCanvas(windowWidth, windowHeight);
 
-  // Update ball position
-  y += speed * (deltaTime/1000);
-  if (y - r > height) y = -r; // reset to top when past bottom
-}
-</script>
+    WORLD_W = windowWidth;
+    WORLD_H = windowHeight * 4.8; // tall slope
+    FINISH_Y = WORLD_H - 100;
+
+    // Sliders
+    const wrap = document.getElementById('controls');
+    wrap.innerHTML = ""; // clear in case of reload
+
+    createSpan('Steepness ').parent(wrap);
+    steepnessSlider = createSlider(0, 1.2, 0.4, 0.01).parent(wrap);
+    createSpan('<br/>').parent(wrap);
+
+    createSpan('Wheel diff ').parent(wrap);
+    wheelDiffSlider = createSlider(0, 50, 12, 1).parent(wrap);
+    createSpan('<br/>').parent(wrap);
+
+    createSpan('Friction ').parent(wrap);
+    frictionSlider = createSlider(0, 0.02, 0.005, 0.0005).parent(wrap);
+
+    car = new Car(createVector(WORLD_W / 2, 80));
+    trail = []; // fresh start
+    introStartFrame = frameCount; // start the one-time intro timer
+  }
+
+  function windowResized() {
+    // Resize canvas and adapt world WITHOUT touching intro flags or recreating sliders
+    resizeCanvas(windowWidth, windowHeight);
+
+    WORLD_W = windowWidth;
+    WORLD_H = windowHeight * 4.8;
+    FINISH_Y = WORLD_H - 100;
+
+    // Reset the trail (per your request)
+    trail = [];
+
+    // Keep car inside new bounds; keep its y/velocity/state unchanged
+    if (car) {
+      car.startPos = createVector(WORLD_W / 2, 80); // update where a future reset goes
+      car.pos.x = constrain(car.pos.x, 0, WORLD_W);
+    }
+  }
+
+  function draw() {
+    background(255);
+
+    const gMag = steepnessSlider.value();
+    const mu   = frictionSlider.value();
+    const slopeDir = createVector(0, 1);
+    const diff = wheelDiffSlider.value();
+
+    // Intro active = pause sim
+    const introActive = introShown && (frameCount - introStartFrame < 360);
+
+    if (!introActive) {
+      car.update(slopeDir, gMag, diff, mu);
+    }
+
+    // Camera (pixel-snapped)
+    const snappedY = Math.round(car.pos.y * zoom) / zoom;
+
+    push();
+    translate(width / 2, height / 2);
+    scale(zoom);
+    translate(-WORLD_W / 2, -snappedY);
+
+    // World drawings
+    drawVerticalSlopeGuide();
+    drawTrail();
+    car.display(diff);
+    drawWorldBounds();
+    drawFinishLine(car.finished);
+    pop();
+
+    // Trail (permanent, no new points while paused or after finish)
+    if (!introActive && !car.finished) {
+      trail.push(car.pos.copy());
+    }
+
+    // Readouts
+    document.getElementById('r1').textContent = `Slope steepness (gravity): ${gMag.toFixed(2)}`;
+    document.getElementById('r2').textContent = `Right–Left wheel size difference: ${wheelDiffSlider.value()} px`;
+    document.getElementById('r3').textContent = `Friction (drag): ${mu.toFixed(4)} — higher = slows faster`;
+
+    // Intro text (one-time)
+    if (introActive) {
+      showIntroText();
+    } else {
+      introShown = false; // permanently disable after first show
+    }
+  }
+
+  class Car {
+    constructor(startPos) {
+      this.startPos = startPos.copy();
+      this.wheelBase = 70;
+      this.bodyLen = 110;
+      this.bodyWid = 46;
+      this.restitution = 0.6;
+      this.reset();
+    }
+    reset() {
+      this.pos = this.startPos.copy();
+      this.vel = createVector(0, 0);
+      this.heading = PI / 2;
+      this.finished = false;
+      this.finishFrame = -1;
+      trail = [];
+    }
+    update(slopeDir, gMag, wheelDiff, mu) {
+      if (this.finished) {
+        if (frameCount - this.finishFrame > 180) this.reset();
+        return;
+      }
+      // Gravity + friction
+      this.vel.add(p5.Vector.mult(slopeDir, gMag));
+      this.vel.mult(1 - mu);
+
+      // Curvature from wheel mismatch
+      const speed = this.vel.mag();
+      const k = (wheelDiff / max(1, this.wheelBase)) * 0.002;
+      this.heading += -speed * k;
+
+      // Tire model
+      const fwd = p5.Vector.fromAngle(this.heading);
+      const side = createVector(-fwd.y, fwd.x);
+      const vFwd = p5.Vector.mult(fwd,  p5.Vector.dot(this.vel, fwd));
+      let vLat   = p5.Vector.mult(side, p5.Vector.dot(this.vel, side));
+      vLat.mult(0.85);
+      const align = p5.Vector.mult(fwd, speed).sub(this.vel).mult(0.06);
+      this.vel = p5.Vector.add(vFwd, vLat).add(align);
+
+      // Integrate
+      this.pos.add(this.vel);
+
+      // Wall bounces
+      if (this.pos.x < 0) { this.pos.x = 0; this.vel.x = Math.abs(this.vel.x) * this.restitution; }
+      else if (this.pos.x > WORLD_W) { this.pos.x = WORLD_W; this.vel.x = -Math.abs(this.vel.x) * this.restitution; }
+
+      // Finish line
+      if (this.pos.y >= FINISH_Y && !this.finished) {
+        this.finished = true;
+        this.finishFrame = frameCount;
+        this.vel.mult(0);
+      }
+    }
+    display(wheelDiff) {
+      push();
+      translate(this.pos.x, this.pos.y);
+      rotate(this.heading);
+      stroke(0); strokeWeight(2/zoom); fill(255);
+      rectMode(CENTER); rect(0, 0, this.bodyLen, this.bodyWid, 5);
+      const baseR=20, leftR=baseR, rightR=baseR+wheelDiff;
+      const ax=this.bodyLen*0.28, bx=-this.bodyLen*0.28, wy=this.bodyWid*0.55;
+      noFill();
+      ellipse(bx,-wy,leftR,leftR); ellipse(ax,-wy,leftR,leftR);
+      ellipse(bx, wy,rightR,rightR); ellipse(ax, wy,rightR,rightR);
+      line(0,0,this.bodyLen*0.45,0);
+      pop();
+    }
+  }
+
+  // --- Drawing helpers ---
+  function drawTrail(){ noFill(); stroke(0,180,0); strokeWeight(2/zoom);
+    beginShape(); for (let p of trail) vertex(p.x, p.y); endShape(); }
+
+  function drawVerticalSlopeGuide(){ stroke(180); strokeWeight(2/zoom);
+    line(WORLD_W/2, 0, WORLD_W/2, WORLD_H); }
+
+  function drawWorldBounds(){ noFill(); stroke(0,40); strokeWeight(2/zoom);
+    rect(0, 0, WORLD_W, WORLD_H); }
+
+  function drawFinishLine(isFinished){
+    const inset=2/zoom, innerW=WORLD_W-inset*2;
+    // Dashed line (clamped)
+    stroke(0); strokeWeight(4/zoom);
+    drawingContext.setLineDash([30,15]);
+    line(inset, FINISH_Y, WORLD_W-inset, FINISH_Y);
+    drawingContext.setLineDash([]);
+
+    // Two-row checkered banner (clamped)
+    const bannerHeight=50/zoom, rows=2, tileH=bannerHeight/rows, tileW=40/zoom;
+    const cx=WORLD_W/2, cy=FINISH_Y-bannerHeight-10/zoom;
+    push(); noStroke(); rectMode(CORNER);
+    for (let r=0; r<rows; r++){
+      const y=cy-bannerHeight/2 + r*tileH;
+      for (let x=inset, i=0; x<WORLD_W-inset; x+=tileW, i++){
+        const w=Math.min(tileW, WORLD_W-inset-x);
+        const isBlack=((i+r)%2===0); fill(isBlack?0:255);
+        rect(x, y, w, tileH);
+      }
+    }
+    // Outline
+    noFill(); stroke(0); strokeWeight(2/zoom);
+    rectMode(CENTER); rect(cx, cy, innerW, bannerHeight);
+
+    // FINISH text with plate inside inner width
+    const label="FINISH", textSz=36/zoom;
+    textSize(textSz); textAlign(CENTER, CENTER);
+    const padX=18/zoom, padY=10/zoom;
+    const tw=Math.min(textWidth(label), innerW - 2*padX);
+    noStroke(); fill(255,235);
+    rect(cx, cy, tw + padX*2, textSz + padY, 4/zoom);
+    fill(0); text(label, cx, cy);
+
+    if (isFinished){
+      const a=70 + 50*sin(frameCount*0.3);
+      noFill(); stroke(0, a); strokeWeight(6/zoom);
+      rect(cx, cy, innerW, bannerHeight + 10/zoom, 6/zoom);
+    }
+    pop();
+  }
+
+  function showIntroText(){
+    push(); fill(255,230); noStroke();
+    rectMode(CENTER); rect(width/2, height/2, width*0.86, height*0.36, 8);
+    fill(0); textAlign(CENTER, CENTER); textSize(18);
+    const msg="Explore what happens when we have non-normative movement in a space defined for normative movement.";
+    text(msg, width/2, height/2, width*0.8, height*0.3); pop();
+  }
+  </script>
 </body>
 </html>
-
-
 
