@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Asymmetric Toy Car — Vertical Slope (No Spin, Rolls Back)</title>
+  <title>Asymmetric Toy Car — Vertical Slope (Realistic settle & slide)</title>
   <style>
     body { margin: 0; background: #fff; overflow: hidden; }
     canvas { display: block; }
@@ -13,10 +13,16 @@
 <body>
 <script>
 // +Y is DOWNHILL.
-// Body-centric model with signed forward speed s (forward > 0, backward < 0).
-// Acceleration along body axis: a_s = g * sin(theta) - mu*g*sign(s) (when |s|>0).
-// Result: if the car points uphill, it slows, stops, then rolls back downhill.
-// Right wheel > left by default so it veers naturally.
+//
+// Hybrid model:
+// - Integrate world velocity (vx, vy) with gravity (0, g) and rolling resistance
+//   that opposes current motion: a_resist = -mu*g * v_hat (if moving).
+//   => If the car is sideways or stopped on a slope, it will still drift downhill.
+// - Yaw from wheels uses signed forward speed s = v·ex (no spin when s≈0).
+// - Tiny alignment torque at very low speed gently turns the nose toward downhill,
+//   helping it "find the fall line" realistically.
+//
+// Starts top-center, nose down, with right wheel > left so it naturally veers.
 
 let g = 500;       // gravity (px/s^2)
 let mu = 0.05;     // rolling resistance coefficient
@@ -48,7 +54,8 @@ function resetSim() {
     x: width/2,
     y: 60,              // top of slope
     theta: HALF_PI,     // heading: nose straight down
-    s: 0,               // signed forward speed along heading
+    vx: 0,              // world velocity
+    vy: 0,
     wbase: 70,
     Rl: presets[presetIdx].Rl,
     Rr: presets[presetIdx].Rr,
@@ -73,7 +80,7 @@ function drawSlope() {
   line(width/2, 0, width/2, height); // vertical slope centerline
   strokeWeight(1);
   for (let y = 40; y < height; y += 100) {
-    line(width/2 - 14, y, width/2 + 14, y); // ticks
+    line(width/2 - 14, y, width/2 + 14, y);
   }
 }
 
@@ -82,37 +89,46 @@ function updatePhysics(dt) {
   car.Rl = constrain(car.Rl, 6, 100);
   car.Rr = constrain(car.Rr, 6, 100);
 
-  // Gravity projected on forward axis
-  const sinTheta = Math.sin(car.theta);
-  let a_g = g * sinTheta;
+  // WORLD ACCELERATION: gravity + rolling resistance
+  let ax = 0;
+  let ay = g;
 
-  // Rolling resistance opposes motion only if moving
-  let a_mu = 0;
-  if (Math.abs(car.s) > 1e-6) a_mu = mu * g * Math.sign(car.s);
+  const speed = Math.hypot(car.vx, car.vy);
+  if (speed > 1e-6) {
+    const ux = car.vx / speed;
+    const uy = car.vy / speed;
+    ax += -mu * g * ux;
+    ay += -mu * g * uy;
+  }
 
-  // Net forward acceleration along body axis
-  const a_s = a_g - a_mu;
+  // Integrate world velocity and position
+  car.vx += ax * dt;
+  car.vy += ay * dt;
+  car.x  += car.vx * dt;
+  car.y  += car.vy * dt;
 
-  // Integrate signed forward speed (can go negative -> roll back)
-  car.s += a_s * dt;
+  // BODY-AXIS FORWARD SPEED (signed) for wheel yaw
+  const exx = Math.cos(car.theta), exy = Math.sin(car.theta);
+  const s = car.vx * exx + car.vy * exy; // signed forward speed along heading
 
-  // Wheel-induced yaw (only when there's forward motion)
+  // Wheel differential yaw ONLY from forward rolling
   const Rref = 30;
-  const uL = car.s * (Rref / car.Rl);
-  const uR = car.s * (Rref / car.Rr);
-  const yawRate = (uR - uL) / Math.max(1e-6, car.wbase);
+  const uL = s * (Rref / car.Rl);
+  const uR = s * (Rref / car.Rr);
+  let yawRate = (uR - uL) / Math.max(1e-6, car.wbase);
 
-  // Update heading
+  // LOW-SPEED ALIGNMENT TORQUE toward downhill (ex·down = sin(theta))
+  // Active only when nearly stationary; fades out with speed.
+  const speed0 = 80; // px/s where alignment fades out
+  const alignGain = 0.9; // rad/s max at zero speed
+  const alignWeight = Math.max(0, 1 - Math.min(1, speed / speed0));
+  yawRate += alignGain * Math.sin(car.theta) * alignWeight;
+
+  // Integrate heading
   car.theta += yawRate * dt;
 
-  // Advance position along heading by signed distance
-  const ex = Math.cos(car.theta), ey = Math.sin(car.theta);
-  const v_body = 0.5 * (uL + uR);          // signed forward speed along body axis
-  car.x += ex * v_body * dt;
-  car.y += ey * v_body * dt;
-
   // Reset if out of view
-  if (car.y > height + 100 || car.x < -100 || car.x > width + 100) resetSim();
+  if (car.y > height + 120 || car.x < -120 || car.x > width + 120) resetSim();
 }
 
 function drawCar() {
@@ -125,7 +141,7 @@ function drawCar() {
   const ey = createVector(-Math.sin(car.theta), Math.cos(car.theta));
 
   const pL = p5.Vector.add(pC, p5.Vector.add(p5.Vector.mult(ey, L.y), p5.Vector.mult(ex, L.x)));
-  const pR = p5.Vector.add(pC, p5.Vector.add(p5.Vector.mult(ey, R.y), p5.Vector.mult(ex, R.x))); // FIXED: R.x
+  const pR = p5.Vector.add(pC, p5.Vector.add(p5.Vector.mult(ey, R.y), p5.Vector.mult(ex, R.x)));
 
   stroke(0);
   strokeWeight(2);
@@ -139,7 +155,7 @@ function drawCar() {
 
 function recordTrail() {
   trail.push(createVector(car.x, car.y));
-  if (trail.length > 800) trail.shift();
+  if (trail.length > 900) trail.shift();
 }
 
 function drawTrail() {
@@ -175,7 +191,6 @@ function keyPressed() {
 </script>
 </body>
 </html>
-
 
 
 
