@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>100×100×100 Grid Bot Sim — 3D Grid & 2D Top-Down (Aligned + Smoothed Zoom Trails)</title>
+<title>100×100×100 Grid Bot Sim — 3D Grid & 2D Top-Down (Aligned + Smoothed Zoom Trails, Scaled Thickness)</title>
 <style>
   :root { --ui:#e7edf4; --bg1:#0b0d10; --bg2:#0a0d11; --p1:#11151a; --p2:#0f1318; }
   html,body{height:100%}
@@ -164,7 +164,7 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
       </div>
       <div class="fullrow">
         <canvas id="cvTopZoom" width="1440" height="480" title="Top-down (zoom-follow on first green)"></canvas>
-        <div class="mini">Zoomed Top-down: follows first green bot with stable thin trails. Wireframe & Path Overlay apply.</div>
+        <div class="mini">Zoomed Top-down: follows first green bot with stable trails whose thickness scales with zoom.</div>
       </div>
     </div>
   </section>
@@ -729,11 +729,12 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
       }
     }
 
-    // --- Stamp thin persistent trails at bot center, with screen-space smoothing
+    // --- Stamp persistent trails at smoothed center; thickness scales with zoom ---
     zoomTrailCtx.save();
     zoomTrailCtx.globalAlpha = 0.9;
-    const zSmooth = 24;                    // smoothing stiffness (higher = snappier)
+    const zSmooth = 24;                              // smoothing stiffness (higher = snappier)
     const alphaZ  = 1 - Math.exp(-zSmooth * (renderDt || 1/60));
+    const dotSize = Math.max(1, Math.round(tile / 12)); // <= trail thickness matched to zoom
 
     for (const b of bots){
       if (mode===MODE_3D && Math.round(b.z) !== cz) continue;
@@ -749,13 +750,14 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
         b._zpy += (yScr - b._zpy) * alphaZ;
       }
 
-      // crisp 1×1 trail dot at the *smoothed* integer pixel
+      // crisp dot scaled with zoom (integer px position & size)
       const xi = Math.round(b._zpx);
       const yi = Math.round(b._zpy);
-      if (xi < -2 || yi < -2 || xi > W+2 || yi > H+2) continue;
+      if (xi < -dotSize || yi < -dotSize || xi > W+dotSize || yi > H+dotSize) continue;
 
       zoomTrailCtx.fillStyle = (b.kind==='orange') ? 'rgba(255,167,38,0.65)' : 'rgba(32,227,122,0.65)';
-      zoomTrailCtx.fillRect(xi, yi, 1, 1);
+      const half = Math.floor(dotSize/2);
+      zoomTrailCtx.fillRect(xi - half, yi - half, dotSize, dotSize);
     }
     zoomTrailCtx.restore();
 
@@ -870,3 +872,4 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
 </script>
 </body>
 </html>
+
