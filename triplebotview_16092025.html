@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>100×100×100 Grid Bot Sim — 3D Grid & 2D Top-Down (Aligned Zoom Trails)</title>
+<title>100×100×100 Grid Bot Sim — 3D Grid & 2D Top-Down (Aligned + Smoothed Zoom Trails)</title>
 <style>
   :root { --ui:#e7edf4; --bg1:#0b0d10; --bg2:#0a0d11; --p1:#11151a; --p2:#0f1318; }
   html,body{height:100%}
@@ -204,6 +204,8 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
   let zoomTop=1.0, zoomSide=1.0, zoomIso=1.0;
   // Counters
   let greenAscents=0, greenDescents=0;
+  // View-only render dt for smoothing
+  let renderDt = 0;
 
   // ---------- RNG & Noise ----------
   function hashStr(s){ let h=1779033703 ^ s.length; for(let i=0;i<s.length;i++){ h=Math.imul(h ^ s.charCodeAt(i),3432918353); h=(h<<13)|(h>>>19);} return (h>>>0); }
@@ -263,7 +265,8 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
     const x=(rng()*SIZE)|0, y=(rng()*SIZE)|0, z=(mode===MODE_2D?0:((rng()*WORLD_H)|0));
     return { kind,x,y,z, path:[], pathIndex:0, reached:false,
              vx:0,vy:0,vz:0, speedBase:(kind==='orange'?orangeSpeed:greenSpeed), speedSmoothed:(kind==='orange'?orangeSpeed:greenSpeed),
-             fatigue:0, lastDir:{dx:1,dy:0,dz:0} };
+             fatigue:0, lastDir:{dx:1,dy:0,dz:0},
+             _zpx:null, _zpy:null }; // smoothed screen pos for 4th view
   }
 
   // ---------- Pathfinding ----------
@@ -409,6 +412,8 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
     zoomTrailCtx.clearRect(0,0,zoomTrail.width,zoomTrail.height);
     prevOriginPX=prevOriginPY=prevTilePx=prevLayerZ=null;
     trailOffX = 0; trailOffY = 0;
+    // reset smoothed screen coords for 4th view
+    for (const b of bots){ b._zpx = b._zpy = null; }
   }
 
   // ---------- Init Bots ----------
@@ -417,7 +422,7 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
     const oc=parseInt(orangeCountEl.value||'12',10), gc=parseInt(greenCountEl.value||'12',10);
     for(let i=0;i<oc;i++) bots.push(newBot('orange'));
     for(let i=0;i<gc;i++) bots.push(newBot('green'));
-    for(const b of bots){ b.path=findPath(b,{x:b.x,y:b.y,z:b.z},goalState.current); b.pathIndex=0; b.reached=false; b._stuckT=0; }
+    for(const b of bots){ b.path=findPath(b,{x:b.x,y:b.y,z:b.z},goalState.current); b.pathIndex=0; b.reached=false; b._stuckT=0; b._zpx=null; b._zpy=null; }
     const g=bots.find(b=>b.kind==='green')||bots[0]; if(g){ camX=g.x; camY=g.y; camZ=Math.round(g.z); }
   }
 
@@ -644,7 +649,7 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
     }
   }
 
-  // ----- 4th View with aligned trail (fractional carry + integer shift) -----
+  // ----- 4th View with aligned + smoothed trail/bot rendering -----
   function drawTopZoom(){
     const g=bots.find(b=>b.kind==='green')||bots[0]; const W=cvTopZoom.width,H=cvTopZoom.height; ctxTopZoom.clearRect(0,0,W,H); if(!g) return;
 
@@ -667,6 +672,7 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
       zoomTrailCtx.clearRect(0,0,zoomTrail.width,zoomTrail.height);
       prevOriginPX = originPX; prevOriginPY = originPY; prevTilePx = tile; prevLayerZ = cz;
       trailOffX = 0; trailOffY = 0;
+      for (const b of bots){ b._zpx = b._zpy = null; }
     }
 
     // Shift persistent trail by camera delta (integer pixels) and keep fractional remainder
@@ -723,15 +729,31 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
       }
     }
 
-    // Stamp thin persistent trails at bot center, compensating fractional camera shift
+    // --- Stamp thin persistent trails at bot center, with screen-space smoothing
     zoomTrailCtx.save();
     zoomTrailCtx.globalAlpha = 0.9;
+    const zSmooth = 24;                    // smoothing stiffness (higher = snappier)
+    const alphaZ  = 1 - Math.exp(-zSmooth * (renderDt || 1/60));
+
     for (const b of bots){
       if (mode===MODE_3D && Math.round(b.z) !== cz) continue;
+
+      // desired on-screen center in pixels (camera-relative) + fractional trail carry
       const xScr = (b.x - startXf + 0.5) * tile + trailOffX;
       const yScr = (b.y - startYf + 0.5) * tile + trailOffY;
-      const xi = Math.round(xScr), yi = Math.round(yScr);
+
+      // init / update per-bot smoothing slots
+      if (b._zpx == null) { b._zpx = xScr; b._zpy = yScr; }
+      else {
+        b._zpx += (xScr - b._zpx) * alphaZ;
+        b._zpy += (yScr - b._zpy) * alphaZ;
+      }
+
+      // crisp 1×1 trail dot at the *smoothed* integer pixel
+      const xi = Math.round(b._zpx);
+      const yi = Math.round(b._zpy);
       if (xi < -2 || yi < -2 || xi > W+2 || yi > H+2) continue;
+
       zoomTrailCtx.fillStyle = (b.kind==='orange') ? 'rgba(255,167,38,0.65)' : 'rgba(32,227,122,0.65)';
       zoomTrailCtx.fillRect(xi, yi, 1, 1);
     }
@@ -756,13 +778,18 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
     // Planned path overlay
     drawPathOverlayTopZoom({tile,startXf,startYf,W,H});
 
-    // Bots (drawn at center)
+    // Bots (drawn at smoothed screen center — no jitter)
     for(const b of bots){
       if((mode===MODE_3D && Math.round(b.z)!==cz)) continue;
-      const xi=(b.x-startXf)*tile+tile/2, yi=(b.y-startYf)*tile+tile/2;
+      if (b._zpx == null) continue;   // not yet initialized above
+      // remove fractional carry (used only for the trail layer) for the marker
+      const xi = b._zpx - trailOffX;
+      const yi = b._zpy - trailOffY;
       if(xi<-10||yi<-10||xi>W+10||yi>H+10) continue;
       ctxTopZoom.fillStyle=(b.kind==='orange')?COL_ORANGE:COL_GREEN;
-      ctxTopZoom.beginPath(); ctxTopZoom.arc(xi,yi,Math.max(3,tile*0.28),0,Math.PI*2); ctxTopZoom.fill();
+      ctxTopZoom.beginPath();
+      ctxTopZoom.arc(xi, yi, Math.max(3, tile*0.28), 0, Math.PI*2);
+      ctxTopZoom.fill();
     }
   }
 
@@ -823,7 +850,19 @@ camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
 
   // ---------- Loop ----------
   function render(){ drawTop(); drawSide(); drawIso(); drawTopZoom(); }
-  function step(ts){ if(!tPrev) tPrev=ts; const dt=Math.min(0.05,(ts-tPrev)/1000); tPrev=ts; if(running){ for(const b of bots) updateBot(b,dt); updateCamera(dt); maybeRenewGoal(); } render(); requestAnimationFrame(step); }
+  function step(ts){
+    if(!tPrev) tPrev=ts;
+    const dt=Math.min(0.05,(ts-tPrev)/1000);
+    renderDt = dt; // for 4th-view screen-space smoothing
+    tPrev=ts;
+    if(running){
+      for(const b of bots) updateBot(b,dt);
+      updateCamera(dt);
+      maybeRenewGoal();
+    }
+    render();
+    requestAnimationFrame(step);
+  }
 
   // ---------- Boot ----------
   reseed(seedInputEl.value||'ark100'); genWorld(); setNewGoal(); initBots(); render(); requestAnimationFrame(step);
