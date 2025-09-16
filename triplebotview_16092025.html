@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>100×100×100 Grid Bot Sim — 3D Grid & 2D Top-Down (Aligned Zoom Trails)</title>
+<style>
+  :root { --ui:#e7edf4; --bg1:#0b0d10; --bg2:#0a0d11; --p1:#11151a; --p2:#0f1318; }
+  html,body{height:100%}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;background:linear-gradient(180deg,var(--bg1),#080a0d 40%);color:var(--ui)}
+  header{padding:12px 18px;border-bottom:1px solid #1a212b;background:linear-gradient(180deg,#0e1217,var(--bg2));position:sticky;top:0;z-index:5}
+  header h1{margin:0;font-size:16px;font-weight:600;letter-spacing:.2px}
+  .wrap{display:grid;grid-template-columns:380px 1fr;gap:14px;padding:14px}
+  .panel{background:var(--p1);border:1px solid #18202a;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.35);overflow:hidden}
+  .panel header{background:var(--p2);border:0;padding:10px 14px}
+  .panel header h2{margin:0;font-size:13px;opacity:.9}
+  .panel .inner{padding:12px 14px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .fullrow{margin-top:12px}
+  canvas{width:100%;height:320px;background:#0b0f14;border-radius:12px;border:1px solid #16202a;display:block}
+  #cvTopZoom{height:480px}
+  .btns{display:flex;gap:8px;flex-wrap:wrap}
+  .pill{padding:6px 10px;border-radius:999px;border:1px solid #1b2633;background:#0b0f14;color:var(--ui);font-size:12px;cursor:pointer}
+  .pill[data-on="1"]{background:linear-gradient(180deg,#13202c,#0b1520);border-color:#223546;box-shadow:inset 0 0 0 1px #2a4358}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  label{display:block;font-size:12px;color:#a8b6c6;margin:8px 0 6px}
+  input[type="number"], input[type="text"], select, textarea{ width:100%;padding:8px 10px;border-radius:10px;border:1px solid #1b2633;background:#0b0f14;color:var(--ui);font-size:13px;box-sizing:border-box }
+  input[type="range"]{width:100%}
+  textarea{min-height:120px;max-height:220px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+  .mini{font-size:11px;color:#92a3b7}
+  .legend{display:flex;align-items:center;gap:8px;margin-top:6px}
+  .dot{width:10px;height:10px;border-radius:50%}
+  .dot.orange{background:#ffa726}
+  .dot.green{background:#20e37a}
+  .stat{font-size:12px;color:#cfe6ff;border:1px solid #24415e;background:#0a1320;border-radius:10px;padding:6px 8px;margin-top:8px}
+</style>
+</head>
+<body>
+<header>
+  <h1>100×100×100 Cube World — 3D Grid & 2D Top-Down · Orange vs Green · Paths · Trails · PNG Export · DSL</h1>
+</header>
+
+<div class="wrap">
+  <section class="panel">
+    <header><h2>Control Panel</h2></header>
+    <div class="inner">
+      <div class="btns">
+        <button class="pill" id="btnStart">▶ Start</button>
+        <button class="pill" id="btnPause">⏸ Pause</button>
+        <button class="pill" id="btnReset">⟲ Reset</button>
+        <button class="pill" id="btnMode">↔ Mode: 3D Grid</button>
+        <button class="pill" id="btnNewGoal">🎯 New Goal</button>
+        <button class="pill" id="btnClearTrails">🧹 Clear Trails</button>
+        <button class="pill" id="btnWireTop">☰ Wire: Top</button>
+        <button class="pill" id="btnWireSide">☰ Wire: Side</button>
+        <button class="pill" id="btnWireIso">☰ Wire: Iso</button>
+        <button class="pill" id="btnTogglePaths">• Path Overlay</button>
+      </div>
+
+      <label>Time scale</label>
+      <div class="btns">
+        <button class="pill" data-scale="1">1×</button>
+        <button class="pill" data-scale="5">5×</button>
+        <button class="pill" data-scale="10">10×</button>
+      </div>
+
+      <div class="row">
+        <div><label>Orange bots</label><input type="number" id="orangeCount" min="0" max="200" value="12" /></div>
+        <div><label>Green bots</label><input type="number" id="greenCount" min="0" max="200" value="12" /></div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Goal policy</label>
+          <select id="goalPolicy">
+            <option value="random">Randomized (new goal when any bot reaches)</option>
+            <option value="team">Team completion (new goal when all bots reach)</option>
+          </select>
+        </div>
+        <div>
+          <label>Seed</label>
+          <input type="text" id="seedInput" value="ark100" />
+        </div>
+      </div>
+
+      <details>
+        <summary class="mini">Green gait & constraints</summary>
+        <div class="row">
+          <div><label>Left-turn bias (0–1)</label><input type="number" id="biasLeft" step="0.05" min="0" max="1" value="0.25" /></div>
+          <div><label>Lateral wobble (0–1)</label><input type="number" id="wobble" step="0.05" min="0" max="1" value="0.35" /></div>
+        </div>
+        <div class="row">
+          <div><label>Fatigue rate (per s)</label><input type="number" id="fatigueRate" step="0.0005" min="0" max="0.02" value="0.004" /></div>
+          <div><label>Speed jitter (0–1)</label><input type="number" id="speedJitter" step="0.05" min="0" max="1" value="0.3" /></div>
+        </div>
+      </details>
+
+      <div class="row" style="margin-top:10px">
+        <div>
+          <label>Zoom (fourth view) <span class="mini">(<span id="lblZoom">1.0×</span>)</span></label>
+          <input type="range" id="sZoom" min="0.5" max="4" step="0.1" value="1.0" />
+        </div>
+        <div></div>
+      </div>
+
+      <div class="row" style="margin-top:10px">
+        <div>
+          <label>Top view zoom <span class="mini">(<span id="lblZoomTop">1.0×</span>)</span></label>
+          <input type="range" id="sZoomTop" min="0.5" max="3" step="0.1" value="1.0" />
+        </div>
+        <div>
+          <label>Side view zoom <span class="mini">(<span id="lblZoomSide">1.0×</span>)</span></label>
+          <input type="range" id="sZoomSide" min="0.5" max="3" step="0.1" value="1.0" />
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:6px">
+        <div>
+          <label>Iso view zoom <span class="mini">(<span id="lblZoomIso">1.0×</span>)</span></label>
+          <input type="range" id="sZoomIso" min="0.5" max="3" step="0.1" value="1.0" />
+        </div>
+        <div></div>
+      </div>
+
+      <div class="legend"><span class="dot orange"></span> Orange = shortest paths</div>
+      <div class="legend"><span class="dot green"></span> Green = accessibility-aware + gait bias</div>
+      <div class="stat" id="statBox">Green ascents: 0 · descents: 0</div>
+
+      <label style="margin-top:12px">World / Bots / Goals / Cameras — DSL</label>
+      <textarea id="dsl" spellcheck="false">seed=ark100
+mode=3d
+world.size=100
+bots.orange=12 bots.green=12
+goals.policy=random
+orange.speed=1.0
+green.speed=0.9 green.bias=0.25 green.wobble=0.35 green.fatigue=0.004 green.jitter=0.3
+camera.zoom4=1.0
+camera.top.zoom=1.0 camera.side.zoom=1.0 camera.iso.zoom=1.0</textarea>
+      <div class="btns">
+        <button class="pill" id="btnApplyDSL">Apply DSL</button>
+        <button class="pill" id="btnExportTop">⬇ Export Top (2×)</button>
+        <button class="pill" id="btnExportSide">⬇ Export Side (2×)</button>
+        <button class="pill" id="btnExportIso">⬇ Export Iso (2×)</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <header><h2>Views</h2></header>
+    <div class="inner">
+      <div class="grid">
+        <div>
+          <canvas id="cvTop" width="720" height="720" title="Top-down (x,y)"></canvas>
+          <div class="mini">Top-down: full map; in 2D mode bots & goals live on z=0 only.</div>
+        </div>
+        <div>
+          <canvas id="cvSide" width="720" height="360" title="Side-on (x,z)"></canvas>
+          <div class="mini">Side-on: in 2D mode, shows a flat plane hint.</div>
+        </div>
+        <div>
+          <canvas id="cvIso" width="720" height="540" title="Isometric"></canvas>
+          <div class="mini">Isometric: in 2D mode, displays a flat layer.</div>
+        </div>
+      </div>
+      <div class="fullrow">
+        <canvas id="cvTopZoom" width="1440" height="480" title="Top-down (zoom-follow on first green)"></canvas>
+        <div class="mini">Zoomed Top-down: follows first green bot with stable thin trails. Wireframe & Path Overlay apply.</div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  // ---------- Constants & Colors ----------
+  const SIZE=100, WORLD_H=100;
+  const COL_ORANGE="#ffa726", COL_GREEN="#20e37a", COL_GOAL="#ffd54f";
+  const MODE_3D='3d', MODE_2D='2d';
+
+  // ---------- DOM ----------
+  const $=id=>document.getElementById(id);
+  const cvTop=$('cvTop'), cvSide=$('cvSide'), cvIso=$('cvIso'), cvTopZoom=$('cvTopZoom');
+  const ctxTop=cvTop.getContext('2d'), ctxSide=cvSide.getContext('2d'), ctxIso=cvIso.getContext('2d'), ctxTopZoom=cvTopZoom.getContext('2d');
+  const btnStart=$('btnStart'), btnPause=$('btnPause'), btnReset=$('btnReset'), btnNewGoal=$('btnNewGoal'), btnClearTrails=$('btnClearTrails');
+  const btnWireTop=$('btnWireTop'), btnWireSide=$('btnWireSide'), btnWireIso=$('btnWireIso'), btnTogglePaths=$('btnTogglePaths');
+  const btnExportTop=$('btnExportTop'), btnExportSide=$('btnExportSide'), btnExportIso=$('btnExportIso');
+  const btnApplyDSL=$('btnApplyDSL'), dslEl=$('dsl'), btnMode=$('btnMode');
+  const orangeCountEl=$('orangeCount'), greenCountEl=$('greenCount'), goalPolicyEl=$('goalPolicy'), seedInputEl=$('seedInput');
+  const biasLeftEl=$('biasLeft'), wobbleEl=$('wobble'), fatigueRateEl=$('fatigueRate'), speedJitterEl=$('speedJitter');
+  const sZoom=$('sZoom'), sZoomTop=$('sZoomTop'), sZoomSide=$('sZoomSide'), sZoomIso=$('sZoomIso');
+  const lblZoom=$('lblZoom'), lblZoomTop=$('lblZoomTop'), lblZoomSide=$('lblZoomSide'), lblZoomIso=$('lblZoomIso');
+  const timeScaleButtons=Array.from(document.querySelectorAll('[data-scale]'));
+  const statBox=$('statBox');
+
+  // ---------- State ----------
+  let mode = MODE_3D;
+  let running=true, timeScale=1, tPrev=0;
+  let showWireTop=false, showWireSide=false, showWireIso=false, showPaths=false;
+  let orangeSpeed=1.0, greenSpeed=0.9;
+  let goalPolicy='random';
+  // Follow-cam (4th view) — fixed follow stiffness at 12.0
+  let camX=SIZE/2, camY=SIZE/2, camZ=0, followSpeed=12.0, zoomScale=1.0, VIEW_BASE_TILES=16;
+  // Per-view zooms
+  let zoomTop=1.0, zoomSide=1.0, zoomIso=1.0;
+  // Counters
+  let greenAscents=0, greenDescents=0;
+
+  // ---------- RNG & Noise ----------
+  function hashStr(s){ let h=1779033703 ^ s.length; for(let i=0;i<s.length;i++){ h=Math.imul(h ^ s.charCodeAt(i),3432918353); h=(h<<13)|(h>>>19);} return (h>>>0); }
+  function mulberry32(a){ return function(){ let t=a+=0x6D2B79F5; t=Math.imul(t^(t>>>15),t|1); t^=t+Math.imul(t^(t>>>7),t|61); return ((t^(t>>>14))>>>0)/4294967296; } }
+  let seed='ark100', rng=mulberry32(hashStr(seed));
+  function reseed(s){ seed=s; rng=mulberry32(hashStr(s)); }
+  function clamp(x,a,b){ return Math.max(a,Math.min(b,x)); }
+  const IDX=(x,y,z)=> z*SIZE*SIZE + y*SIZE + x;
+
+  function fade(t){ return t*t*(3-2*t); }
+  function hash3(i,j,k){ let h=2166136261; h=Math.imul(h^i,16777619); h=Math.imul(h^j,16777619); h=Math.imul(h^k,16777619); h^=(h>>>13); return (h>>>0)/4294967295; }
+  function noise3(x,y,z){ const xi=Math.floor(x), yi=Math.floor(y), zi=Math.floor(z); const xf=x-xi, yf=y-yi, zf=z-zi; const u=fade(xf), v=fade(yf), w=fade(zf); const lerp=(a,b,t)=>a+(b-a)*t;
+    const c000=hash3(xi,yi,zi), c100=hash3(xi+1,yi,zi), c010=hash3(xi,yi+1,zi), c110=hash3(xi+1,yi+1,zi), c001=hash3(xi,yi,zi+1), c101=hash3(xi+1,yi,zi+1), c011=hash3(xi,yi+1,zi+1), c111=hash3(xi+1,yi+1,zi+1);
+    const x00=lerp(c000,c100,u), x10=lerp(c010,c110,u), x01=lerp(c001,c101,u), x11=lerp(c011,c111,u); const y0=lerp(x00,x10,v), y1=lerp(x01,x11,v); return lerp(y0,y1,w);
+  }
+
+  // ---------- World ----------
+  const world={ size:SIZE, floors:new Float32Array(SIZE*SIZE*WORLD_H), access:new Uint8Array(SIZE*SIZE*WORLD_H), stairs:new Uint8Array(WORLD_H*4), ramps:new Uint8Array(WORLD_H*4) };
+  function cornerXY(c){ return c===0?{x:0,y:0}:c===1?{x:SIZE-1,y:0}:c===2?{x:0,y:SIZE-1}:{x:SIZE-1,y:SIZE-1}; }
+  function isCornerStairAt(x,y,z){ for(let c=0;c<4;c++) if(world.stairs[z*4+c]){ const p=cornerXY(c); if(p.x===x && p.y===y) return true; } return false; }
+  function isCornerRampAt (x,y,z){ for(let c=0;c<4;c++) if(world.ramps [z*4+c]){ const p=cornerXY(c); if(p.x===x && p.y===y) return true; } return false; }
+
+  function genWorld(){
+    const scale=0.12;
+    for(let z=0; z<WORLD_H; z++){
+      for(let y=0; y<SIZE; y++){
+        for(let x=0; x<SIZE; x++){
+          const n = 0.4*noise3(x*scale, y*scale, z*scale)
+                  +0.3*noise3(x*scale*2, y*scale*2, z*scale*2)
+                  +0.3*noise3(x*scale*4+13.7, y*scale*4+7.3, z*scale*4+2.5);
+          const noisy = clamp(n,0,1);
+          world.floors[IDX(x,y,z)] = noisy;
+          world.access[IDX(x,y,z)] = Math.round((1-noisy)*10); // 10 = most accessible
+        }
+      }
+      const corners=[0,1,2,3];
+      for(let i=corners.length-1;i>0;i--){ const j=(rng()*(i+1))|0; [corners[i],corners[j]]=[corners[j],corners[i]]; }
+      const sCorner=corners[0], rCorner=corners[1];
+      for(let c=0;c<4;c++){ world.stairs[z*4+c]=0; world.ramps[z*4+c]=0; }
+      world.stairs[z*4+sCorner]=1;
+      world.ramps [z*4+rCorner]=1;
+    }
+  }
+
+  // ---------- Goals ----------
+  const goalState={ current:{x:50,y:50,z:50}, reachedBy:new Set() };
+  const randomGoal3D=()=>({x:(rng()*SIZE)|0,y:(rng()*SIZE)|0,z:(rng()*WORLD_H)|0});
+  const randomGoal2D=()=>({x:(rng()*SIZE)|0,y:(rng()*SIZE)|0,z:0});
+  function setNewGoal(){
+    goalState.current = (mode===MODE_2D) ? randomGoal2D() : randomGoal3D();
+    goalState.reachedBy.clear();
+  }
+
+  // ---------- Bots ----------
+  const bots=[];
+  function newBot(kind){
+    const x=(rng()*SIZE)|0, y=(rng()*SIZE)|0, z=(mode===MODE_2D?0:((rng()*WORLD_H)|0));
+    return { kind,x,y,z, path:[], pathIndex:0, reached:false,
+             vx:0,vy:0,vz:0, speedBase:(kind==='orange'?orangeSpeed:greenSpeed), speedSmoothed:(kind==='orange'?orangeSpeed:greenSpeed),
+             fatigue:0, lastDir:{dx:1,dy:0,dz:0} };
+  }
+
+  // ---------- Pathfinding ----------
+  // 3D
+  const DIRS3D=[ [1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1] ];
+  const heuristic3D=(a,b)=>Math.abs(a.x-b.x)+Math.abs(a.y-b.y)+Math.abs(a.z-b.z);
+  function canMove3D(bot,x,y,z,nx,ny,nz){
+    if(nx<0||ny<0||nz<0||nx>=SIZE||ny>=SIZE||nz>=WORLD_H) return false;
+    const dz=nz-z;
+    if(dz===1){ const stair=isCornerStairAt(x,y,z), ramp=isCornerRampAt(x,y,z); return bot.kind==='green' ? ramp : (stair||ramp); }
+    if(dz===-1){ return isCornerStairAt(nx,ny,nz) || isCornerRampAt(nx,ny,nz); }
+    return true;
+  }
+  function moveCost3D(bot,nx,ny,nz){ if(bot.kind==='orange') return 1; const acc=world.access[IDX(nx,ny,nz)]; return 1 + (10-acc)*0.2; }
+
+  // 2D
+  const DIRS2D = [
+    [ 1, 0],[ -1, 0],[ 0, 1],[ 0,-1],
+    [ 1, 1],[ 1,-1],[-1, 1],[-1,-1]
+  ];
+  const heuristic2D=(a,b)=>Math.hypot(a.x-b.x, a.y-b.y);
+  function inBounds2D(x,y){ return x>=0 && x<SIZE && y>=0 && y<SIZE; }
+  function cost2D(bot,nx,ny){
+    if(bot.kind==='orange') return 1.0;
+    const acc=world.access[IDX(nx,ny,0)];
+    return 1.0 + (10-acc)*0.15;
+  }
+  function losClear2D(){ return true; } // placeholder
+  function smoothPath2D(path){
+    if(path.length<=2) return path;
+    const out=[ path[0] ];
+    let i=0;
+    while(i<path.length-1){
+      let j=path.length-1;
+      for(; j>i+1; j--){
+        if(losClear2D(path[i].x,path[i].y, path[j].x,path[j].y)){ break; }
+      }
+      out.push(path[j]); i=j;
+    }
+    return out;
+  }
+
+  function TinyQueue(data,cmp){ this.data=data||[]; this.length=this.data.length; this.cmp=cmp||( (a,b)=>a<b?-1:a>b?1:0 ); if(this.length){ for(let i=(this.length>>1); i>=0; i--) this._down(i);} }
+  TinyQueue.prototype.push=function(it){ this.data.push(it); this.length++; this._up(this.length-1); };
+  TinyQueue.prototype.pop=function(){ if(!this.length) return; const top=this.data[0], bot=this.data.pop(); this.length--; if(this.length){ this.data[0]=bot; this._down(0);} return top; };
+  TinyQueue.prototype._up=function(p){ const d=this.data,c=this.cmp, it=d[p]; while(p>0){ const parent=(p-1)>>1, cur=d[parent]; if(c(it,cur)>=0) break; d[p]=cur; p=parent;} d[p]=it; };
+  TinyQueue.prototype._down=function(p){ const d=this.data,c=this.cmp, half=this.length>>1, it=d[p]; while(p<half){ let left=(p<<1)+1, right=left+1, best=d[left]; if(right<this.length && c(d[right],best)<0){ left=right; best=d[right]; } if(c(best,it)>=0) break; d[p]=best; p=left;} d[p]=it; };
+
+  function findPath3D(bot, start, goal, maxNodes=1200000){
+    const key=(i)=> i.x | (i.y<<7) | (i.z<<14);
+    const open=new TinyQueue([], (a,b)=>a.f-b.f);
+    const gScore=new Map(), came=new Map();
+    gScore.set(key(start),0);
+    open.push({x:start.x,y:start.y,z:start.z,f:heuristic3D(start,goal)});
+    let visited=0;
+    while(open.length && visited<maxNodes){
+      const cur=open.pop(); visited++;
+      if(cur.x===goal.x && cur.y===goal.y && cur.z===goal.z){
+        const path=[]; let node=cur, k=key(cur);
+        while(true){ path.push({x:node.x,y:node.y,z:node.z}); const prev=came.get(k); if(!prev) break; node=prev; k=key(node); }
+        path.reverse(); return path;
+      }
+      const cKey=key(cur), cG=gScore.get(cKey) ?? Infinity;
+      for(const d of DIRS3D){
+        const nx=cur.x+d[0], ny=cur.y+d[1], nz=cur.z+d[2];
+        if(!canMove3D(bot, cur.x,cur.y,cur.z, nx,ny,nz)) continue;
+        const tentative = cG + moveCost3D(bot,nx,ny,nz);
+        const nKey=key({x:nx,y:ny,z:nz});
+        if(tentative < (gScore.get(nKey) ?? Infinity)){
+          gScore.set(nKey,tentative);
+          came.set(nKey,cur);
+          open.push({x:nx,y:ny,z:nz, f: tentative + heuristic3D({x:nx,y:ny,z:nz},goal)});
+        }
+      }
+    }
+    // Fallback: vertical corner route
+    function nearestCornerTo(x,y){ const cs=[{c:0,x:0,y:0},{c:1,x:SIZE-1,y:0},{c:2,x:0,y:SIZE-1},{c:3,x:SIZE-1,y:SIZE-1}]; let best=cs[0],bd=1e9; for(const p of cs){ const d=Math.abs(p.x-x)+Math.abs(p.y-y); if(d<bd){bd=d;best=p;} } return best; }
+    function pushLine(path,from,to){ let {x,y,z}=from; while(x!==to.x){ x+= (to.x>x?1:-1); path.push({x,y,z}); } while(y!==to.y){ y+= (to.y>y?1:-1); path.push({x,y,z}); } }
+    const path=[{x:start.x,y:start.y,z:start.z}]; let cx=start.x,cy=start.y,cz=start.z;
+    const stepVert=(up)=>{ let tc=-1; if(up){ for(let c=0;c<4;c++){ const p=cornerXY(c); if(bot.kind==='green'){ if(isCornerRampAt(p.x,p.y,cz)){tc=c;break;} } else { if(isCornerRampAt(p.x,p.y,cz)||isCornerStairAt(p.x,p.y,cz)){tc=c;break;} } } } else { for(let c=0;c<4;c++){ const p=cornerXY(c); if(isCornerRampAt(p.x,p.y,cz-1)||isCornerStairAt(p.x,p.y,cz-1)){tc=c;break;} } } if(tc<0) tc=nearestCornerTo(cx,cy).c; const pc=cornerXY(tc); pushLine(path,{x:cx,y:cy,z:cz},{x:pc.x,y:pc.y,z:cz}); const nz=cz+(up?1:-1); path.push({x:pc.x,y:pc.y,z:nz}); cx=pc.x; cy=pc.y; cz=nz; };
+    while(cz<goal.z) stepVert(true);
+    while(cz>goal.z) stepVert(false);
+    pushLine(path,{x:cx,y:cy,z:cz},{x:goal.x,y:goal.y,z:goal.z});
+    const cleaned=[path[0]]; for(let i=1;i<path.length;i++){ const a=cleaned[cleaned.length-1], b=path[i]; if(a.x!==b.x||a.y!==b.y||a.z!==b.z) cleaned.push(b); }
+    return cleaned;
+  }
+
+  function findPath2D(bot, start, goal, maxNodes=400000){
+    const key=(i)=> i.x | (i.y<<7);
+    const open=new TinyQueue([], (a,b)=>a.f-b.f);
+    const gScore=new Map(), came=new Map();
+    const s={x:start.x,y:start.y}, g={x:goal.x,y:goal.y};
+    gScore.set(key(s),0);
+    open.push({x:s.x,y:s.y,f:heuristic2D(s,g)});
+    let visited=0;
+    while(open.length && visited<maxNodes){
+      const cur=open.pop(); visited++;
+      if(cur.x===g.x && cur.y===g.y){
+        const path=[]; let node=cur, k=key(cur);
+        while(true){ path.push({x:node.x,y:node.y,z:0}); const prev=came.get(k); if(!prev) break; node=prev; k=key(node); }
+        path.reverse(); return smoothPath2D(path);
+      }
+      const cKey=key(cur), cG=gScore.get(cKey) ?? Infinity;
+      for(const d of DIRS2D){
+        const nx=cur.x+d[0], ny=cur.y+d[1];
+        if(!inBounds2D(nx,ny)) continue;
+        const stepCost = Math.hypot(d[0],d[1])*cost2D(bot,nx,ny);
+        const tentative = cG + stepCost;
+        const nKey=key({x:nx,y:ny});
+        if(tentative < (gScore.get(nKey) ?? Infinity)){
+          gScore.set(nKey,tentative);
+          came.set(nKey,cur);
+          open.push({x:nx,y:ny,f: tentative + heuristic2D({x:nx,y:ny},g)});
+        }
+      }
+    }
+    return [ {x:start.x,y:start.y,z:0}, {x:goal.x,y:goal.y,z:0} ];
+  }
+
+  // Dispatcher
+  function findPath(bot, start, goal){
+    return (mode===MODE_2D) ? findPath2D(bot,start,goal) : findPath3D(bot,start,goal);
+  }
+
+  // ---------- Trails (Top, Side, Iso) ----------
+  const trailTop=document.createElement('canvas'); trailTop.width=cvTop.width; trailTop.height=cvTop.height; const trailTopCtx=trailTop.getContext('2d');
+  const trailSide=document.createElement('canvas'); trailSide.width=cvSide.width; trailSide.height=cvSide.height; const trailSideCtx=trailSide.getContext('2d');
+  const trailIso=document.createElement('canvas'); trailIso.width=cvIso.width; trailIso.height=cvIso.height; const trailIsoCtx=trailIso.getContext('2d');
+
+  // ---------- NEW: Screen-space persistent trail for 4th view ----------
+  const zoomTrail = document.createElement('canvas');
+  zoomTrail.width = cvTopZoom.width; zoomTrail.height = cvTopZoom.height;
+  const zoomTrailCtx = zoomTrail.getContext('2d');
+  zoomTrailCtx.imageSmoothingEnabled = false;
+  let prevOriginPX=null, prevOriginPY=null, prevTilePx=null, prevLayerZ=null;
+  // carry fractional camera shift so trails stay aligned at fractional zoom/pan
+  let trailOffX = 0, trailOffY = 0;
+
+  function clearTrails(){
+    trailTopCtx.clearRect(0,0,trailTop.width,trailTop.height);
+    trailSideCtx.clearRect(0,0,trailSide.width,trailSide.height);
+    trailIsoCtx.clearRect(0,0,trailIso.width,trailIso.height);
+    zoomTrailCtx.clearRect(0,0,zoomTrail.width,zoomTrail.height);
+    prevOriginPX=prevOriginPY=prevTilePx=prevLayerZ=null;
+    trailOffX = 0; trailOffY = 0;
+  }
+
+  // ---------- Init Bots ----------
+  function initBots(){
+    bots.length=0;
+    const oc=parseInt(orangeCountEl.value||'12',10), gc=parseInt(greenCountEl.value||'12',10);
+    for(let i=0;i<oc;i++) bots.push(newBot('orange'));
+    for(let i=0;i<gc;i++) bots.push(newBot('green'));
+    for(const b of bots){ b.path=findPath(b,{x:b.x,y:b.y,z:b.z},goalState.current); b.pathIndex=0; b.reached=false; b._stuckT=0; }
+    const g=bots.find(b=>b.kind==='green')||bots[0]; if(g){ camX=g.x; camY=g.y; camZ=Math.round(g.z); }
+  }
+
+  // ---------- Bot Update ----------
+  function updateBot(b, dt) {
+    // Stuck detection
+    b._stuckT = (b._stuckT ?? 0) + dt;
+    const lastPX = b._lastPX ?? b.x, lastPY = b._lastPY ?? b.y, lastPZ = b._lastPZ ?? b.z;
+    const progressed = Math.hypot(b.x - lastPX, b.y - lastPY) + Math.abs(b.z - lastPZ);
+    if (progressed > 0.1) { b._stuckT = 0; }
+    b._lastPX = b.x; b._lastPY = b.y; b._lastPZ = b.z;
+
+    if (!b.path || b.pathIndex >= b.path.length || b._stuckT > 2.0) {
+      const sx=Math.round(b.x), sy=Math.round(b.y), sz=(mode===MODE_2D?0:Math.round(b.z));
+      const s={x:sx,y:sy,z:sz};
+      b.path = findPath(b, s, goalState.current);
+      b.pathIndex = 0; b._stuckT = 0;
+    }
+    if (!b.path || !b.path.length) return;
+
+    // Move toward current node (continuous)
+    const t = b.path[b.pathIndex];
+    const dx = t.x - b.x, dy = t.y - b.y, dz = (mode===MODE_2D? 0 : (t.z - b.z));
+    const dist = Math.hypot(dx, dy, dz) || 1;
+
+    let ux = dx / dist, uy = dy / dist, uz = dz / dist;
+
+    // Green gait shaping
+    if (b.kind === 'green') {
+      const bias = parseFloat(biasLeftEl.value || '0.25');
+      const wob  = parseFloat(wobbleEl.value   || '0.35');
+      const leftX = -(b.lastDir?.dy || 0), leftY = (b.lastDir?.dx || 1);
+      ux += leftX * bias * 0.35; uy += leftY * bias * 0.35;
+      const perpX = -uy, perpY = ux; const wobAmt = (rng()*2 - 1) * wob * 0.25;
+      ux += perpX * wobAmt; uy += perpY * wobAmt;
+      const nrm = Math.hypot(ux, uy, uz) || 1; ux /= nrm; uy /= nrm; uz /= nrm;
+    }
+
+    // Fatigue / jitter
+    if (b.kind === 'green') b.fatigue = clamp(b.fatigue + parseFloat(fatigueRateEl.value || '0.004') * dt, 0, 1);
+    const fatigueMul = (b.kind === 'green') ? (1 - 0.6 * b.fatigue) : 1.0;
+    const jitterTarget = (rng()*2 - 1) * (b.kind === 'green' ? parseFloat(speedJitterEl.value || '0.3') : 0.15);
+    const baseTarget = ((b.kind === 'orange' ? orangeSpeed : greenSpeed) + jitterTarget) * fatigueMul * timeScale;
+
+    // Smooth speed & velocity
+    const alphaJ = 1 - Math.exp(-6 * dt);
+    b.speedSmoothed += (baseTarget - b.speedSmoothed) * alphaJ;
+
+    const dvx = ux * b.speedSmoothed, dvy = uy * b.speedSmoothed, dvz = uz * b.speedSmoothed;
+    const alphaV = 1 - Math.exp(-(b.kind === 'green' ? 7 : 9) * dt);
+    b.vx += (dvx - b.vx) * alphaV; b.vy += (dvy - b.vy) * alphaV; b.vz += (dvz - b.vz) * alphaV;
+
+    // Integrate
+    const prevZ = Math.round(b.z);
+    b.x += b.vx * dt; b.y += b.vy * dt; b.z += (mode===MODE_2D ? 0 : b.vz * dt);
+    b.x = clamp(b.x, 0, SIZE - 1); b.y = clamp(b.y, 0, SIZE - 1); b.z = clamp(b.z, 0, mode===MODE_2D?0:WORLD_H - 1);
+
+    // Snap to node when close
+    if (Math.hypot(t.x - b.x, t.y - b.y, (mode===MODE_2D?0:(t.z - b.z))) < 0.2) {
+      b.x = t.x; b.y = t.y; b.z = (mode===MODE_2D?0:t.z); b.lastDir = { dx: dx, dy: dy, dz: dz };
+      b.pathIndex++;
+      const newZ = b.z|0;
+      if (mode===MODE_3D && b.kind === 'green' && newZ !== prevZ) {
+        if (newZ > prevZ) {
+          if (isCornerRampAt(t.x, t.y, prevZ)) { greenAscents++; statBox.textContent = `Green ascents: ${greenAscents} · descents: ${greenDescents}`; }
+        } else {
+          if (isCornerStairAt(t.x, t.y, newZ) || isCornerRampAt(t.x, t.y, newZ)) { greenDescents++; statBox.textContent = `Green ascents: ${greenAscents} · descents: ${greenDescents}`; }
+        }
+      }
+      if (b.pathIndex >= b.path.length) { b.reached = true; goalState.reachedBy.add(b); }
+    }
+
+    // Classic trails for other views
+    const tileTop = Math.max(2, Math.floor(Math.min(cvTop.width,cvTop.height)/SIZE * zoomTop));
+    trailTopCtx.fillStyle=(b.kind==='orange')?'rgba(255,167,38,0.55)':'rgba(32,227,122,0.55)';
+    trailTopCtx.fillRect(Math.floor(b.x*tileTop+tileTop/2), Math.floor(b.y*tileTop+tileTop/2), 1,1);
+    const sx=(cvSide.width/SIZE)*zoomSide, sz=(cvSide.height/Math.max(1,WORLD_H))*zoomSide;
+    trailSideCtx.fillStyle=(b.kind==='orange')?'rgba(255,167,38,0.6)':'rgba(32,227,122,0.6)';
+    trailSideCtx.fillRect(Math.floor(b.x*sx), Math.floor(cvSide.height - (mode===MODE_2D?0:b.z*sz)), 1,1);
+    const tw=8*zoomIso, th=4*zoomIso, hz=3*zoomIso;
+    const ix=(x,y)=>(x-y)*(tw/2)+cvIso.width/2;
+    const iy=(x,y,z)=>(x+y)*(th/2)-(mode===MODE_2D?0:z)*hz+120;
+    trailIsoCtx.fillStyle=(b.kind==='orange')?'rgba(255,167,38,0.5)':'rgba(32,227,122,0.5)';
+    trailIsoCtx.fillRect(Math.floor(ix(b.x+0.5,b.y+0.5)), Math.floor(iy(b.x+0.5,b.y+0.5,(mode===MODE_2D?0:b.z)+0.5)), 1,1);
+  }
+
+  // ---------- Camera Update ----------
+  function updateCamera(dt){
+    const g=bots.find(b=>b.kind==='green')||bots[0]; if(!g) return;
+    camZ = (mode===MODE_2D?0:Math.round(g.z));
+    const alpha = 1 - Math.exp(-followSpeed * dt);
+    camX += (g.x - camX) * alpha;
+    camY += (g.y - camY) * alpha;
+    camX = clamp(camX,0,SIZE-1); camY = clamp(camY,0,SIZE-1);
+  }
+
+  // ---------- Goal Renewal ----------
+  function setPathsForAll(){ for(const x of bots){ x.reached=false; x.path=findPath(x,{x:Math.round(x.x),y:Math.round(x.y),z:(mode===MODE_2D?0:Math.round(x.z))},goalState.current); x.pathIndex=0; } }
+  function maybeRenewGoal(){
+    if(goalPolicy==='random'){
+      for(const b of bots){ if(b.reached){ setNewGoal(); setPathsForAll(); break; } }
+    } else {
+      const allReached=bots.length>0 && bots.every(b=>b.reached);
+      if(allReached){ setNewGoal(); setPathsForAll(); }
+    }
+  }
+
+  // ---------- Path Overlay ----------
+  function drawPathOverlayTop(tile){
+    if(!showPaths) return; ctxTop.save(); ctxTop.globalAlpha=0.9; ctxTop.strokeStyle='#ff5252'; ctxTop.fillStyle='#ff5252';
+    for(const b of bots){ if(!b.path||b.path.length<2) continue;
+      ctxTop.beginPath(); let started=false;
+      for(let i=b.pathIndex;i<b.path.length;i++){ const n=b.path[i]; const cx=n.x*tile+tile/2, cy=n.y*tile+tile/2;
+        if(!started){ ctxTop.moveTo(cx,cy); started=true; } else ctxTop.lineTo(cx,cy);
+        if(tile>=6) ctxTop.fillRect(cx-1,cy-1,2,2);
+      } ctxTop.stroke();
+    } ctxTop.restore();
+  }
+  function drawPathOverlaySide(){ if(!showPaths) return; const W=cvSide.width,H=cvSide.height; const sx=(W/SIZE)*zoomSide, sz=(H/Math.max(1,WORLD_H))*zoomSide; ctxSide.save(); ctxSide.globalAlpha=0.9; ctxSide.strokeStyle='#ff5252'; for(const b of bots){ if(!b.path||b.path.length<2) continue; ctxSide.beginPath(); let started=false; for(let i=b.pathIndex;i<b.path.length;i++){ const n=b.path[i]; const cx=n.x*sx, cz=H - ( (mode===MODE_2D?0:n.z) )*sz; if(!started){ ctxSide.moveTo(cx,cz); started=true; } else ctxSide.lineTo(cx,cz); } ctxSide.stroke(); } ctxSide.restore(); }
+  function drawPathOverlayIso(){ if(!showPaths) return; const W=cvIso.width; const tw=8*zoomIso, th=4*zoomIso, hz=3*zoomIso; const ix=(x,y)=>(x-y)*(tw/2)+W/2; const iy=(x,y,z)=>(x+y)*(th/2)-z*hz+120; ctxIso.save(); ctxIso.globalAlpha=0.9; ctxIso.strokeStyle='#ff5252'; for(const b of bots){ if(!b.path||b.path.length<2) continue; ctxIso.beginPath(); let started=false; for(let i=b.pathIndex;i<b.path.length;i++){ const n=b.path[i]; const cx=ix(n.x+0.5,n.y+0.5), cy=iy(n.x+0.5,n.y+0.5,(mode===MODE_2D?0:n.z)+0.5); if(!started){ ctxIso.moveTo(cx,cy); started=true; } else ctxIso.lineTo(cx,cy); } ctxIso.stroke(); } ctxIso.restore(); }
+  function drawPathOverlayTopZoom(view){ if(!showPaths) return; const {tile,startXf,startYf,W,H}=view; ctxTopZoom.save(); ctxTopZoom.globalAlpha=0.9; ctxTopZoom.strokeStyle='#ff5252'; for(const b of bots){ if(!b.path||b.path.length<2) continue; ctxTopZoom.beginPath(); let started=false; for(let i=b.pathIndex;i<b.path.length;i++){ const n=b.path[i]; const xi=(n.x-startXf)*tile+tile/2, yi=(n.y-startYf)*tile+tile/2; if(xi<-10||yi<-10||xi>W+10||yi>H+10) continue; if(!started){ ctxTopZoom.moveTo(xi,yi); started=true; } else ctxTopZoom.lineTo(xi,yi); } if(started) ctxTopZoom.stroke(); } ctxTopZoom.restore(); }
+
+  // ---------- Rendering ----------
+  function drawTop(){
+    const W=cvTop.width,H=cvTop.height; const tile=Math.max(2, Math.floor(Math.min(W,H)/SIZE * zoomTop));
+    ctxTop.clearRect(0,0,W,H);
+    const zTop = (mode===MODE_2D? 0 : (Date.now()/1500|0)%WORLD_H);
+    for(let y=0;y<SIZE;y++){
+      for(let x=0;x<SIZE;x++){
+        const noisy = world.floors[IDX(x,y,zTop)];
+        const g = Math.round(22 + (1-noisy)*28);
+        ctxTop.fillStyle = `rgb(${g},${g+5},${g+10})`;
+        ctxTop.fillRect(x*tile, y*tile, tile, tile);
+      }
+    }
+    if(mode===MODE_3D){
+      ctxTop.font='12px system-ui, sans-serif';
+      for(let c=0;c<4;c++){
+        const p=cornerXY(c);
+        if(world.stairs[zTop*4+c]){ ctxTop.fillStyle='#97b0ff'; ctxTop.fillText('▲', p.x*tile+3, p.y*tile+3); }
+        if(world.ramps [zTop*4+c]){ ctxTop.fillStyle='#7cf0c4'; ctxTop.fillText('▭', p.x*tile+12, p.y*tile+3); }
+      }
+    }
+    if(showWireTop){
+      ctxTop.strokeStyle='rgba(255,255,255,0.15)'; ctxTop.lineWidth=0.5;
+      for(let i=0;i<=SIZE;i+=10){
+        ctxTop.beginPath(); ctxTop.moveTo(i*tile+0.5,0); ctxTop.lineTo(i*tile+0.5,H); ctxTop.stroke();
+        ctxTop.beginPath(); ctxTop.moveTo(0,i*tile+0.5); ctxTop.lineTo(W,i*tile+0.5); ctxTop.stroke();
+      }
+    }
+    ctxTop.drawImage(trailTop,0,0);
+    drawPathOverlayTop(tile);
+    ctxTop.strokeStyle=COL_GOAL; ctxTop.lineWidth=2; ctxTop.strokeRect(goalState.current.x*tile+1, goalState.current.y*tile+1, tile-2, tile-2);
+    for(const b of bots){
+      const px=b.x*tile, py=b.y*tile; const r=Math.max(3,tile*0.3);
+      ctxTop.fillStyle=(b.kind==='orange')?COL_ORANGE:COL_GREEN;
+      ctxTop.beginPath(); ctxTop.arc(px+tile/2, py+tile/2, r, 0, Math.PI*2); ctxTop.fill();
+    }
+  }
+
+  function drawSide(){
+    const W=cvSide.width,H=cvSide.height; const sx=(W/SIZE)*zoomSide, sz=(H/Math.max(1,WORLD_H))*zoomSide;
+    ctxSide.clearRect(0,0,W,H);
+    if(mode===MODE_3D){
+      for(let z=0; z<WORLD_H; z++){
+        let acc=0; for(let x=0;x<SIZE;x++){ for(let y=0;y<SIZE;y+=5) acc+=world.access[IDX(x,y,z)]; }
+        acc/=(SIZE*(SIZE/5)); const g=Math.round(16+(acc/10)*26);
+        ctxSide.fillStyle=`rgb(${g},${g+4},${g+8})`; ctxSide.fillRect(0, H-(z+1)*sz, W, sz+1);
+      }
+      if(showWireSide){
+        ctxSide.save(); ctxSide.strokeStyle='rgba(255,255,255,0.15)'; ctxSide.lineWidth=0.5;
+        for(let x=0;x<=SIZE;x+=10){ ctxSide.beginPath(); ctxSide.moveTo(x*sx+0.5,0); ctxSide.lineTo(x*sx+0.5,H); ctxSide.stroke(); }
+        for(let z=0;z<=WORLD_H;z+=10){ ctxSide.beginPath(); ctxSide.moveTo(0,H-z*sz+0.5); ctxSide.lineTo(W,H-z*sz+0.5); ctxSide.stroke(); }
+        ctxSide.restore();
+      }
+    } else {
+      ctxSide.fillStyle='rgba(120,140,160,0.15)';
+      ctxSide.fillRect(0,H-1*sz, W, 2);
+      if(showWireSide){
+        ctxSide.save(); ctxSide.strokeStyle='rgba(255,255,255,0.12)'; ctxSide.lineWidth=0.5;
+        for(let x=0;x<=SIZE;x+=10){ ctxSide.beginPath(); ctxSide.moveTo(x*sx+0.5,0); ctxSide.lineTo(x*sx+0.5,H); ctxSide.stroke(); }
+        ctxSide.restore();
+      }
+    }
+    ctxSide.drawImage(trailSide,0,0);
+    drawPathOverlaySide();
+    for(const b of bots){
+      const px=b.x*sx, pz=H - (mode===MODE_2D?0:b.z*sz);
+      ctxSide.fillStyle=(b.kind==='orange')?COL_ORANGE:COL_GREEN;
+      ctxSide.fillRect(px-3,pz-3,6,6);
+    }
+  }
+
+  function drawIso(){
+    const W=cvIso.width,H=cvIso.height; ctxIso.clearRect(0,0,W,H);
+    const tw=8*zoomIso, th=4*zoomIso, hz=3*zoomIso;
+    const ix=(x,y)=>(x-y)*(tw/2)+W/2;
+    const iy=(x,y,z)=>(x+y)*(th/2)-z*hz+120;
+    if(showWireIso){
+      ctxIso.save();
+      ctxIso.strokeStyle='rgba(255,255,255,0.12)'; ctxIso.lineWidth=0.5;
+      for(let x=0;x<=SIZE;x+=10){ ctxIso.beginPath(); ctxIso.moveTo(ix(x,0), iy(x,0,0)); ctxIso.lineTo(ix(x,SIZE), iy(x,SIZE,0)); ctxIso.stroke(); }
+      for(let y=0;y<=SIZE;y+=10){ ctxIso.beginPath(); ctxIso.moveTo(ix(0,y), iy(0,y,0)); ctxIso.lineTo(ix(SIZE,y,0), iy(SIZE,y,0)); ctxIso.stroke(); }
+      if(mode===MODE_3D){
+        ctxIso.strokeStyle='rgba(255,255,255,0.08)';
+        for(let z=0; z<=WORLD_H; z+=10){
+          ctxIso.beginPath();
+          ctxIso.moveTo(ix(0,0),       iy(0,0,z));
+          ctxIso.lineTo(ix(SIZE,0),    iy(SIZE,0,z));
+          ctxIso.lineTo(ix(SIZE,SIZE), iy(SIZE,SIZE,z));
+          ctxIso.lineTo(ix(0,SIZE),    iy(0,SIZE,z));
+          ctxIso.closePath(); ctxIso.stroke();
+        }
+      }
+      ctxIso.restore();
+    }
+    ctxIso.drawImage(trailIso,0,0);
+    drawPathOverlayIso();
+    for(const b of bots){
+      const z=(mode===MODE_2D?0:b.z);
+      const cx=ix(b.x+0.5,b.y+0.5), cy=iy(b.x+0.5,b.y+0.5,z+0.5);
+      ctxIso.fillStyle=(b.kind==='orange')?COL_ORANGE:COL_GREEN;
+      ctxIso.beginPath(); ctxIso.arc(cx,cy,Math.max(3,3*zoomIso),0,Math.PI*2); ctxIso.fill();
+    }
+  }
+
+  // ----- 4th View with aligned trail (fractional carry + integer shift) -----
+  function drawTopZoom(){
+    const g=bots.find(b=>b.kind==='green')||bots[0]; const W=cvTopZoom.width,H=cvTopZoom.height; ctxTopZoom.clearRect(0,0,W,H); if(!g) return;
+
+    // Tiles & camera window
+    const tilesAcross = clamp(Math.round(VIEW_BASE_TILES/ clamp(zoomScale,0.5,4)), 6, 60);
+    const tile = Math.max(4, Math.floor(Math.min(W,H)/tilesAcross));
+    const tilesX=Math.ceil(W/tile)+2, tilesY=Math.ceil(H/tile)+2;
+    const halfX=tilesX/2, halfY=tilesY/2;
+
+    // Bounds and layer
+    camX=clamp(camX,halfX,SIZE-halfX); camY=clamp(camY,halfY,SIZE-halfY);
+    const cz=(mode===MODE_2D?0:Math.round(camZ));
+
+    const startXf=camX-halfX, startYf=camY-halfY;
+    const originPX = startXf * tile;
+    const originPY = startYf * tile;
+
+    // Reset trail if layer/zoom tile changed
+    if (prevLayerZ !== cz || prevTilePx === null || Math.abs((prevTilePx||tile) - tile) > 0.5) {
+      zoomTrailCtx.clearRect(0,0,zoomTrail.width,zoomTrail.height);
+      prevOriginPX = originPX; prevOriginPY = originPY; prevTilePx = tile; prevLayerZ = cz;
+      trailOffX = 0; trailOffY = 0;
+    }
+
+    // Shift persistent trail by camera delta (integer pixels) and keep fractional remainder
+    if (prevOriginPX !== null && prevOriginPY !== null) {
+      const dxFloat = originPX - prevOriginPX;
+      const dyFloat = originPY - prevOriginPY;
+
+      let dxInt = dxFloat > 0 ? Math.floor(dxFloat) : Math.ceil(dxFloat);
+      let dyInt = dyFloat > 0 ? Math.floor(dyFloat) : Math.ceil(dyFloat);
+
+      if (dxInt !== 0 || dyInt !== 0) {
+        const tmp = document.createElement('canvas');
+        tmp.width = zoomTrail.width; tmp.height = zoomTrail.height;
+        const tctx = tmp.getContext('2d');
+        tctx.drawImage(zoomTrail, 0, 0);
+        zoomTrailCtx.clearRect(0,0,zoomTrail.width,zoomTrail.height);
+        zoomTrailCtx.drawImage(tmp, -dxInt, -dyInt);
+      }
+
+      // accumulate fractional remainder
+      trailOffX += dxFloat - dxInt;
+      trailOffY += dyFloat - dyInt;
+
+      // if remainder crosses a pixel, shift once more and keep remaining fraction
+      if (trailOffX >= 1 || trailOffX <= -1 || trailOffY >= 1 || trailOffY <= -1) {
+        const ax = trailOffX > 0 ? Math.floor(trailOffX) : Math.ceil(trailOffX);
+        const ay = trailOffY > 0 ? Math.floor(trailOffY) : Math.ceil(trailOffY);
+        if (ax !== 0 || ay !== 0) {
+          const tmp2 = document.createElement('canvas');
+          tmp2.width = zoomTrail.width; tmp2.height = zoomTrail.height;
+          const t2 = tmp2.getContext('2d');
+          t2.drawImage(zoomTrail, 0, 0);
+          zoomTrailCtx.clearRect(0,0,zoomTrail.width,zoomTrail.height);
+          zoomTrailCtx.drawImage(tmp2, -ax, -ay);
+          trailOffX -= ax;
+          trailOffY -= ay;
+        }
+      }
+    }
+    prevOriginPX = originPX; prevOriginPY = originPY; prevTilePx = tile; prevLayerZ = cz;
+
+    // Floor tiles
+    const fracX = (startXf - Math.floor(startXf)) * tile;
+    const fracY = (startYf - Math.floor(startYf)) * tile;
+    const sx0=Math.floor(startXf), sy0=Math.floor(startYf);
+
+    for(let yi=0; yi<tilesY; yi++){
+      const y=sy0+yi; if(y<0||y>=SIZE) continue;
+      for(let xi=0; xi<tilesX; xi++){
+        const x=sx0+xi; if(x<0||x>=SIZE) continue;
+        const noisy=world.floors[IDX(x,y,cz)]; const g2=Math.round(22+(1-noisy)*28);
+        ctxTopZoom.fillStyle=`rgb(${g2},${g2+5},${g2+10})`;
+        ctxTopZoom.fillRect(xi*tile - fracX, yi*tile - fracY, tile, tile);
+      }
+    }
+
+    // Stamp thin persistent trails at bot center, compensating fractional camera shift
+    zoomTrailCtx.save();
+    zoomTrailCtx.globalAlpha = 0.9;
+    for (const b of bots){
+      if (mode===MODE_3D && Math.round(b.z) !== cz) continue;
+      const xScr = (b.x - startXf + 0.5) * tile + trailOffX;
+      const yScr = (b.y - startYf + 0.5) * tile + trailOffY;
+      const xi = Math.round(xScr), yi = Math.round(yScr);
+      if (xi < -2 || yi < -2 || xi > W+2 || yi > H+2) continue;
+      zoomTrailCtx.fillStyle = (b.kind==='orange') ? 'rgba(255,167,38,0.65)' : 'rgba(32,227,122,0.65)';
+      zoomTrailCtx.fillRect(xi, yi, 1, 1);
+    }
+    zoomTrailCtx.restore();
+
+    // Composite the trail
+    ctxTopZoom.drawImage(zoomTrail, 0, 0);
+
+    // Wireframe
+    if(showWireTop){
+      ctxTopZoom.strokeStyle='rgba(255,255,255,0.15)'; ctxTopZoom.lineWidth=0.5;
+      for(let xi=0; xi<=tilesX; xi++){
+        const xpx = xi*tile - fracX + 0.5;
+        ctxTopZoom.beginPath(); ctxTopZoom.moveTo(xpx,0); ctxTopZoom.lineTo(xpx,H); ctxTopZoom.stroke();
+      }
+      for(let yi=0; yi<=tilesY; yi++){
+        const ypx = yi*tile - fracY + 0.5;
+        ctxTopZoom.beginPath(); ctxTopZoom.moveTo(0,ypx); ctxTopZoom.lineTo(W,ypx); ctxTopZoom.stroke();
+      }
+    }
+
+    // Planned path overlay
+    drawPathOverlayTopZoom({tile,startXf,startYf,W,H});
+
+    // Bots (drawn at center)
+    for(const b of bots){
+      if((mode===MODE_3D && Math.round(b.z)!==cz)) continue;
+      const xi=(b.x-startXf)*tile+tile/2, yi=(b.y-startYf)*tile+tile/2;
+      if(xi<-10||yi<-10||xi>W+10||yi>H+10) continue;
+      ctxTopZoom.fillStyle=(b.kind==='orange')?COL_ORANGE:COL_GREEN;
+      ctxTopZoom.beginPath(); ctxTopZoom.arc(xi,yi,Math.max(3,tile*0.28),0,Math.PI*2); ctxTopZoom.fill();
+    }
+  }
+
+  // ---------- Export ----------
+  function exportCanvas2x(canvas,name){ const out=document.createElement('canvas'); out.width=canvas.width*2; out.height=canvas.height*2; const o=out.getContext('2d'); o.scale(2,2); o.drawImage(canvas,0,0); const url=out.toDataURL('image/png'); const a=document.createElement('a'); a.href=url; a.download=name+'.png'; a.click(); }
+
+  // ---------- DSL ----------
+  function applyDSL(text){
+    const tokens=text.split(/[\s\r\n]+/).filter(Boolean);
+    const kv={};
+    for(const t of tokens){ const m=t.match(/^([^=]+)=(.+)$/); if(m) kv[m[1].trim()]=m[2].trim(); }
+    if(kv['seed']) seedInputEl.value=kv['seed'];
+    if(kv['mode']) { mode = (kv['mode'].toLowerCase()==='2d')?MODE_2D:MODE_3D; btnMode.textContent = '↔ Mode: ' + (mode===MODE_2D?'2D Top-Down':'3D Grid'); }
+    if(kv['bots.orange']) orangeCountEl.value = String(Math.max(0, Math.min(200, parseInt(kv['bots.orange'],10)||0)));
+    if(kv['bots.green'])  greenCountEl.value  = String(Math.max(0, Math.min(200, parseInt(kv['bots.green'],10)||0)));
+    if(kv['goals.policy']){ const v=kv['goals.policy']; goalPolicyEl.value=(v==='team'?'team':'random'); goalPolicy=goalPolicyEl.value; }
+    if(kv['orange.speed']) orangeSpeed = Math.max(0.1, parseFloat(kv['orange.speed'])||orangeSpeed);
+    if(kv['green.speed'])  greenSpeed  = Math.max(0.1, parseFloat(kv['green.speed']) ||greenSpeed);
+    if(kv['green.bias'])   biasLeftEl.value   = String(Math.max(0, Math.min(1, parseFloat(kv['green.bias'])||0)));
+    if(kv['green.wobble']) wobbleEl.value     = String(Math.max(0, Math.min(1, parseFloat(kv['green.wobble'])||0)));
+    if(kv['green.fatigue'])fatigueRateEl.value= String(Math.max(0, Math.min(0.02, parseFloat(kv['green.fatigue'])||0)));
+    if(kv['green.jitter']) speedJitterEl.value= String(Math.max(0, Math.min(1, parseFloat(kv['green.jitter'])||0)));
+    if(kv['camera.zoom4']) { const v=parseFloat(kv['camera.zoom4']); if(Number.isFinite(v)){ sZoom.value=String(v); zoomScale=v; lblZoom.textContent=v.toFixed(1)+'×'; } }
+    if(kv['camera.top.zoom']) { const v=parseFloat(kv['camera.top.zoom']);  if(Number.isFinite(v)&&v>0){ zoomTop = v; sZoomTop.value=String(v); lblZoomTop.textContent=v.toFixed(1)+'×'; } }
+    if(kv['camera.side.zoom']){ const v=parseFloat(kv['camera.side.zoom']); if(Number.isFinite(v)&&v>0){ zoomSide= v; sZoomSide.value=String(v); lblZoomSide.textContent=v.toFixed(1)+'×'; } }
+    if(kv['camera.iso.zoom']) { const v=parseFloat(kv['camera.iso.zoom']);  if(Number.isFinite(v)&&v>0){ zoomIso = v; sZoomIso.value=String(v); lblZoomIso.textContent=v.toFixed(1)+'×'; } }
+
+    reseed(seedInputEl.value||'ark100'); genWorld(); setNewGoal(); initBots(); clearTrails();
+  }
+
+  // ---------- Controls ----------
+  btnStart.onclick=()=>{ running=true; };
+  btnPause.onclick=()=>{ running=false; };
+  btnReset.onclick=()=>{ running=false; reseed(seedInputEl.value||'ark100'); genWorld(); setNewGoal(); initBots(); clearTrails(); running=true; };
+  btnNewGoal.onclick=()=>{ setNewGoal(); setPathsForAll(); };
+  btnClearTrails.onclick=()=>{ clearTrails(); };
+  btnWireTop.onclick =()=>{ showWireTop=!showWireTop; btnWireTop.dataset.on=showWireTop?'1':''; };
+  btnWireSide.onclick=()=>{ showWireSide=!showWireSide; btnWireSide.dataset.on=showWireSide?'1':''; };
+  btnWireIso.onclick =()=>{ showWireIso=!showWireIso; btnWireIso.dataset.on=showWireIso?'1':''; };
+  btnTogglePaths.onclick=()=>{ showPaths=!showPaths; btnTogglePaths.dataset.on=showPaths?'1':''; };
+  btnMode.onclick=()=>{
+    mode = (mode===MODE_3D)?MODE_2D:MODE_3D;
+    btnMode.textContent = '↔ Mode: ' + (mode===MODE_2D?'2D Top-Down':'3D Grid');
+    if(mode===MODE_2D){ for(const b of bots){ b.z=0; } goalState.current.z=0; }
+    setNewGoal(); setPathsForAll(); clearTrails();
+  };
+  btnExportTop.onclick =()=> exportCanvas2x(cvTop, 'top');
+  btnExportSide.onclick=()=> exportCanvas2x(cvSide, 'side');
+  btnExportIso.onclick =()=> exportCanvas2x(cvIso, 'iso');
+  btnApplyDSL.onclick =()=> applyDSL(dslEl.value);
+  timeScaleButtons.forEach(btn=>{ btn.onclick=()=>{ timeScaleButtons.forEach(b=>b.dataset.on=''); btn.dataset.on='1'; timeScale=parseInt(btn.dataset.scale,10)||1; }; });
+
+  const fmt=n=>(+n).toFixed(1);
+  sZoom.oninput  =()=>{ zoomScale =parseFloat(sZoom.value); lblZoom.textContent=fmt(zoomScale)+'×'; };
+  sZoomTop.oninput =()=>{ zoomTop = parseFloat(sZoomTop.value); lblZoomTop.textContent = fmt(zoomTop)+'×'; };
+  sZoomSide.oninput=()=>{ zoomSide= parseFloat(sZoomSide.value); lblZoomSide.textContent=fmt(zoomSide)+'×'; };
+  sZoomIso.oninput =()=>{ zoomIso = parseFloat(sZoomIso.value); lblZoomIso.textContent=fmt(zoomIso)+'×'; };
+
+  // ---------- Loop ----------
+  function render(){ drawTop(); drawSide(); drawIso(); drawTopZoom(); }
+  function step(ts){ if(!tPrev) tPrev=ts; const dt=Math.min(0.05,(ts-tPrev)/1000); tPrev=ts; if(running){ for(const b of bots) updateBot(b,dt); updateCamera(dt); maybeRenewGoal(); } render(); requestAnimationFrame(step); }
+
+  // ---------- Boot ----------
+  reseed(seedInputEl.value||'ark100'); genWorld(); setNewGoal(); initBots(); render(); requestAnimationFrame(step);
+})();
+</script>
+</body>
+</html>
