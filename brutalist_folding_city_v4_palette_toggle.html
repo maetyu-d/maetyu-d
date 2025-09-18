@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Brutalist Folding City — Isometric Wireframe (p5.js)</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #111; }
+    #ui { position: fixed; top: 10px; left: 10px; color: #eee; font: 12px system-ui, sans-serif; background: rgba(0,0,0,0.4); padding: 8px 10px; border-radius: 8px; backdrop-filter: blur(4px); max-width: 480px; z-index: 10; max-height: calc(100vh - 20px); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+    #ui button { margin-right: 6px; }
+    #ui label { display:block; margin-top:6px; }
+    #ui .row { display:flex; align-items:center; gap:6px; flex-wrap: wrap; }
+    #ui .group { margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.18);} 
+    #hint { opacity: .75; font-size: 11px; }
+    /* Manual fold scrubber overlay (UI-only, not part of canvas) */
+    #scrubber {
+      position: fixed;
+      left: 50%;
+      bottom: 12px;
+      transform: translateX(-50%);
+      z-index: 11; /* above canvas and panel */
+      background: rgba(0,0,0,0.45);
+      color: #eee;
+      padding: 6px 10px;
+      border-radius: 999px;
+      backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font: 12px system-ui, sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    #scrubber input[type="range"] {
+      width: 320px;
+    }
+    canvas { display:block; }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <div class="row">
+      <button id="reseeder">Reseed</button>
+      <button id="savepng">Save PNG</button>
+      <button id="exportsvg">Export SVG</button>
+      <button id="animateFold">Animate Fold</button>
+    </div>
+    <div class="group"><strong>Layout</strong>
+      <label>Cols/Rows: <input id="grid" type="range" min="2" max="22" value="10"/></label>
+      <label>Margin %: <input id="margin" type="range" min="0" max="30" value="8"/></label>
+      <label>Order → Disorder: <input id="disorder" type="range" min="0" max="100" value="40"/></label>
+    </div>
+    <div class="group"><strong>Deformations</strong>
+      <label>Rotation max (deg): <input id="rot" type="range" min="0" max="180" value="10"/></label>
+      <label>Shear max (deg): <input id="shear" type="range" min="0" max="80" value="8"/></label>
+      <label>Footprint % of cell: <input id="foot" type="range" min="30" max="100" value="80"/></label>
+    </div>
+    <div class="group"><strong>Heights</strong>
+      <label>Fold (extrusion): <input id="fold" type="range" min="0" max="100" value="65"/></label>
+      <label>Max Height (px): <input id="hmax" type="range" min="40" max="2000" value="260"/></label>
+      <label>Height Variation %: <input id="hvar" type="range" min="0" max="100" value="50"/></label>
+      <label><input id="terraces" type="checkbox" checked/> Stepped terraces (wireframe)</label>
+    </div>
+    <div class="group"><strong>Links & Voids</strong>
+      <label>Skybridge chance % (random): <input id="bprob" type="range" min="0" max="100" value="20"/></label>
+      <label><input id="bnearest" type="checkbox" checked/> Bridges to nearest neighbors</label>
+      <label>Neighbors K: <input id="bk" type="range" min="1" max="8" value="2"/></label>
+      <label>Underpass chance %: <input id="uprob" type="range" min="0" max="100" value="22"/></label>
+      <label><input id="streets" type="checkbox" checked/> Noise-driven street canyons</label>
+      <label>Street density %: <input id="sdens" type="range" min="0" max="100" value="30"/></label>
+      <label>Street band width %: <input id="sband" type="range" min="1" max="50" value="12"/></label>
+      <label>Street noise scale: <input id="sscale" type="range" min="5" max="800" value="100"/></label>
+    </div>
+    <div class="group"><strong>View</strong>
+      <label><input id="iso" type="checkbox" checked/> Isometric wireframe</label>
+      <label><input id="hidden" type="checkbox" checked/> Iso hidden-line removal</label>
+      <label>Palette: 
+        <select id="palette">
+          <option value="current" selected>Current</option>
+          <option value="muted">Muted</option>
+          <option value="retro">Retro Computing (green)</option>
+        </select>
+      </label>
+      <label><input id="white" type="checkbox" checked/> White on black</label>
+      <label><input id="colorful" type="checkbox"/> Bright colors</label>
+      <label>Fit margin (px): <input id="fitpad" type="range" min="0" max="120" value="20"/></label>
+      <label>Wireframe depth (px): <input id="depth" type="range" min="10" max="3000" value="800"/></label>
+      <label>Geometry: <select id="geometry"><option value="euclid" selected>Euclidean (isometric)</option><option value="spherical">Spherical (fisheye)</option><option value="hyperbolic">Hyperbolic (Poincaré)</option><option value="elliptic">Elliptic (stereographic)</option><option value="riemann">Riemann sphere</option><option value="swirl">Swirl</option></select></label>
+      <label>Curvature %: <input id="curv" type="range" min="0" max="400" value="100"/></label>
+      <label><input id="surfaces" type="checkbox"/> Translucent surfaces</label>
+      <label>Surface opacity %: <input id="surfalpha" type="range" min="5" max="95" value="35"/></label>
+      <label>Drama %: <input id="drama" type="range" min="50" max="300" value="200"/></label>
+      <label>Preset: <select id="preset">
+        <option value="brutalist" selected>Brutalist Wireframe</option>
+        <option value="vivid">Vivid Chaos</option>
+        <option value="calm">Calm Iso Grid</option>
+        <option value="hyper">Hyperbolic City</option>
+        <option value="riem">Riemann Dome</option>
+      </select></label>
+      <div class="row">
+        <button id="zoomin">Zoom +</button>
+        <button id="zoomout">Zoom –</button>
+        <button id="resetview">Reset View</button>
+        <span id="hint">Drag to pan. Press <b>H</b> to hide/show panel.</span>
+      </div>
+    </div>
+    <div class="group"><strong>Styles</strong>
+      <label>Tower edge px: <input id="th_tower" type="range" min="0.5" max="10" step="0.5" value="1"/></label>
+      <label>Bridge px: <input id="th_bridge" type="range" min="0.5" max="10" step="0.5" value="2"/></label>
+      <label>Underpass px: <input id="th_under" type="range" min="0.5" max="10" step="0.5" value="1.5"/></label>
+      <label>Street px: <input id="th_street" type="range" min="0.5" max="10" step="0.5" value="1"/></label>
+      <label>Exoskeleton px: <input id="th_exo" type="range" min="0.5" max="10" step="0.5" value="1.5"/></label>
+      <label><input id="underDash" type="checkbox" checked/> Dashed underpasses</label>
+      <label>Underpass dash (px): <input id="udash" type="range" min="2" max="40" value="8"/></label>
+      <label>Underpass gap (px): <input id="ugap" type="range" min="2" max="40" value="6"/></label>
+    </div>
+    <div class="group"><strong>Exoskeleton</strong>
+      <label><input id="exo" type="checkbox"/> Centre Pompidou-style exoskeleton</label>
+      <label>Exo density %: <input id="exoDensity" type="range" min="0" max="100" value="50"/></label>
+      <label>Exo offset %: <input id="exoOffset" type="range" min="0" max="30" value="8"/></label>
+    </div>
+  </div>
+
+  <!-- Manual fold scrubber (UI-only overlay; won't appear in PNG/SVG exports) -->
+  <div id="scrubber" title="Manual fold amount (not exported)">
+    <span>Unfold</span>
+    <input id="foldscrub" type="range" min="0" max="100" value="65">
+    <span>Fold</span>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.3/lib/p5.min.js"></script>
+  <script>
+    let params = {
+      cols: 10, rows: 10,
+      marginPct: 8,
+      disorder: 0.4,
+      rotationMaxDeg: 10,
+      shearMaxDeg: 8,
+      footprintPct: 0.80,
+      fold: 0.65,
+      hMax: 260,
+      hVarPct: 0.50,
+      terraces: true,
+      // links & voids
+      bridgeProb: 0.20,
+      bridgeNearest: true,
+      neighborsK: 2,
+      underpassProb: 0.22,
+      streets: true,
+      streetDensity: 0.30,
+      streetBand: 0.12,
+      streetScale: 140,
+      // view
+      iso: true,
+      hiddenLine: true,
+      palette: 'current', // 'current' | 'muted' | 'retro'
+      whiteOnBlack: true,
+      colorful: false,
+      fitPad: 20,
+      isoDepth: 800,
+      geometry: 'euclid',
+      curvaturePct: 0.6,
+      surfaces: false,
+      surfaceAlpha: 0.35,
+      drama: 2.0,
+      // stroke widths
+      th_tower: 1,
+      th_bridge: 2,
+      th_under: 1.5,
+      th_street: 1,
+      th_exo: 1.5,
+      // underpass dash
+      underDash: true,
+      underDashLen: 8,
+      underGapLen: 6,
+      // exoskeleton
+      exo: false,
+      exoDensity: 0.5,
+      exoOffsetPct: 0.08,
+    };
+
+    let seed = Math.floor(Math.random()*1e9);
+    let folding = false;
+    let foldPhase = Math.random()*Math.PI*2; // smooth sinusoidal fold
+    let scrubbing = false; // track manual slider drag
+
+    // view transform (iso)
+    let viewScale = 1;
+    let viewOffsetX = 0, viewOffsetY = 0;
+    let panning = false, panStartX = 0, panStartY = 0, panOX = 0, panOY = 0;
+    let overUI = (x,y) => false;
+    let TONE = {sat:1, bri:1}; // palette tone multipliers for HSB
+
+    function reseed(val) {
+      if (typeof val === 'number') seed = val; else seed = Math.floor(Math.random()*1e9);
+      noiseSeed(seed);
+      randomSeed(seed);
+      redraw();
+    }
+
+    function applyPreset(name){
+      const P = params;
+      switch(name){
+        case 'brutalist':
+          Object.assign(P, {iso:true, palette:'current', whiteOnBlack:true, colorful:false, hiddenLine:true, surfaces:false,
+            disorder:0.4, rotationMaxDeg:10, shearMaxDeg:8, footprintPct:0.80,
+            streets:true, streetDensity:0.30, streetBand:0.12, streetScale:140,
+            geometry:'euclid', curvaturePct:0.0, neighborsK:2, bridgeNearest:true});
+          break;
+        case 'vivid':
+          Object.assign(P, {iso:true, palette:'current', whiteOnBlack:true, colorful:true, hiddenLine:false, surfaces:true, surfaceAlpha:0.25,
+            disorder:0.9, rotationMaxDeg:30, shearMaxDeg:20, footprintPct:0.75,
+            streets:true, streetDensity:0.5, streetBand:0.2, streetScale:100,
+            geometry:'swirl', curvaturePct:0.6, neighborsK:3, bridgeNearest:true});
+          break;
+        case 'calm':
+          Object.assign(P, {iso:true, palette:'muted', whiteOnBlack:false, colorful:false, hiddenLine:true, surfaces:false,
+            disorder:0.0, rotationMaxDeg:0, shearMaxDeg:0, footprintPct:0.9,
+            streets:false, geometry:'euclid', curvaturePct:0.0, neighborsK:2, bridgeNearest:false});
+          break;
+        case 'hyper':
+          Object.assign(P, {iso:true, palette:'current', whiteOnBlack:true, colorful:true, hiddenLine:true, surfaces:true, surfaceAlpha:0.22,
+            disorder:0.3, rotationMaxDeg:8, shearMaxDeg:6, footprintPct:0.78,
+            streets:true, streetDensity:0.35, streetBand:0.12, streetScale:160,
+            geometry:'hyperbolic', curvaturePct:1.0, neighborsK:2, bridgeNearest:true});
+          break;
+        case 'riem':
+          Object.assign(P, {iso:true, palette:'current', whiteOnBlack:true, colorful:true, hiddenLine:true, surfaces:true, surfaceAlpha:0.28,
+            disorder:0.25, rotationMaxDeg:10, shearMaxDeg:6, footprintPct:0.82,
+            streets:true, streetDensity:0.25, streetBand:0.10, streetScale:180,
+            geometry:'riemann', curvaturePct:0.8, neighborsK:2, bridgeNearest:true});
+          break;
+      }
+      reseed();
+    }
+
+    function setup() {
+      const cnv = createCanvas(window.innerWidth, window.innerHeight);
+      pixelDensity(2);
+      noLoop();
+      reseed(seed);
+
+      const $ = s => document.querySelector(s);
+      $('#reseeder').onclick = () => reseed();
+      $('#savepng').onclick = () => saveCanvas('brutalist-city-'+seed, 'png');
+      $('#exportsvg').onclick = () => exportSVG();
+      $('#animateFold').onclick = () => { folding = !folding; if (folding) loop(); else noLoop(); };
+      $('#grid').oninput = e => { params.cols = params.rows = +e.target.value; redraw(); };
+      $('#margin').oninput = e => { params.marginPct = +e.target.value; redraw(); };
+      $('#disorder').oninput = e => { params.disorder = (+e.target.value)/100; redraw(); };
+      $('#rot').oninput = e => { params.rotationMaxDeg = +e.target.value; redraw(); };
+      $('#shear').oninput = e => { params.shearMaxDeg = +e.target.value; redraw(); };
+      $('#foot').oninput = e => { params.footprintPct = (+e.target.value)/100; redraw(); };
+      $('#fold').oninput = e => { params.fold = (+e.target.value)/100; syncScrubber(); redraw(); };
+      $('#hmax').oninput = e => { params.hMax = +e.target.value; redraw(); };
+      $('#hvar').oninput = e => { params.hVarPct = (+e.target.value)/100; redraw(); };
+      $('#terraces').oninput = e => { params.terraces = e.target.checked; redraw(); };
+      $('#bprob').oninput = e => { params.bridgeProb = (+e.target.value)/100; redraw(); };
+      $('#bnearest').oninput = e => { params.bridgeNearest = e.target.checked; redraw(); };
+      $('#bk').oninput = e => { params.neighborsK = +e.target.value; redraw(); };
+      $('#uprob').oninput = e => { params.underpassProb = (+e.target.value)/100; redraw(); };
+      $('#streets').oninput = e => { params.streets = e.target.checked; redraw(); };
+      $('#sdens').oninput = e => { params.streetDensity = (+e.target.value)/100; redraw(); };
+      $('#sband').oninput = e => { params.streetBand = (+e.target.value)/100; redraw(); };
+      $('#sscale').oninput = e => { params.streetScale = +e.target.value; redraw(); };
+      $('#iso').oninput = e => { params.iso = e.target.checked; redraw(); };
+      $('#hidden').oninput = e => { params.hiddenLine = e.target.checked; redraw(); };
+      $('#palette').oninput = e => { params.palette = e.target.value; redraw(); };
+      $('#white').oninput = e => { params.whiteOnBlack = e.target.checked; redraw(); };
+      $('#colorful').oninput = e => { params.colorful = e.target.checked; redraw(); };
+      $('#fitpad').oninput = e => { params.fitPad = +e.target.value; redraw(); };
+      $('#depth').oninput = e => { params.isoDepth = +e.target.value; redraw(); };
+      $('#geometry').oninput = e => { params.geometry = e.target.value; redraw(); };
+      $('#curv').oninput = e => { params.curvaturePct = (+e.target.value)/100; redraw(); };
+      $('#surfaces').oninput = e => { params.surfaces = e.target.checked; redraw(); };
+      $('#surfalpha').oninput = e => { params.surfaceAlpha = (+e.target.value)/100; redraw(); };
+      $('#preset').oninput = e => { applyPreset(e.target.value); };
+      $('#drama').oninput = e => { params.drama = (+e.target.value)/100; redraw(); };
+      $('#zoomin').onclick = () => { viewScale = constrain(viewScale * 1.2, 0.1, 20); redraw(); };
+      $('#zoomout').onclick = () => { viewScale = constrain(viewScale / 1.2, 0.1, 20); redraw(); };
+      $('#resetview').onclick = () => { viewScale = 1; viewOffsetX = 0; viewOffsetY = 0; redraw(); };
+
+      // styles & exoskeleton controls
+      $('#th_tower').oninput = e => { params.th_tower = +e.target.value; redraw(); };
+      $('#th_bridge').oninput = e => { params.th_bridge = +e.target.value; redraw(); };
+      $('#th_under').oninput = e => { params.th_under = +e.target.value; redraw(); };
+      $('#th_street').oninput = e => { params.th_street = +e.target.value; redraw(); };
+      $('#th_exo').oninput = e => { params.th_exo = +e.target.value; redraw(); };
+      $('#underDash').oninput = e => { params.underDash = e.target.checked; redraw(); };
+      $('#udash').oninput = e => { params.underDashLen = +e.target.value; redraw(); };
+      $('#ugap').oninput = e => { params.underGapLen = +e.target.value; redraw(); };
+      $('#exo').oninput = e => { params.exo = e.target.checked; redraw(); };
+      $('#exoDensity').oninput = e => { params.exoDensity = (+e.target.value)/100; redraw(); };
+      $('#exoOffset').oninput = e => { params.exoOffsetPct = (+e.target.value)/100; redraw(); };
+
+      // manual fold scrubber events
+      const scrub = document.getElementById('foldscrub');
+      scrub.value = Math.round(params.fold * 100);
+      scrub.addEventListener('pointerdown', () => { scrubbing = true; folding = false; noLoop(); });
+      scrub.addEventListener('pointerup',   () => { scrubbing = false; });
+      scrub.addEventListener('input', (e) => {
+        params.fold = (+e.target.value)/100;
+        // keep panel slider in sync too
+        document.getElementById('fold').value = e.target.value;
+        redraw();
+      });
+
+      // panning via mouse on canvas (avoid UI)
+      const uiEl = document.getElementById('ui');
+      overUI = (x,y) => {
+        const r1 = uiEl.getBoundingClientRect();
+        const r2 = document.getElementById('scrubber').getBoundingClientRect();
+        const overPanel = x>=r1.left && x<=r1.right && y>=r1.top && y<=r1.bottom;
+        const overScrub = x>=r2.left && x<=r2.right && y>=r2.top && y<=r2.bottom;
+        return overPanel || overScrub;
+      };
+      redraw();
+    }
+
+    function syncScrubber(){
+      const s = document.getElementById('foldscrub');
+      if (s && !scrubbing) s.value = Math.round(params.fold * 100);
+    }
+
+    function mousePressed() {
+      if (!params.iso) return;
+      if (overUI(mouseX, mouseY)) return;
+      panning = true;
+      panStartX = mouseX; panStartY = mouseY;
+      panOX = viewOffsetX; panOY = viewOffsetY;
+    }
+
+    function mouseReleased() { panning = false; }
+
+    function mouseDragged() {
+      if (!panning) return;
+      viewOffsetX = panOX + (mouseX - panStartX);
+      viewOffsetY = panOY + (mouseY - panStartY);
+      redraw();
+    }
+
+    function keyPressed(){
+      if (key === 'h' || key === 'H') {
+        const ui = document.getElementById('ui');
+        ui.style.display = (ui.style.display === 'none') ? 'block' : 'none';
+      }
+    }
+
+    function windowResized() { resizeCanvas(window.innerWidth, window.innerHeight); redraw(); }
+
+    // --- Isometric projection helpers ---
+    const ISO_ANGLE = Math.PI/6; // 30°
+    const COS = Math.cos(ISO_ANGLE), SIN = Math.sin(ISO_ANGLE);
+    function isoProject(x, y, z) { const sx = (x - y) * COS; const sy = (x + y) * SIN - z; return { sx, sy }; }
+    function apply2D(x, y, rot, shx, shy) {
+      const xr = x * Math.cos(rot) - y * Math.sin(rot);
+      const yr = x * Math.sin(rot) + y * Math.cos(rot);
+      const xs = xr + Math.tan(shx) * yr;
+      const ys = yr + Math.tan(shy) * xr;
+      return {x: xs, y: ys};
+    }
+
+    // --- Non-Euclidean warps ---
+    function warp2D(x, y, geom, cx, cy, curv, R){
+      if (!geom || geom === 'euclid' || !curv || curv <= 0) return {x, y};
+      const dx = x - cx, dy = y - cy;
+      const r = Math.hypot(dx, dy);
+      if (r === 0) return {x, y};
+      const t = r / (R || 1);
+      const k = curv; // typically 0..2
+      let rp = r;
+      switch (geom) {
+        case 'spherical': rp = r / (1 + k * t * t); break;
+        case 'hyperbolic': rp = (R || 1) * Math.tanh(k * t); break;
+        case 'elliptic': { const a = Math.min(0.999, k * t * 0.8); rp = (R || 1) * Math.tan(a * Math.PI/4) / Math.tan(Math.PI/4); break; }
+        case 'riemann': {
+          const Rn = (R || 1);
+          const u = (x - cx) / Rn, v = (y - cy) / Rn;
+          const denom = u*u + v*v + 1;
+          const X = 2*u / denom, Y = 2*v / denom, Z = (u*u + v*v - 1) / denom;
+          const theta = k * Math.PI * 0.5; const c = Math.cos(theta), s = Math.sin(theta);
+          const Xp = X*c + Z*s, Yp = Y, Zp = -X*s + Z*c;
+          const denom2 = Math.max(1e-6, 1 - Zp);
+          const u2 = Xp / denom2, v2 = Yp / denom2;
+          return { x: cx + Rn*u2, y: cy + Rn*v2 };
+        }
+        case 'swirl': {
+          const dx2 = x - cx, dy2 = y - cy;
+          let theta = Math.atan2(dy2, dx2);
+          const s = k * Math.exp(-t*t) * Math.PI/2;
+          theta += s;
+          return { x: cx + Math.cos(theta) * r, y: cy + Math.sin(theta) * r };
+        }
+        default: return {x, y};
+      }
+      const s = rp / r;
+      return { x: cx + dx * s, y: cy + dy * s };
+    }
+
+    // --- Palette utilities ---
+    function getPalette(){
+      const wb = params.whiteOnBlack;
+      if (params.palette === 'current') {
+        TONE = {sat:1, bri:1};
+        return { bg: wb ? 17 : 245, fg: wb ? 230 : 20, street: wb ? 160 : 100, useColorful: params.colorful, retro:false };
+      } else if (params.palette === 'muted') {
+        TONE = {sat:0.28, bri:0.9};
+        return { bg: wb ? 14 : 248, fg: wb ? 190 : 55, street: wb ? 120 : 130, useColorful: true, retro:false };
+      } else { // retro
+        TONE = {sat:0, bri:1};
+        return { bg: '#0b0f0a', fg: '#39ff14', street: '#116622', useColorful: false, retro:true, retroFill:'#39ff14' };
+      }
+    }
+
+    // --- Color helpers for bright/muted modes ---
+    function hueForCell(c){
+      return ( (c.i*33 + c.j*57) * 7 + 360*noise(c.i*0.07, c.j*0.09, seed*1e-6) ) % 360;
+    }
+    function strokeHSB(h,s,b,a=100){
+      colorMode(HSB,360,100,100,100);
+      stroke(h, s*TONE.sat, b*TONE.bri, a);
+      colorMode(RGB,255);
+    }
+    function fillHSB(h,s,b,a=40){
+      colorMode(HSB,360,100,100,100);
+      const ff = color(`hsb(${h}, ${s*TONE.sat}%, ${b*TONE.bri}%)`);
+      ff.setAlpha(a);
+      fill(ff);
+      colorMode(RGB,255);
+    }
+
+    function draw() {
+      const PAL = getPalette();
+      const theme = { bg: PAL.bg, fg: PAL.fg, street: PAL.street, retroFill: PAL.retroFill };
+      background(theme.bg);
+      noFill();
+      randomSeed(seed);
+
+      // smooth unfolding, 30s period; disabled while scrubbing
+      if (folding && !scrubbing) {
+        const PERIOD_MS = 30000; // 30 seconds per full cycle
+        foldPhase += (deltaTime || 16.6) * (TWO_PI / PERIOD_MS);
+        const target = 0.5 + 0.5 * Math.sin(foldPhase);
+        const alpha = 1 - Math.exp(- (deltaTime||16.6) / 1200); // ~1.2s time constant
+        params.fold = lerp(params.fold, target, alpha);
+      }
+      // keep overlay slider in sync with state
+      syncScrubber();
+
+      const {
+        cols, rows, marginPct, disorder,
+        rotationMaxDeg, shearMaxDeg,
+        footprintPct, fold, hMax, hVarPct, terraces,
+        bridgeProb, bridgeNearest, neighborsK, underpassProb,
+        streets, streetDensity, streetBand, streetScale,
+        iso, hiddenLine, fitPad, isoDepth
+      } = params;
+
+      const D = constrain(disorder, 0, 1);
+      const DR = params.drama;
+
+      // drama-scaled effective parameters
+      const rotationMaxEff = rotationMaxDeg * DR;
+      const shearMaxEff = shearMaxDeg * DR;
+      const footprintPctEff = Math.min(1.5, footprintPct * (1 + 0.15*(DR-1)));
+      const hMaxEff = hMax * DR;
+      const hVarPctEff = Math.min(1.5, hVarPct * DR);
+      const streetDensityEff = Math.min(1, streetDensity * DR);
+      const streetBandEff = Math.min(0.5, streetBand * (0.6 + 0.4*DR));
+      const streetScaleEff = Math.max(5, streetScale / DR);
+      const bridgeProbEff = Math.min(1, bridgeProb * (0.6 + 0.7*DR));
+      const underpassProbEff = Math.min(1, underpassProb * (0.6 + 0.7*DR));
+      const neighborsKEff = Math.min(8, Math.round(neighborsK * (1 + 0.5*(DR-1))));
+      const jitterMul = Math.min(0.9, 0.3 * DR);
+
+      const margin = Math.min(width, height) * (marginPct/100);
+      const gridX0 = margin, gridY0 = margin;
+      const gridX1 = width - margin, gridY1 = height - margin;
+      const cellW = (gridX1 - gridX0) / cols;
+      const cellH = (gridY1 - gridY0) / rows;
+
+      // Precompute cells + street mask
+      let cells = [];
+      let isStreet = (i,j) => false;
+      if (streets) {
+        const ns = streetScaleEff; const band = streetBandEff;
+        isStreet = (i,j) => Math.abs(noise(i/ns, j/ns, seed*1e-6) - 0.5) < band * streetDensityEff;
+      }
+
+      for (let j = 0; j < rows; j++) {
+        for (let i = 0; i < cols; i++) {
+          const jitterX = random(-cellW * jitterMul * D, cellW * jitterMul * D);
+          const jitterY = random(-cellH * jitterMul * D, cellH * jitterMul * D);
+          const cx = gridX0 + i * cellW + jitterX + cellW/2;
+          const cy = gridY0 + j * cellH + jitterY + cellH/2;
+          const rot = radians(random(-rotationMaxEff * D, rotationMaxEff * D));
+          const shx = radians(random(-shearMaxEff * D, shearMaxEff * D));
+          const shy = radians(random(-shearMaxEff * D, shearMaxEff * D));
+          const n = noise(i*0.17, j*0.19, seed*1e-6);
+          const hNoise = map(n, 0, 1, 0.2, 1.0);
+          const targetH = hMax * DR * (0.2 + hNoise * 0.8);
+          const varH = targetH * Math.min(1.5, hVarPct * DR) * (random(-1, 1));
+          let H = Math.max(0, (targetH + varH) * fold);
+          const street = isStreet(i,j);
+          if (street) H *= 0.1; // streets carve canyons
+          cells.push({i, j, cx, cy, rot, shx, shy, H, street});
+        }
+      }
+
+      const useColorful = PAL.useColorful;
+
+      if (iso) {
+        drawIsoCity(cells, cellW, cellH, footprintPctEff, bridgeProbEff, bridgeNearest, neighborsKEff, underpassProbEff, D, isoDepth, hiddenLine, fitPad, theme, useColorful);
+      } else {
+        drawPlanCity(cells, cellW, cellH, footprintPctEff, terraces, bridgeProbEff, bridgeNearest, neighborsKEff, underpassProbEff, D, theme, useColorful);
+      }
+
+      if (!folding && !scrubbing) noLoop(); else loop();
+    }
+
+    // --- utilities ---
+    function dashedLine(x1,y1,x2,y2,d=6,g=4){
+      const dx=x2-x1, dy=y2-y1; const L=Math.hypot(dx,dy);
+      if (L===0){ point(x1,y1); return; }
+      const ux=dx/L, uy=dy/L; let dist=0; let drawSeg=true;
+      while (dist < L){
+        const seg = drawSeg ? d : g; const nx = Math.min(L, dist+seg);
+        if (drawSeg) line(x1+ux*dist, y1+uy*dist, x1+ux*nx, y1+uy*nx);
+        dist = nx; drawSeg = !drawSeg;
+      }
+    }
+
+    function kNearest(cells, idx, k=1) {
+      const src = cells[idx];
+      let list = [];
+      for (let m=0;m<cells.length;m++) if (m!==idx && !cells[m].street) {
+        const dx = cells[m].cx - src.cx, dy = cells[m].cy - src.cy;
+        list.push({m, d2: dx*dx+dy*dy});
+      }
+      list.sort((a,b)=>a.d2-b.d2);
+      return list.slice(0,k).map(o=>o.m);
+    }
+
+    // --- Plan (2D wireframe) ---
+    function drawPlanCity(cells, cellW, cellH, footprintPct, terraces, bridgeProb, bridgeNearest, neighborsK, underpassProb, D, theme, colorful) {
+      const fpScale = footprintPct;
+      // compute center & radius for warps (plan view)
+      let cxMean = 0, cyMean = 0; for (const c of cells) { cxMean += c.cx; cyMean += c.cy; }
+      cxMean /= Math.max(1, cells.length); cyMean /= Math.max(1, cells.length);
+      let R = 1; for (const c of cells) { const d = Math.hypot(c.cx - cxMean, c.cy - cyMean); if (d > R) R = d; }
+
+      function polyPlan(c, size, yOffset=0) {
+        const h = size/2;
+        const local = [ {x:-h,y:-h}, {x:h,y:-h}, {x:h,y:h}, {x:-h,y:h} ].map(p=>apply2D(p.x,p.y,c.rot,c.shx,c.shy));
+        return local.map(p=>({ x: c.cx + p.x, y: c.cy + p.y + yOffset }));
+      }
+      function warpPts(pts) { return pts.map(p => warp2D(p.x, p.y, params.geometry, cxMean, cyMean, params.curvaturePct * params.drama, R)); }
+      function drawPoly(pts) { beginShape(); for (const v of pts) vertex(v.x, v.y); endShape(CLOSE); }
+
+      noFill(); strokeWeight(params.th_tower);
+      for (const c of cells) {
+        const fp = Math.min(cellW, cellH) * fpScale; 
+        // street outline first (slightly larger)
+        if (c.street) {
+          strokeWeight(params.th_street);
+          const streetPoly = warpPts(polyPlan(c, fp*1.05));
+          if (colorful) { strokeHSB((hueForCell(c)+180)%360, 40, params.whiteOnBlack?70:40); } else { stroke(theme.street); }
+          drawPoly(streetPoly);
+          strokeWeight(params.th_tower);
+        }
+
+        // stepped terraces or single slab
+        const steps = terraces ? 6 : 1;
+        for (let s = 0; s < steps; s++) {
+          const t = steps === 1 ? 0 : s/(steps-1);
+          const size = lerp(fp, fp*0.25, t);
+          const z = -c.H * Math.pow(t, 1.2); // vertical offset in screen space
+          const poly = warpPts(polyPlan(c, size, z));
+          if (params.surfaces) {
+            if (params.palette === 'retro') {
+              const col = color('#39ff14'); col.setAlpha(params.surfaceAlpha*255); fill(col);
+            } else if (colorful) {
+              fillHSB(hueForCell(c), 85, params.whiteOnBlack?95:45, params.surfaceAlpha*100);
+            } else {
+              fill(params.whiteOnBlack?255:20, params.surfaceAlpha*255);
+            }
+          } else { noFill(); }
+          if (colorful) { strokeHSB(hueForCell(c), 90, params.whiteOnBlack?95:35); } else { stroke(theme.fg); }
+          drawPoly(poly);
+        }
+      }
+
+      // exoskeleton (plan)
+      if (params.exo) {
+        const serviceHues = [0,210,55,135]; // red, blue, yellow, green
+        const nPipes = Math.max(1, Math.round(1 + 5*params.exoDensity));
+        strokeWeight(params.th_exo);
+        for (const c of cells) if (!c.street) {
+          const fp = Math.min(cellW, cellH) * footprintPct;
+          const off = 1 + params.exoOffsetPct; // enlarge footprint for “outside” pipes
+          const base = warpPts(polyPlan(c, fp*off, 0));
+          const top  = warpPts(polyPlan(c, fp*off, -c.H));
+          for (let face=0; face<4; face++) {
+            for (let n=1; n<=nPipes; n++) {
+              const t = n/(nPipes+1);
+              const b0 = base[face], b1 = base[(face+1)%4];
+              const t0 = top[face],  t1 = top[(face+1)%4];
+              const sx = b0.x + (b1.x-b0.x)*t, sy = b0.y + (b1.y-b0.y)*t;
+              const ex = t0.x + (t1.x-t0.x)*t, ey = t0.y + (t1.y-t0.y)*t;
+              if (colorful) { strokeHSB(serviceHues[(face+n)%serviceHues.length], 90, params.whiteOnBlack?95:45); }
+              else { stroke(theme.fg); }
+              line(sx, sy, ex, ey);
+            }
+          }
+        }
+      }
+
+      // exoskeleton connections between towers (plan)
+      if (params.exo) {
+        const nPipes = Math.max(1, Math.round(1 + 5*params.exoDensity));
+        const nConn = Math.max(1, Math.round(nPipes*0.6));
+        for (let idx=0; idx<cells.length; idx++) {
+          const a = cells[idx]; if (a.street) continue;
+          const nbrs = kNearest(cells, idx, neighborsK);
+          for (const m of nbrs) {
+            if (m<=idx) continue; const b = cells[m]; if (b.street) continue;
+            const fp = Math.min(cellW, cellH) * footprintPct; const off = (1 + params.exoOffsetPct) * 0.55 * fp;
+            const dx = b.cx - a.cx, dy = b.cy - a.cy; const L = Math.hypot(dx,dy)||1; const ux=dx/L, uy=dy/L;
+            for (let n=1; n<=nConn; n++) {
+              const t = n/(nConn+1);
+              const z = -((a.H+b.H)/2) * t; // different heights
+              const SA = {x:a.cx + ux*off, y:a.cy + uy*off + z};
+              const SB = {x:b.cx - ux*off, y:b.cy - uy*off + z};
+              const A = warp2D(SA.x, SA.y, params.geometry, cxMean, cyMean, params.curvaturePct * params.drama, R);
+              const B = warp2D(SB.x, SB.y, params.geometry, cxMean, cyMean, params.curvaturePct * params.drama, R);
+              strokeWeight(params.th_exo);
+              if (colorful) strokeHSB([0,210,55,135][(n)%4], 90, params.whiteOnBlack?95:45); else stroke(theme.fg);
+              line(A.x, A.y, B.x, B.y);
+            }
+          }
+        }
+      }
+
+      // bridges
+      strokeWeight(params.th_bridge);
+      if (bridgeNearest) {
+        for (let idx=0; idx<cells.length; idx++) {
+          if (cells[idx].street) continue;
+          const nbrs = kNearest(cells, idx, neighborsK);
+          for (const m of nbrs) {
+            const a = cells[idx], b = cells[m];
+            const z = -(a.H+b.H)/2 * 0.6; // mid-height
+            const A = warp2D(a.cx, a.cy+z, params.geometry, cxMean, cyMean, params.curvaturePct * params.drama, R);
+            const B = warp2D(b.cx, b.cy+z, params.geometry, cxMean, cyMean, params.curvaturePct * params.drama, R);
+            if (colorful) { strokeHSB(((hueForCell(a)+hueForCell(b))/2)%360, 85, params.whiteOnBlack?95:45); } else { stroke(theme.fg); }
+            line(A.x, A.y, B.x, B.y);
+          }
+        }
+      } else {
+        for (const c of cells) if (!c.street && random() < bridgeProb * (0.5 + D*0.5)) {
+          const dirH = random() < 0.5;
+          let p1, p2; const z = -c.H*0.6;
+          if (dirH) {
+            const a = apply2D( cellW*0.5, z, c.rot, c.shx, c.shy);
+            const b = apply2D(-cellW*0.5, z, c.rot, c.shx, c.shy);
+            p1 = {x: c.cx + a.x, y: c.cy + a.y}; p2 = {x: c.cx + b.x, y: c.cy + b.y};
+          } else {
+            const a = apply2D(0, z + cellH*0.5, c.rot, c.shx, c.shy);
+            const b = apply2D(0, z - cellH*0.5, c.rot, c.shx, c.shy);
+            p1 = {x: c.cx + a.x, y: c.cy + a.y}; p2 = {x: c.cx + b.x, y: c.cy + b.y};
+          }
+          const A = warp2D(p1.x, p1.y, params.geometry, cxMean, cyMean, params.curvaturePct * params.drama, R);
+          const B = warp2D(p2.x, p2.y, params.geometry, cxMean, cyMean, params.curvaturePct * params.drama, R);
+          if (colorful) { strokeHSB(hueForCell(c), 90, params.whiteOnBlack?95:45); } else { stroke(theme.fg); }
+          line(A.x, A.y, B.x, B.y);
+        }
+      }
+
+      // underpasses (plan view): dashed
+      if (underpassProb > 0) {
+        strokeWeight(params.th_under);
+        for (let idx=0; idx<cells.length; idx++) {
+          const a = cells[idx]; if (a.street) continue; if (random() >= underpassProb * (0.5 + D*0.5)) continue;
+          const nbrs = kNearest(cells, idx, 1); if (nbrs.length===0) continue; const b = cells[nbrs[0]];
+          const z = -(a.H+b.H)/2 * 0.4;
+          const A = warp2D(a.cx, a.cy+z, params.geometry, cxMean, cyMean, params.curvaturePct * params.drama, R);
+          const B = warp2D(b.cx, b.cy+z, params.geometry, cxMean, cyMean, params.curvaturePct * params.drama, R);
+          if (colorful) { strokeHSB(((hueForCell(a)+hueForCell(b))/2)%360, 60, params.whiteOnBlack?80:35, 80); } else { stroke(theme.street); }
+          if (params.underDash) dashedLine(A.x, A.y, B.x, B.y, params.underDashLen, params.underGapLen); else line(A.x, A.y, B.x, B.y);
+        }
+      }
+    }
+
+    // --- Isometric wireframe with auto-fit + zoom/pan ---
+    function drawIsoCity(cells, cellW, cellH, footprintPct, bridgeProb, bridgeNearest, neighborsK, underpassProb, D, depth, hiddenLine, fitPad, theme, colorful) {
+      const fpCell = Math.min(cellW, cellH) * footprintPct; const half = fpCell/2;
+
+      // compute center & radius for warps
+      let cxMean = 0, cyMean = 0;
+      for (const c of cells) { cxMean += c.cx; cyMean += c.cy; }
+      cxMean /= Math.max(1, cells.length); cyMean /= Math.max(1, cells.length);
+      let R = 1; for (const c of cells) { const d = Math.hypot(c.cx - cxMean, c.cy - cyMean); if (d > R) R = d; }
+
+      function polyPts(c, inset=0) {
+        const h = half - inset; const pts = [ {x:-h,y:-h}, {x:h,y:-h}, {x:h,y:h}, {x:-h,y:h} ].map(p=>apply2D(p.x,p.y,c.rot,c.shx,c.shy));
+        const baseW = pts.map(p=>({x:c.cx+p.x, y:c.cy+p.y, z:0}));
+        const topW  = pts.map(p=>({x:c.cx+p.x, y:c.cy+p.y, z:c.H}));
+        const baseWarp = baseW.map(p=>{ const w=warp2D(p.x,p.y, params.geometry, cxMean, cyMean, (params.curvaturePct||0)*(params.drama||1), R); return {x:w.x,y:w.y,z:p.z};});
+        const topWarp  = topW .map(p=>{ const w=warp2D(p.x,p.y, params.geometry, cxMean, cyMean, (params.curvaturePct||0)*(params.drama||1), R); return {x:w.x,y:w.y,z:p.z};});
+        const base = baseWarp.map(p=>isoProject(p.x,p.y,p.z));
+        const top  = topWarp .map(p=>isoProject(p.x,p.y,p.z));
+        return {base, top};
+      }
+
+      let polys = cells.map(c => ({ c, ...polyPts(c) }));
+      let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+      for (const p of polys) for (const v of [...p.base, ...p.top]) { minX=Math.min(minX,v.sx); maxX=Math.max(maxX,v.sx); minY=Math.min(minY,v.sy); maxY=Math.max(maxY,v.sy);} 
+      const pad = fitPad;
+      const sFit = Math.min((width-2*pad)/(maxX-minX||1), (height-2*pad)/(maxY-minY||1));
+      const s = sFit * viewScale; // respect current zoom
+      const tx = pad - minX*sFit + viewOffsetX, ty = pad - minY*sFit + viewOffsetY;
+
+      // underpasses first (so hidden-line fill can occlude)
+      if (underpassProb > 0) {
+        const zUnder = -depth * 0.25;
+        function projWarpPoint(x, y, z){ const w=warp2D(x,y, params.geometry, cxMean, cyMean, params.curvaturePct * params.drama, R); const v=isoProject(w.x, w.y, z); return {x:v.sx*s+tx, y:v.sy*s+ty}; }
+        strokeWeight(params.th_under);
+        for (let idx=0; idx<cells.length; idx++) {
+          const a = cells[idx]; if (a.street) continue; if (random() >= underpassProb * (0.5 + D*0.5)) continue;
+          const nbrs = kNearest(cells, idx, 1); if (nbrs.length===0) continue; const b = cells[nbrs[0]];
+          const A = projWarpPoint(a.cx, a.cy, zUnder), B = projWarpPoint(b.cx, b.cy, zUnder);
+          if (colorful) { strokeHSB(((hueForCell(a)+hueForCell(b))/2)%360, 60, params.whiteOnBlack?80:35, 80); } else { stroke(theme.street); }
+          if (params.underDash) dashedLine(A.x, A.y, B.x, B.y, params.underDashLen, params.underGapLen); else line(A.x, A.y, B.x, B.y);
+        }
+      }
+
+      // optional hidden-line fill (just background color) for occlusion, then translucent faces if enabled
+      if (hiddenLine) {
+        noStroke(); fill(params.whiteOnBlack?17:245);
+        const sortedHL = [...polys].sort((a,b)=> (a.c.i+a.c.j) - (b.c.i+b.c.j) || a.c.H - b.c.H);
+        for (const p of sortedHL) {
+          beginShape(); for (const v of p.base) vertex(v.sx*s+tx, v.sy*s+ty); endShape(CLOSE);
+          beginShape(); for (const v of p.top)  vertex(v.sx*s+tx, v.sy*s+ty); endShape(CLOSE);
+          for (let k=0;k<4;k++) {
+            beginShape();
+            const b0=p.base[k], b1=p.base[(k+1)%4], t1=p.top[(k+1)%4], t0=p.top[k];
+            vertex(b0.sx*s+tx,b0.sy*s+ty);
+            vertex(b1.sx*s+tx,b1.sy*s+ty);
+            vertex(t1.sx*s+tx,t1.sy*s+ty);
+            vertex(t0.sx*s+tx,t0.sy*s+ty);
+            endShape(CLOSE);
+          }
+        }
+      }
+
+      // translucent building surfaces (sorted painter's algorithm)
+      if (params.surfaces) {
+        function avgY(arr){ let s=0; for (const p of arr) s+=p.y; return s/arr.length; }
+        const faces=[];
+        for (const p of polys) {
+          const c = p.c;
+          const base = p.base, top=p.top;
+          faces.push({pts: base.map(v=>({x:v.sx*s+tx, y:v.sy*s+ty})), c});
+          faces.push({pts: top.map(v=>({x:v.sx*s+tx, y:v.sy*s+ty})), c});
+          for (let k=0;k<4;k++){
+            const b0=base[k], b1=base[(k+1)%4], t1=top[(k+1)%4], t0=top[k];
+            faces.push({pts:[
+              {x:b0.sx*s+tx,y:b0.sy*s+ty},
+              {x:b1.sx*s+tx,y:b1.sy*s+ty},
+              {x:t1.sx*s+tx,y:t1.sy*s+ty},
+              {x:t0.sx*s+tx,y:t0.sy*s+ty},
+            ], c});
+          }
+        }
+        faces.sort((A,B)=> avgY(A.pts) - avgY(B.pts));
+        noStroke();
+        for (const f of faces){
+          if (params.palette === 'retro') {
+            const col = color('#39ff14'); col.setAlpha(params.surfaceAlpha*255); fill(col);
+          } else if (colorful) { 
+            fillHSB(hueForCell(f.c), 80, params.whiteOnBlack?95:45, params.surfaceAlpha*100);
+          } else { 
+            fill(params.whiteOnBlack?255:20, params.surfaceAlpha*255); 
+          }
+          beginShape(); for (const v of f.pts) vertex(v.x, v.y); endShape(CLOSE);
+        }
+      }
+
+      // streets (inner outline recessed)
+      for (const p of polys) {
+        const c = p.c; if (!c.street) continue;
+        const inset = fpCell*0.2; const inner = polyPts(c, inset).base.map(v=>({sx:v.sx*s+tx, sy:v.sy*s+ty - depth*0.12}));
+        strokeWeight(params.th_street);
+        if (colorful) { strokeHSB((hueForCell(c)+180)%360, 40, params.whiteOnBlack?70:40); } else { stroke(theme.street); }
+        beginShape(); inner.forEach(v=>vertex(v.sx, v.sy)); endShape(CLOSE);
+      }
+
+      // exoskeleton (pipes along facades) + inter-building service connections
+      if (params.exo) {
+        const serviceHues = [0,210,55,135];
+        const nPipes = Math.max(1, Math.round(1 + 5*params.exoDensity));
+        const exInset = -half * params.exoOffsetPct; // negative = expand outward
+        function lerpV(a,b,t){ return {x:a.sx + (b.sx-a.sx)*t, y:a.sy + (b.sy-a.sy)*t}; }
+        strokeWeight(params.th_exo);
+        for (const p of polys) {
+          const out = polyPts(p.c, exInset);
+          for (let k=0;k<4;k++) {
+            const b0=out.base[k], b1=out.base[(k+1)%4];
+            const t0=out.top[k],  t1=out.top[(k+1)%4];
+            for (let n=1;n<=nPipes;n++) {
+              const t=n/(nPipes+1);
+              const A=lerpV(b0,b1,t), B=lerpV(t0,t1,t);
+              if (colorful) { strokeHSB(serviceHues[(k+n)%serviceHues.length], 90, params.whiteOnBlack?95:45); }
+              else { stroke(theme.fg); }
+              line(A.x*s+tx, A.y*s+ty, B.x*s+tx, B.y*s+ty);
+            }
+          }
+        }
+
+        // inter-building service connections (pipes between towers)
+        const nConn = Math.max(1, Math.round(nPipes*0.6));
+        function projCenterIso(c, z){ const w=warp2D(c.cx, c.cy, params.geometry, cxMean, cyMean, params.curvaturePct * params.drama, R); const v=isoProject(w.x, w.y, z); return {x:v.sx*s+tx, y:v.sy*s+ty}; }
+        function faceMidpoint(poly, faceIndex, tHeight){
+          const out = polyPts(poly.c, exInset);
+          const b0=out.base[faceIndex], b1=out.base[(faceIndex+1)%4];
+          const t0=out.top[faceIndex],  t1=out.top[(faceIndex+1)%4];
+          const A={x:(b0.sx + b1.sx)*0.5, y:(b0.sy + b1.sy)*0.5};
+          const B={x:(t0.sx + t1.sx)*0.5, y:(t0.sy + t1.sy)*0.5};
+          return {x:(A.x + (B.x-A.x)*tHeight)*s+tx, y:(A.y + (B.y-A.y)*tHeight)*s+ty};
+        }
+        function facingFaceIdx(poly, target){
+          const center = projCenterIso(poly.c, poly.c.H*0.5);
+          let best=0, bestDot=-1e9;
+          const out = polyPts(poly.c, exInset);
+          for (let k=0;k<4;k++){
+            const b0=out.base[k], b1=out.base[(k+1)%4];
+            const mid = {x:(b0.sx+b1.sx)/2*s+tx, y:(b0.sy+b1.sy)/2*s+ty};
+            const vx = target.x - center.x, vy = target.y - center.y;
+            const exv = mid.x - center.x,  eyv = mid.y - center.y;
+            const dot = (vx*exv + vy*eyv) / (Math.hypot(vx,vy)*Math.hypot(exv,eyv)+1e-6);
+            if (dot>bestDot){ bestDot=dot; best=k; }
+          }
+          return best;
+        }
+        for (let i=0;i<polys.length;i++){
+          const a = polys[i]; if (a.c.street) continue;
+          const nbrIdx = kNearest(cells, i, neighborsK);
+          for (const j of nbrIdx){
+            if (j<=i) continue; const b = polys[j]; if (b.c.street) continue;
+            const CA = projCenterIso(a.c, a.c.H*0.5), CB = projCenterIso(b.c, b.c.H*0.5);
+            const fa = facingFaceIdx(a, CB), fb = facingFaceIdx(b, CA);
+            for (let n=1;n<=nConn;n++){
+              const t = n/(nConn+1);
+              const A = faceMidpoint(a, fa, t);
+              const B = faceMidpoint(b, fb, t);
+              if (colorful) strokeHSB(serviceHues[(n)%serviceHues.length], 90, params.whiteOnBlack?95:50);
+              else stroke(theme.fg);
+              line(A.x, A.y, B.x, B.y);
+            }
+          }
+        }
+      }
+
+      // tower edges
+      strokeWeight(params.th_tower);
+      for (const p of polys) {
+        const base = p.base, top = p.top, c = p.c;
+        if (colorful) { strokeHSB(hueForCell(c), 90, params.whiteOnBlack?95:35); } else { stroke(theme.fg); }
+        // base/top loops
+        beginShape(); for (let k=0;k<4;k++){ const v=base[k]; vertex(v.sx*s+tx, v.sy*s+ty);} endShape(CLOSE);
+        beginShape(); for (let k=0;k<4;k++){ const v=top[k];  vertex(v.sx*s+tx, v.sy*s+ty);} endShape(CLOSE);
+        // verticals
+        for (let k=0;k<4;k++) {
+          const b=base[k], t=top[k];
+          line(b.sx*s+tx, b.sy*s+ty, t.sx*s+tx, t.sy*s+ty);
+        }
+      }
+
+      // bridges
+      strokeWeight(params.th_bridge);
+      function projCenter(c, z) { const w=warp2D(c.cx, c.cy, params.geometry, cxMean, cyMean, params.curvaturePct * params.drama, R); const v=isoProject(w.x, w.y, z); return {x:v.sx*s+tx, y:v.sy*s+ty}; }
+      if (bridgeNearest) {
+        for (let idx=0; idx<cells.length; idx++) {
+          if (cells[idx].street) continue;
+          const nbrs = kNearest(cells, idx, neighborsK);
+          for (const m of nbrs) {
+            const a = cells[idx], b = cells[m];
+            const hmid = (a.H+b.H)/2 * 0.6; 
+            const A = projCenter(a, hmid), B = projCenter(b, hmid);
+            if (colorful) { strokeHSB(((hueForCell(a)+hueForCell(b))/2)%360, 85, params.whiteOnBlack?95:45); } else { stroke(theme.fg); }
+            line(A.x, A.y, B.x, B.y);
+          }
+        }
+      } else {
+        for (const c of cells) if (!c.street && random() < bridgeProb * (0.5 + D*0.5)) {
+          const hmid = c.H*0.6; const A=projCenter({cx:c.cx,cy:c.cy},hmid); const B=projCenter({cx:c.cx+cellW,cy:c.cy},hmid);
+          if (colorful) { strokeHSB(hueForCell(c), 90, params.whiteOnBlack?95:45); } else { stroke(theme.fg); }
+          line(A.x,A.y,B.x,B.y);
+        }
+      }
+    }
+
+    // --- SVG Export (current view) ---
+    function exportSVG(){
+      const w = width, h = height;
+      const strokeCol = (params.palette==='retro') ? '#39ff14' : (params.whiteOnBlack ? '#e6e6e6' : '#141414');
+      let svg = `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" fill="none" stroke="${strokeCol}" stroke-linecap="round" stroke-linejoin="round">\n`;
+
+      const theme = (params.palette==='retro') ? {bg:'#0b0f0a', fg:'#39ff14', street:'#116622'} :
+                     (params.whiteOnBlack ? {bg:17, fg:'#e6e6e6', street:'#a0a0a0'} : {bg:245, fg:'#141414', street:'#646464'});
+
+      // gather cells (same as draw)
+      const cols=params.cols, rows=params.rows; const margin = Math.min(width, height) * (params.marginPct/100);
+      const gridX0 = margin, gridY0 = margin; const gridX1 = width - margin, gridY1 = height - margin;
+      const cellW = (gridX1 - gridX0) / cols; const cellH = (gridY1 - gridY0) / rows;
+      const DR=params.drama, D=constrain(params.disorder,0,1);
+      const rotationMaxEff=params.rotationMaxDeg*DR, shearMaxEff=params.shearMaxDeg*DR, footprintPctEff=Math.min(1.5, params.footprintPct*(1+0.15*(DR-1)));
+
+      let cells=[]; let isStreet=(i,j)=>false;
+      if(params.streets){ const ns=Math.max(5, params.streetScale/DR); const band=Math.min(0.5, params.streetBand*(0.6+0.4*DR)); const den=Math.min(1, params.streetDensity*DR);
+        isStreet=(i,j)=> Math.abs(noise(i/ns,j/ns,seed*1e-6)-0.5) < band*den;
+      }
+      for(let j=0;j<rows;j++) for(let i=0;i<cols;i++){
+        const jitterMul=Math.min(0.9,0.3*DR);
+        const jitterX = random(-cellW*jitterMul*D, cellW*jitterMul*D);
+        const jitterY = random(-cellH*jitterMul*D, cellH*jitterMul*D);
+        const cx = gridX0 + i*cellW + jitterX + cellW/2;
+        const cy = gridY0 + j*cellH + jitterY + cellH/2;
+        const rot=radians(random(-rotationMaxEff*D, rotationMaxEff*D));
+        const shx=radians(random(-shearMaxEff*D, shearMaxEff*D));
+        const shy=radians(random(-shearMaxEff*D, shearMaxEff*D));
+        const n=noise(i*0.17,j*0.19,seed*1e-6); const hNoise=map(n,0,1,0.2,1.0);
+        const targetH=params.hMax*DR*(0.2+hNoise*0.8); const varH=targetH*Math.min(1.5,params.hVarPct*DR)*(random(-1,1));
+        let H=Math.max(0,(targetH+varH)*params.fold); const street=isStreet(i,j); if(street) H*=0.1;
+        cells.push({i,j,cx,cy,rot,shx,shy,H,street});
+      }
+
+      if (params.iso) {
+        // ISO SVG
+        const fpCell = Math.min(cellW, cellH) * footprintPctEff; const half = fpCell/2; const depth = params.isoDepth;
+        let cxMean=0, cyMean=0; for (const c of cells){ cxMean+=c.cx; cyMean+=c.cy; } cxMean/=Math.max(1,cells.length); cyMean/=Math.max(1,cells.length);
+        let R=1; for(const c of cells){ const d=Math.hypot(c.cx-cxMean,c.cy-cyMean); if(d>R) R=d; }
+
+        function isoProject(x,y,z){ const ISO_ANGLE = Math.PI/6; const COS=Math.cos(ISO_ANGLE), SIN=Math.sin(ISO_ANGLE); return { sx:(x-y)*COS, sy:(x+y)*SIN - z }; }
+
+        function polyPts(c, inset=0){
+          const h=half-inset; const pts=[{x:-h,y:-h},{x:h,y:-h},{x:h,y:h},{x:-h,y:h}].map(p=>apply2D(p.x,p.y,c.rot,c.shx,c.shy));
+          const baseW=pts.map(p=>({x:c.cx+p.x, y:c.cy+p.y, z:0}));
+          const topW =pts.map(p=>({x:c.cx+p.x, y:c.cy+p.y, z:c.H}));
+          const baseWarp=baseW.map(p=>{const w=warp2D(p.x,p.y,params.geometry,cxMean,cyMean,(params.curvaturePct||0)*(params.drama||1),R); return {x:w.x,y:w.y,z:p.z};});
+          const topWarp =topW .map(p=>{const w=warp2D(p.x,p.y,params.geometry,cxMean,cyMean,(params.curvaturePct||0)*(params.drama||1),R); return {x:w.x,y:w.y,z:p.z};});
+          const base=baseWarp.map(p=>isoProject(p.x,p.y,p.z)); const top=topWarp.map(p=>isoProject(p.x,p.y,p.z));
+          return {base,top};
+        }
+
+        let polys=cells.map(c=>({c,...polyPts(c)}));
+        let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+        for(const p of polys) for(const v of [...p.base,...p.top]){minX=Math.min(minX,v.sx);maxX=Math.max(maxX,v.sx);minY=Math.min(minY,v.sy);maxY=Math.max(maxY,v.sy);} 
+        const pad=params.fitPad; const sFit=Math.min((width-2*pad)/(maxX-minX||1),(height-2*pad)/(maxY-minY||1));
+        const s=sFit*viewScale; const tx=pad-minX*sFit+viewOffsetX, ty=pad-minY*sFit+viewOffsetY;
+
+        function L(x1,y1,x2,y2, col=theme.fg, w=1, dash=""){
+          svg += `<line x1="${(x1*s+tx).toFixed(2)}" y1="${(y1*s+ty).toFixed(2)}" x2="${(x2*s+tx).toFixed(2)}" y2="${(y2*s+ty).toFixed(2)}" stroke="${col}" stroke-width="${w}"${dash}/>`+"\n";
+        }
+
+        // Streets (inner outline recessed)
+        for(const p of polys){ if(!p.c.street) continue; const inset=fpCell*0.2; const inner=polyPts(p.c,inset).base.map(v=>({x:v.sx,y:v.sy - depth*0.12}));
+          for(let k=0;k<4;k++){ const a=inner[k], b=inner[(k+1)%4]; L(a.x,a.y,b.x,b.y, theme.street, params.th_street); }
+        }
+
+        // Tower edges
+        for(const p of polys){ const base=p.base, top=p.top;
+          for(let k=0;k<4;k++){ const a=base[k], b=base[(k+1)%4]; L(a.sx,a.sy,b.sx,b.sy, theme.fg, params.th_tower);} 
+          for(let k=0;k<4;k++){ const a=top[k], b=top[(k+1)%4]; L(a.sx,a.sy,b.sx,b.sy, theme.fg, params.th_tower);} 
+          for(let k=0;k<4;k++){ const a=base[k], b=top[k]; L(a.sx,a.sy,b.sx,b.sy, theme.fg, params.th_tower);} 
+        }
+
+        // Bridges (nearest only for SVG clarity)
+        function projCenter(c, z) { const w=warp2D(c.cx,c.cy,params.geometry,cxMean,cyMean,params.curvaturePct*params.drama,R); const v=isoProject(w.x,w.y,z); return v; }
+        if (params.bridgeNearest) {
+          for (let idx=0; idx<cells.length; idx++) {
+            if (cells[idx].street) continue;
+            const nbrs = kNearest(cells, idx, params.neighborsK);
+            for (const m of nbrs) {
+              const a = cells[idx], b = cells[m];
+              const hmid = (a.H+b.H)/2 * 0.6; 
+              const A = projCenter(a, hmid), B = projCenter(b, hmid);
+              L(A.sx,A.sy,B.sx,B.sy, theme.fg, params.th_bridge);
+            }
+          }
+        }
+
+        // Underpasses (dashed)
+        if (params.underpassProb>0){
+          const zUnder = -depth * 0.25;
+          function projWarpPoint(x, y, z){ const w=warp2D(x,y, params.geometry, cxMean, cyMean, params.curvaturePct * params.drama, R); const v=isoProject(w.x, w.y, z); return v; }
+          for (let idx=0; idx<cells.length; idx++) {
+            const a = cells[idx]; if (a.street) continue; const nbrs = kNearest(cells, idx, 1); if (nbrs.length===0) continue; const b = cells[nbrs[0]];
+            const A = projWarpPoint(a.cx, a.cy, zUnder), B = projWarpPoint(b.cx, b.cy, zUnder);
+            const dash = params.underDash ? ` stroke-dasharray="${params.underDashLen},${params.underGapLen}"` : '';
+            L(A.sx,A.sy,B.sx,B.sy, theme.street, params.th_under, dash);
+          }
+        }
+
+      } else {
+        // PLAN SVG (warped)
+        const fpScale = footprintPctEff;
+        let cxMean=0, cyMean=0; for(const c of cells){ cxMean+=c.cx; cyMean+=c.cy; } cxMean/=Math.max(1,cells.length); cyMean/=Math.max(1,cells.length);
+        let R=1; for(const c of cells){ const d=Math.hypot(c.cx-cxMean,c.cy-cyMean); if(d>R) R=d; }
+
+        function polyPlan(c, size, yOffset=0) {
+          const h = size/2;
+          const local = [ {x:-h,y:-h}, {x:h,y:-h}, {x:h,y:h}, {x:-h,y:h} ].map(p=>apply2D(p.x,p.y,c.rot,c.shx,c.shy));
+          return local.map(p=>({ x: c.cx + p.x, y: c.cy + p.y + yOffset }));
+        }
+        function warpPts(pts) { return pts.map(p => warp2D(p.x, p.y, params.geometry, cxMean, cyMean, params.curvaturePct * params.drama, R)); }
+        function PL(a,b,col,w,dash=""){ svg += `<line x1="${a.x.toFixed(2)}" y1="${a.y.toFixed(2)}" x2="${b.x.toFixed(2)}" y2="${b.y.toFixed(2)}" stroke="${col}" stroke-width="${w}"${dash}/>`+"\n"; }
+
+        for (const c of cells) {
+          const fp = Math.min(cellW, cellH) * fpScale; 
+          if (c.street) {
+            const streetPoly = warpPts(polyPlan(c, fp*1.05));
+            for(let k=0;k<4;k++){ const a=streetPoly[k], b=streetPoly[(k+1)%4]; PL(a,b, theme.street, params.th_street); }
+          }
+          const steps = params.terraces ? 6 : 1;
+          for (let s = 0; s < steps; s++) {
+            const t = steps === 1 ? 0 : s/(steps-1);
+            const size = lerp(fp, fp*0.25, t);
+            const z = -c.H * Math.pow(t, 1.2);
+            const poly = warpPts(polyPlan(c, size, z));
+            for(let k=0;k<4;k++){ const a=poly[k], b=poly[(k+1)%4]; PL(a,b, theme.fg, params.th_tower); }
+          }
+        }
+        // Bridges (nearest only for SVG simplicity)
+        if (params.bridgeNearest) {
+          for (let idx=0; idx<cells.length; idx++) {
+            if (cells[idx].street) continue;
+            const nbrs = kNearest(cells, idx, params.neighborsK);
+            for (const m of nbrs) {
+              const a = cells[idx], b = cells[m];
+              const z = -(a.H+b.H)/2 * 0.6; 
+              const A = warp2D(a.cx, a.cy+z, params.geometry, cxMean, cyMean, params.curvaturePct * params.drama, R);
+              const B = warp2D(b.cx, b.cy+z, params.geometry, cxMean, cyMean, params.curvaturePct * params.drama, R);
+              PL(A,B, theme.fg, params.th_bridge);
+            }
+          }
+        }
+        // Underpasses (dashed)
+        if (params.underpassProb>0){
+          for (let idx=0; idx<cells.length; idx++) {
+            const a = cells[idx]; if (a.street) continue; const nbrs = kNearest(cells, idx, 1); if (nbrs.length===0) continue; const b = cells[nbrs[0]];
+            const z = -(a.H+b.H)/2 * 0.4;
+            const A = warp2D(a.cx, a.cy+z, params.geometry, cxMean, cyMean, params.curvaturePct * params.drama, R);
+            const B = warp2D(b.cx, b.cy+z, params.geometry, cxMean, cyMean, params.curvaturePct * params.drama, R);
+            const dash = params.underDash ? ` stroke-dasharray="${params.underDashLen},${params.underGapLen}"` : '';
+            PL(A,B, theme.street, params.th_under, dash);
+          }
+        }
+      }
+
+      svg += `</svg>`;
+      const blob = new Blob([svg], {type: 'image/svg+xml'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = `city-${params.palette}-${params.iso?'iso':'plan'}-${seed}.svg`; a.click(); URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>
