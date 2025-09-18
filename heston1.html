@@ -1,110 +1,118 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Flavor Physics Roguelike — Prototype</title>
-  <style>
-    :root{
-      --neon-1:#ff00e6; --neon-2:#00ffe1; --neon-3:#ffd400; --neon-4:#7aff00; --neon-5:#4f61ff;
-    }
-    @keyframes bgshift{
-      0%{ background-position:0% 50%; filter:hue-rotate(0deg) saturate(135%); }
-      50%{ background-position:100% 50%; filter:hue-rotate(180deg) saturate(160%); }
-      100%{ background-position:0% 50%; filter:hue-rotate(360deg) saturate(135%); }
-    }
-    html, body { height: 100%; margin: 0; color:#e6e6e6; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
-    body{ background:linear-gradient(120deg, rgba(255,0,230,.16), rgba(0,255,225,.16), rgba(255,212,0,.16)) no-repeat fixed; background-size:400% 400%; animation:bgshift 18s linear infinite; }
-    #ui { position: fixed; inset: 0; display: grid; grid-template-columns: 440px 1fr; }
-    #sidebar { padding: 12px 14px; border-right: 1px solid #1b1f24; background:rgba(10,14,18,.75); backdrop-filter: blur(6px); overflow:auto; box-shadow: inset 0 0 0 1px rgba(140,255,200,.06); }
-    #sidebar h1 { margin: 0 0 8px; font-size: 16px; letter-spacing: .5px; color:#b8ffdc; text-shadow:0 0 6px rgba(184,255,220,.35); }
-    #sidebar .card { background:rgba(8,12,15,.75); border:1px solid rgba(18,22,26,.9); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; box-shadow: 0 0 0 1px rgba(10,13,16,.8) inset, 0 10px 30px rgba(0,0,0,.25); }
-    .k { display:inline-block; padding:2px 6px; border:1px solid #2a3138; border-radius:6px; background:#0d1216; color:#d0e2ff; font-size:12px; margin-right:6px }
-    .pill { display:inline-block; font-size:11px; padding:2px 6px; border-radius:999px; border:1px solid #2a3138; margin:2px 4px 0 0 }
-    .pill.gift { color:#c8ffd6; border-color:#294236; background:#0e1811 }
-    .pill.curse{ color:#ffd0d0; border-color:#442828; background:#1a0f0f }
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Flavor Physics Roguelike — Prototype</title>
+<style>
+  :root{
+    --neon-1:#ff00e6; --neon-2:#00ffe1; --neon-3:#ffd400; --neon-4:#7aff00; --neon-5:#4f61ff;
+  }
+  @keyframes bgshift{
+    0%{ background-position:0% 50%; filter:hue-rotate(0deg) saturate(135%); }
+    50%{ background-position:100% 50%; filter:hue-rotate(180deg) saturate(160%); }
+    100%{ background-position:0% 50%; filter:hue-rotate(360deg) saturate(135%); }
+  }
+  html, body { height:100%; margin:0; color:#e6e6e6; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+  body{ background:linear-gradient(120deg, rgba(255,0,230,.16), rgba(0,255,225,.16), rgba(255,212,0,.16)) no-repeat fixed; background-size:400% 400%; animation:bgshift 18s linear infinite; }
+  #ui { position: fixed; inset: 0; display: grid; grid-template-columns: 440px 1fr; }
+  #sidebar { padding: 12px 14px; border-right: 1px solid #1b1f24; background:rgba(10,14,18,.75); backdrop-filter: blur(6px); overflow:auto; box-shadow: inset 0 0 0 1px rgba(140,255,200,.06); }
+  #sidebar h1 { margin: 0 0 8px; font-size: 16px; letter-spacing: .5px; color:#b8ffdc; text-shadow:0 0 6px rgba(184,255,220,.35); }
+  #sidebar .card { background:rgba(8,12,15,.75); border:1px solid rgba(18,22,26,.9); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; box-shadow: 0 0 0 1px rgba(10,13,16,.8) inset, 0 10px 30px rgba(0,0,0,.25); }
+  .k { display:inline-block; padding:2px 6px; border:1px solid #2a3138; border-radius:6px; background:#0d1216; color:#d0e2ff; font-size:12px; margin-right:6px }
+  .pill { display:inline-block; font-size:11px; padding:2px 6px; border-radius:999px; border:1px solid #2a3138; margin:2px 4px 0 0 }
+  .pill.gift { color:#c8ffd6; border-color:#294236; background:#0e1811 }
+  .pill.curse{ color:#ffd0d0; border-color:#442828; background:#1a0f0f }
+  .btn { border:1px solid #26323c; background:#0f151a; color:#cfe7ff; border-radius:8px; padding:6px 10px; cursor:pointer; }
 
-    #canvasWrap { position: relative; filter:saturate(1.4) contrast(1.15) drop-shadow(0 0 20px rgba(255,255,255,.04)); }
-    #c { display:block; width:100%; height:100%; image-rendering: pixelated; }
-    #overlay { position:absolute; left:16px; bottom:16px; background:rgba(0,0,0,0.5); border:1px solid #1a2128; padding:8px 10px; border-radius:8px; font-size:12px; box-shadow:0 0 10px rgba(0,0,0,.4), 0 0 16px rgba(0,255,255,.15) inset }
-    #toast { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); background: linear-gradient(135deg, rgba(0,0,0,.75), rgba(20,20,30,.75)); color: #d6ffe9; border: 1px solid #22303a; padding: 10px 14px; border-radius: 10px; opacity: 0; transition: opacity .25s ease; pointer-events:none; text-shadow:0 0 6px rgba(184,255,220,.35) }
-    /* Minimap */
-    #mini { position:absolute; right:16px; top:16px; width:192px; height:120px; image-rendering: pixelated; border:1px solid #1a2128; background:#07090b; border-radius:8px; box-shadow: 0 6px 18px rgba(0,0,0,.45), 0 0 20px rgba(255,0,230,.18) inset; }
+  #canvasWrap { position: relative; filter:saturate(1.4) contrast(1.15) drop-shadow(0 0 20px rgba(255,255,255,.04)); }
+  #c { display:block; width:100%; height:100%; image-rendering: pixelated; }
+  #overlay { position:absolute; left:16px; bottom:16px; background:rgba(0,0,0,0.5); border:1px solid #1a2128; padding:8px 10px; border-radius:8px; font-size:12px; box-shadow:0 0 10px rgba(0,0,0,.4), 0 0 16px rgba(0,255,255,.15) inset }
+  #toast { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); background: linear-gradient(135deg, rgba(0,0,0,.75), rgba(20,20,30,.75)); color: #d6ffe9; border: 1px solid #22303a; padding: 10px 14px; border-radius: 10px; opacity: 0; transition: opacity .25s ease; pointer-events:none; text-shadow:0 0 6px rgba(184,255,220,.35) }
 
-    /* Interlude modal */
-    #interlude { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,0.55); backdrop-filter: blur(2px); }
-    #interlude .panel { width: min(780px, 92%); background:#0b0f12; border:1px solid #232a31; border-radius:16px; box-shadow: 0 20px 60px rgba(0,0,0,.45); padding:16px; }
-    #interlude h2 { margin: 0 0 6px; font-size: 16px; color:#ffe58f; text-shadow:0 0 8px rgba(255, 229, 143, .35); }
-    #interlude .sub { color:#9fb0be; font-size:12px; margin-bottom:10px }
-    #interlude .opts { display:grid; grid-template-columns: 1fr; gap:8px; }
-    #interlude .opt { border:1px solid #1f262d; background:#0e1317; border-radius:12px; padding:10px; cursor:pointer; }
-    #interlude .opt:hover { border-color:#2b3844; background:#10171c; }
-    #interlude .opt .name { font-weight:600; }
-    #interlude .opt .who { font-size:12px; color:#9fb0be; margin-top:2px }
-    #interlude .opt .flavor { font-size:12px; color:#c7c7c7; margin-top:6px }
-    #interlude .hint { font-size:11px; color:#8aa0b0; margin-top:10px }
+  /* Minimap */
+  #mini { position:absolute; right:16px; top:16px; width:192px; height:120px; image-rendering: pixelated; border:1px solid #1a2128; background:#07090b; border-radius:8px; box-shadow: 0 6px 18px rgba(0,0,0,.45), 0 0 20px rgba(255,0,230,.18) inset; }
 
-    /* Assembly Zach-likes */
-    #assembly { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,0.6); backdrop-filter: blur(3px); }
-    #assembly .panel { width:min(1040px,96%); background:#0b0f12; border:1px solid #232a31; border-radius:16px; box-shadow:0 20px 60px rgba(0,0,0,.5); padding:16px; }
-    #assembly h3 { margin:0 0 6px; font-size:15px; color:#cfe7ff; text-shadow:0 0 8px rgba(207,231,255,.35); }
-    #asmToolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:8px 0; }
-    .tool { display:flex; align-items:center; gap:6px; border:1px solid #1e262e; background:#0e1317; border-radius:10px; padding:6px 8px; cursor:pointer; user-select:none; box-shadow:0 0 0 1px rgba(0,0,0,.35) inset; }
-    .tool.sel { outline:1px solid #cfe7ff; box-shadow:0 0 12px rgba(143,255,200,.25); }
-    .badge { font-size:11px; color:#9fb0be; padding:2px 6px; border:1px solid #28313a; border-radius:999px; }
-    .btn { border:1px solid #26323c; background:#0f151a; color:#cfe7ff; border-radius:8px; padding:6px 10px; cursor:pointer; }
-    #asmCanvas { display:block; width:100%; height:auto; background:radial-gradient(80% 80% at 50% 50%, rgba(12,16,20,1), rgba(6,8,10,1)); border:1px solid #1f2931; border-radius:12px; image-rendering: pixelated; box-shadow: inset 0 0 30px rgba(0,0,0,.55), 0 0 24px rgba(255,0,230,.15); }
-    #assembly .hint { font-size:11px; color:#8aa0b0; margin-top:10px }
+  /* Interlude modal */
+  #interlude { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,0.55); backdrop-filter: blur(2px); }
+  #interlude .panel { width: min(780px, 92%); background:#0b0f12; border:1px solid #232a31; border-radius:16px; box-shadow: 0 20px 60px rgba(0,0,0,.45); padding:16px; }
+  #interlude h2 { margin: 0 0 6px; font-size: 16px; color:#ffe58f; text-shadow:0 0 8px rgba(255, 229, 143, .35); }
+  #interlude .sub { color:#9fb0be; font-size:12px; margin-bottom:10px }
+  #interlude .opts { display:grid; grid-template-columns: 1fr; gap:8px; }
+  #interlude .opt { border:1px solid #1f262d; background:#0e1317; border-radius:12px; padding:10px; cursor:pointer; }
+  #interlude .opt:hover { border-color:#2b3844; background:#10171c; }
+  #interlude .opt .name { font-weight:600; }
+  #interlude .opt .who { font-size:12px; color:#9fb0be; margin-top:2px }
+  #interlude .opt .flavor { font-size:12px; color:#c7c7c7; margin-top:6px }
+  #interlude .hint { font-size:11px; color:#8aa0b0; margin-top:10px }
 
-    /* Origami plating mini-game */
-    #origami { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.55); backdrop-filter: blur(2px); }
-    #origami .panel { width:min(760px,95%); background:#0b0f12; border:1px solid #232a31; border-radius:16px; box-shadow:0 20px 60px rgba(0,0,0,.45); padding:16px; }
-    #origami h3 { margin:0 0 6px; font-size:15px; color:#ffe58f; }
-    #origami .sub { color:#9fb0be; font-size:12px; margin-bottom:8px }
-    #origami .bar { display:flex; gap:8px; margin-top:8px }
-    #origami canvas { display:block; width:100%; height:auto; border:1px solid #1f2931; border-radius:12px; background:radial-gradient(90% 90% at 50% 50%, #0f1418, #090c0f); box-shadow: inset 0 0 30px rgba(0,0,0,.55), 0 0 24px rgba(255,0,230,.12); }
+  /* Assembly Zach-like */
+  #assembly { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,0.6); backdrop-filter: blur(3px); }
+  #assembly .panel { width:min(1040px,96%); background:#0b0f12; border:1px solid #232a31; border-radius:16px; box-shadow:0 20px 60px rgba(0,0,0,.5); padding:16px; }
+  #assembly h3 { margin:0 0 6px; font-size:15px; color:#cfe7ff; text-shadow:0 0 8px rgba(207,231,255,.35); }
+  #asmToolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:8px 0; }
+  .tool { display:flex; align-items:center; gap:6px; border:1px solid #1e262e; background:#0e1317; border-radius:10px; padding:6px 8px; cursor:pointer; user-select:none; box-shadow:0 0 0 1px rgba(0,0,0,.35) inset; }
+  .tool.sel { outline:1px solid #cfe7ff; box-shadow:0 0 12px rgba(143,255,200,.25); }
+  .badge { font-size:11px; color:#9fb0be; padding:2px 6px; border:1px solid #28313a; border-radius:999px; }
+  #asmCanvas { display:block; width:100%; height:auto; background:radial-gradient(80% 80% at 50% 50%, rgba(12,16,20,1), rgba(6,8,10,1)); border:1px solid #1f2931; border-radius:12px; image-rendering: pixelated; box-shadow: inset 0 0 30px rgba(0,0,0,.55), 0 0 24px rgba(255,0,230,.15); }
+  #assembly .hint { font-size:11px; color:#8aa0b0; margin-top:10px }
 
-    /* Extra Psychedelic mode */
-    body.melt { filter: saturate(2.3) contrast(1.45); }
-    body.melt #canvasWrap { filter: saturate(2.0) hue-rotate(75deg) contrast(1.2) drop-shadow(0 0 30px rgba(255,0,230,.25)); }
-    body.melt #mini { box-shadow: 0 6px 18px rgba(0,0,0,.45), 0 0 30px rgba(255,0,230,.35) inset; }
-      /* Buff HUD */
-    #buffHUD { position:absolute; right:16px; bottom:16px; width:230px; background:rgba(8,12,15,.72); border:1px solid #1a2128; border-radius:10px; padding:8px 10px; box-shadow:0 10px 30px rgba(0,0,0,.35), inset 0 0 20px rgba(0,255,225,.08); }
-    #buffHUD .row { display:flex; align-items:center; gap:8px; margin:3px 0; }
-    #buffHUD .lbl { width:70px; font-size:12px; color:#cfe7ff; }
-    #buffHUD .bar { position:relative; flex:1; height:6px; background:#0a0f12; border:1px solid #1b2229; border-radius:999px; overflow:hidden; }
-    #buffHUD .fill { height:100%; width:0%; background:linear-gradient(90deg, #b8ffdc, rgba(255,255,255,.25)); }
-    #buffHUD .t { width:38px; text-align:right; font-size:11px; color:#9fb0be; }
-  </style>
+  /* Origami plating */
+  #origami { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.55); backdrop-filter: blur(2px); }
+  #origami .panel { width:min(760px,95%); background:#0b0f12; border:1px solid #232a31; border-radius:16px; box-shadow:0 20px 60px rgba(0,0,0,.45); padding:16px; }
+  #origami h3 { margin:0 0 6px; font-size:15px; color:#ffe58f; }
+  #origami .sub { color:#9fb0be; font-size:12px; margin-bottom:8px }
+  #origami .bar { display:flex; gap:8px; margin-top:8px }
+  #origami canvas { display:block; width:100%; height:auto; border:1px solid #1f2931; border-radius:12px; background:radial-gradient(90% 90% at 50% 50%, #0f1418, #090c0f); box-shadow: inset 0 0 30px rgba(0,0,0,.55), 0 0 24px rgba(255,0,230,.12); }
+
+  /* Extra Psychedelic mode */
+  body.melt { filter: saturate(2.3) contrast(1.45); }
+  body.melt #canvasWrap { filter: saturate(2.0) hue-rotate(75deg) contrast(1.2) drop-shadow(0 0 30px rgba(255,0,230,.25)); }
+  body.melt #mini { box-shadow: 0 6px 18px rgba(0,0,0,.45), 0 0 30px rgba(255,0,230,.35) inset; }
+
+  /* Buff HUD */
+  #buffHUD { position:absolute; right:16px; bottom:16px; width:230px; background:rgba(8,12,15,.72); border:1px solid #1a2128; border-radius:10px; padding:8px 10px; box-shadow:0 10px 30px rgba(0,0,0,.35), inset 0 0 20px rgba(0,255,225,.08); }
+  #buffHUD .row { display:flex; align-items:center; gap:8px; margin:3px 0; }
+  #buffHUD .lbl { width:70px; font-size:12px; color:#cfe7ff; }
+  #buffHUD .bar { position:relative; flex:1; height:6px; background:#0a0f12; border:1px solid #1b2229; border-radius:999px; overflow:hidden; }
+  #buffHUD .fill { height:100%; width:0%; background:linear-gradient(90deg, #b8ffdc, rgba(255,255,255,.25)); }
+  #buffHUD .t { width:38px; text-align:right; font-size:11px; color:#9fb0be; }
+</style>
 </head>
 <body>
   <div id="ui">
     <aside id="sidebar">
       <h1>Flavor Physics Roguelike — Prototype</h1>
+
       <div class="card">
         <div style="font-weight:600; margin-bottom:6px; color:#cfe7ff">Controls</div>
         <div><span class="k">WASD</span>Move <span class="k">Mouse</span> Use tool  <span class="k">Q/E</span> Brush −/+</div>
         <div style="margin-top:6px"><span class="k">1</span>Foam  <span class="k">2</span>Gel Precursor  <span class="k">3</span>Spheres</div>
         <div style="margin-top:6px"><span class="k">T</span>Heat  <span class="k">Y</span>Cool  <span class="k">U</span>Stir/Shear  <span class="k">I</span>pH Drop  <span class="k">Z</span>Activate Colony  <span class="k">X</span>Interact</div>
-        <div style="margin-top:6px"><span class="k">F</span>Serve at Station  <span class="k">R</span>New Run  <span class="k">4/5/6</span>Choose Gift/Curse  <span class="k">M</span>Psychedelia++  <span class="k">N</span>Minimap</div>
+        <div style="margin-top:6px"><span class="k">F</span>Serve at Station  <span class="k">R</span>New Run  <span class="k">4/5/6</span>Choose Gift/Curse  <span class="k">M</span>Psychedelia++  <span class="k">N</span>Minimap  <span class="k">G</span>Grid</div>
       </div>
+
       <div class="card">
         <div style="font-weight:600; margin-bottom:6px; color:#cfe7ff">Goals</div>
         <div id="goals"></div>
       </div>
+
       <div class="card">
         <div style="font-weight:600; margin-bottom:6px; color:#cfe7ff">Hazards</div>
         <div id="hazards"></div>
       </div>
+
       <div class="card">
         <div style="font-weight:600; margin-bottom:6px; color:#cfe7ff">Hidden Depths</div>
         <div id="depthList" style="font-size:12px; color:#9fb0be"></div>
       </div>
+
       <div class="card">
         <div style="font-weight:600; margin-bottom:6px; color:#cfe7ff">Serving</div>
         <div id="serving"></div>
         <div id="lastDish" style="margin-top:8px; font-size:12px; color:#cfe7ff"></div>
       </div>
+
       <div class="card">
         <div style="font-weight:600; margin-bottom:6px; color:#cfe7ff">Service — In His Head</div>
         <div id="narrCourse" style="margin-bottom:6px"></div>
@@ -112,21 +120,26 @@
         <div style="font-weight:600; margin-top:6px; color:#cfe7ff">Gifts & Curses</div>
         <div id="mutations"></div>
       </div>
+
       <div class="card">
         <div style="font-weight:600; margin-bottom:6px; color:#cfe7ff">Colonies (hidden)</div>
         <div id="colonies"></div>
       </div>
+
       <div class="card">
         <div style="font-weight:600; margin-bottom:6px; color:#cfe7ff">Diagnostics (self-tests)</div>
         <div id="tests" style="font-size:12px; line-height:1.4; color:#9fb0be"></div>
         <div style="margin-top:8px"><button id="runTestsBtn">Run self-tests</button></div>
       </div>
     </aside>
+
     <main id="canvasWrap">
       <canvas id="c"></canvas>
       <canvas id="mini"></canvas>
       <div id="overlay">Tool: <span id="toolName">Heat</span> • Brush: <span id="brush">3</span></div>
       <div id="toast"></div>
+
+      <!-- Interlude -->
       <div id="interlude">
         <div class="panel">
           <h2 id="interTitle">Course Interlude</h2>
@@ -135,10 +148,15 @@
           <div class="hint">Choose with <span class="k">4</span>/<span class="k">5</span>/<span class="k">6</span> or click</div>
         </div>
       </div>
+
+      <!-- Assembly (Zach-like) -->
       <div id="assembly">
         <div class="panel">
           <h3 id="asmTitle">Assemble Equipment</h3>
-          <div class="sub" id="asmSub" style="color:#9fb0be; font-size:12px">Route the flow: Feed + Brine + Aroma → Chill → Vacuum → Condense → Outlet (Pressure≥30). Fans boost pressure & drafts; Dampers reduce. Valves are one-way. Heaters inject warmth flag.</div>
+          <div class="sub" id="asmSub" style="color:#9fb0be; font-size:12px">
+            Route the flow: Feed + Brine + Aroma → Chill → Vacuum → Condense → Outlet (Pressure≥30).
+            Fans boost pressure & drafts; Dampers reduce. Valves are one-way. Heaters inject warmth flag.
+          </div>
           <div id="asmToolbar">
             <div class="tool" data-type="pipe"><span>Pipe</span><span class="badge" id="inv_pipe">24</span></div>
             <div class="tool" data-type="elbow"><span>Elbow</span><span class="badge" id="inv_elbow">14</span></div>
@@ -162,10 +180,12 @@
           <div class="hint">Left-click: place • Right-click: rotate cell • <span class="k">Del</span>: erase cell • All feeds must merge <u>before</u> Condense • Outlet needs enough pressure.</div>
         </div>
       </div>
+
+      <!-- Origami plating -->
       <div id="origami">
         <div class="panel">
           <h3>Plating — Origami Fold</h3>
-          <div class="sub">Rotate wedges to form a pleasing symmetry. Higher symmetry → bigger plating bonus. Your pickups add motifs.</div>
+          <div class="sub">Rotate wedges to form symmetry. Higher symmetry → bigger plating bonus. Your pickups add motifs.</div>
           <canvas id="origamiCanvas" width="720" height="420"></canvas>
           <div class="bar">
             <button class="btn" id="origamiRotate">Rotate Random Wedge</button>
@@ -175,11 +195,16 @@
           </div>
         </div>
       </div>
+
+      <!-- Visual toggles -->
       <div class="card" style="position:absolute; left:16px; top:16px; background:rgba(8,12,15,.7); padding:6px 8px; border-radius:10px; border:1px solid rgba(18,22,26,.9); display:flex; gap:8px; align-items:center;">
         <span style="font-size:12px; color:#cfe7ff">Visuals</span>
         <button class="btn" id="meltBtn">Psychedelia++: OFF</button>
+        <button class="btn" id="gridToggle">Grid: ON</button>
         <button class="btn" id="miniToggle">Minimap: ON</button>
       </div>
+
+      <!-- Buff HUD -->
       <div id="buffHUD" aria-label="Ingredient Buffs HUD" style="display:none">
         <div class="row"><span class="lbl">Agar</span><div class="bar"><div class="fill" id="hud_agar"></div></div><span class="t" id="hud_agar_t"></span></div>
         <div class="row"><span class="lbl">Lecithin</span><div class="bar"><div class="fill" id="hud_lecithin"></div></div><span class="t" id="hud_lecithin_t"></span></div>
@@ -190,61 +215,103 @@
 
 <script>
 (() => {
+  // ---------- World & Rendering ----------
   const W = 96, H = 60, SCALE = 12;
   const canvas = document.getElementById('c');
   canvas.width = W * SCALE; canvas.height = H * SCALE;
   const ctx = canvas.getContext('2d');
 
   const mini = document.getElementById('mini');
-  mini.width = W; mini.height = H; // 1:1 grid → scaled by CSS
+  mini.width = W; mini.height = H; // 1:1 grid → CSS scales
   const mctx = mini.getContext('2d');
 
-  // Fog of War
+  let gridVisible = true; // toggle with G or button
+  function drawGrid(){
+    ctx.save();
+    ctx.globalAlpha = 0.18;
+    ctx.strokeStyle = 'rgba(200,220,255,0.12)';
+    ctx.lineWidth = 1;
+    for(let x=0;x<=W;x++){
+      ctx.beginPath();
+      ctx.moveTo(x*SCALE,0);
+      ctx.lineTo(x*SCALE,H*SCALE);
+      ctx.stroke();
+    }
+    for(let y=0;y<=H;y++){
+      ctx.beginPath();
+      ctx.moveTo(0,y*SCALE);
+      ctx.lineTo(W*SCALE,y*SCALE);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // ---------- Fog of War ----------
   const VISION_BASE = 12; // cells
   function VR(){ return VISION_BASE + mods.visionBonus; }
   let seen = new Uint8Array(W*H); // 0 unseen, 1 seen
+  function idx(x,y){ return x + y*W; }
+  function inb(x,y){ return x>=0 && y>=0 && x<W && y<H; }
+  function revealAt(x0,y0,r){
+    const r2=r*r;
+    for(let y=-r;y<=r;y++) for(let x=-r;x<=r;x++){
+      if(x*x+y*y<=r2){
+        const xx=(x0|0)+x, yy=(y0|0)+y;
+        if(inb(xx,yy)) seen[idx(xx,yy)]=1;
+      }
+    }
+  }
 
-  // Material fields (0..1)
+  // ---------- Materials ----------
+  // 0..1 fields
   const foam = new Float32Array(W*H);        // insulates both hazards, medium decay
   const precursor = new Float32Array(W*H);   // paintable, converts → gel
   const gel = new Float32Array(W*H);         // formed gradually, slows motion
 
-  let player = {x: W/2, y:H/2, health: 100, alive:true};
-  let keys = new Set();
+  // ---------- Player ----------
+  let player = {x: Math.round(W/2), y: Math.round(H/2), fx: W/2, fy: H/2, health: 100, alive:true};
+  const keys = new Set();
+  const mouse = {x:0, y:0, down:false};
+  let currentTool='heat';
+  const toolNames = {heat:'Heat', cool:'Cool', shear:'Stir/Shear', ph:'pH Drop', foam:'Foam', gel:'Gel Precursor', spheres:'Spheres'};
+  let brush=3; // cells
+  function updateOverlay(){
+    document.getElementById('toolName').textContent = toolNames[currentTool] || currentTool;
+    document.getElementById('brush').textContent = brush;
+  }
 
-  let goals=[];
-  let hazards=[];
-  let colonies=[]; // hidden nodes you reveal/activate
-  let spheres=[];  // neutralising beads
+  // ---------- Hazards & Systems ----------
+  let goals=[];          // visit points
+  let hazards=[];        // heat / acid / collapse
+  let colonies=[];       // hidden meta nodes
+  let spheres=[];        // neutralising beads
 
-  // Ingredient pickups (Hidden until seen)
+  // Ingredient pickups
   let ingredients=[]; // {x,y,type:'agar'|'lecithin'|'cacl2', picked:false}
   const buffs={ agar:0, lecithin:0, cacl2:0 };
   const BUFF_MAXS={ agar:60, lecithin:60, cacl2:60 };
-  let pendingTraits=[]; // applied at next plating
+  let pendingTraits=[]; // for plating motifs
 
   // Hidden Depths
-  let secrets=[]; // {type:'crystal'|'modifier'|'equipment', x,y, revealed:false, state:..., id:...}
+  let secrets=[]; // {type:'crystal'|'modifier'|'equipment', x,y, revealed:false, state:{...}, id?:string}
   const scoreMods = { warmthShift:0, brightnessShift:0, textureShift:0, aerationShift:0, widen:1.0 };
 
-  // Serving / Dish
+  // Serving
   let servingStation = null; // {x,y,r}
-  let dishes = []; let lastDish=null; let pendingDishEval=null; // used before origami
+  let dishes = []; let lastDish=null; let pendingDishEval=null;
 
   // Story / Narrative
   const COURSE_TITLES = [
-    'Nitro-Poached Aperitif', 'Snail Porridge', 'Sound of the Sea', 'Hot & Iced Tea', 'Mock Turtle Consommé', 'Bacon & Egg Ice Cream', 'Counting Sheep'
+    'Nitro-Poached Aperitif','Snail Porridge','Sound of the Sea','Hot & Iced Tea','Mock Turtle Consommé','Bacon & Egg Ice Cream','Counting Sheep'
   ];
   let story = { course:1, mood:0.5, title: COURSE_TITLES[0] };
 
-  // Modifiers from Gifts/Curses
+  // Gifts/Curses (mutations)
   const mods = { acidDrift:1, heatJitter:1, foamMitigation:1, sphereRate:1, visionBonus:0, gelSlow:1, collapseRate:1, coolVsHeat:1 };
   let activeMutations = [];
-
-  // Mutation catalog (gifts & curses)
   const MUTATIONS = {
-    gift_rotavap: { name:'Rotavap Whisper', type:'gift', who:'The Sommelier From Beyond', flavor:'A glass coil condenses regrets into clarity. Acidity flows softer.', apply(){ mods.acidDrift *= 0.85; } },
-    gift_nitro_poacher: { name:'Nitro Poacher', type:'gift', who:'The Nitrogen Jester', flavor:'Frost blooms in your palm. Cooling tool bites deeper into heat.', apply(){ mods.coolVsHeat *= 1.35; } },
+    gift_rotavap: { name:'Rotavap Whisper', type:'gift', who:'The Sommelier From Beyond', flavor:'Glass coil condenses regrets into clarity. Acidity flows softer.', apply(){ mods.acidDrift *= 0.85; } },
+    gift_nitro_poacher: { name:'Nitro Poacher', type:'gift', who:'The Nitrogen Jester', flavor:'Frost blooms in your palm. Cooling tool bites deeper.', apply(){ mods.coolVsHeat *= 1.35; } },
     gift_pacojet_pulse: { name:'Pacojet Pulse', type:'gift', who:'The Chorus of Oysters', flavor:'Microblades sing. Your spheres persist and work harder.', apply(){ mods.sphereRate *= 1.4; } },
     gift_isi_siphon: { name:'ISI Siphon Hymn', type:'gift', who:'Childhood Memory of Bacon & Egg Ice Cream', flavor:'A siphon coughs out impossible air. Foam shelters more.', apply(){ mods.foamMitigation *= 1.25; } },
     gift_white_rabbit: { name:'White Rabbit Watch', type:'gift', who:'The Mad Hatter', flavor:'Time bends; vision widens at the edges of thought.', apply(){ mods.visionBonus += 3; } },
@@ -253,520 +320,1051 @@
     curse_quantum_oven: { name:'Quantum Oven', type:'curse', who:'The Snail Oracle', flavor:'Heat exists in two places at once and neither is kind.', apply(){ mods.heatJitter *= 1.35; } },
     curse_gel_failure: { name:'Set Too Soon', type:'curse', who:'Unseen Commis', flavor:'Gel clutches greedily; slowing is fickle unless thick.', apply(){ mods.gelSlow *= 0.8; } }
   };
-
-  function mutationPill(id){ const m=MUTATIONS[id]; const cls = 'pill '+(m.type==='gift'?'gift':'curse'); return `<span class="${cls}">${m.name}</span>`; }
-
-  // --- tool + brush state ---
-  const toolNames = {heat:'Heat', cool:'Cool', shear:'Stir/Shear', ph:'pH Drop', foam:'Foam', gel:'Gel Precursor', spheres:'Spheres'};
-  let currentTool='heat';
-  let brush=3; // in grid cells
-  const mouse={x:0,y:0,down:false};
-
-  // damage telegraph
-  let damageFlash = 0; // 0..1
-
-  // Interlude state
-  let inInterlude = false; let interOptions = [];
-
-  // --- Assembly (Zachlike) state ---
-  let inAssembly = false; let assemblyFor=null; let asmInit=false;
-  const asm = { W: 14, H: 7, CELL: 64, tiles: [], inv: null, sel: 'pipe', hover:{x:-1,y:-1}, placeRot:0 };
-  let assemblyFlow = { fanVec:{x:0,y:0}, damper:0, heater:0, pressureBonus:0 };
+  function mutationPill(id){ const m=MUTATIONS[id]; const cls='pill '+(m.type==='gift'?'gift':'curse'); return `<span class="${cls}">${m.name}</span>`; }
 
   // Reviewer Gaze Cones
-  const gazes=[ // swept spotlights
-    {x: W*0.25, y:H*0.35, ang: Math.random()*Math.PI*2, speed:0.5, arc:0.75, len:18},
-    {x: W*0.70, y:H*0.55, ang: Math.random()*Math.PI*2, speed:-0.35, arc:0.6, len:22},
-    {x: W*0.50, y:H*0.25, ang: Math.random()*Math.PI*2, speed:0.42, arc:0.5, len:16},
+  const gazes=[
+    {x: W*0.25, y:H*0.35, ang: Math.random()*Math.PI*2, speed:0.5,  arc:0.75, len:18},
+    {x: W*0.70, y:H*0.55, ang: Math.random()*Math.PI*2, speed:-0.35, arc:0.6,  len:22},
+    {x: W*0.50, y:H*0.25, ang: Math.random()*Math.PI*2, speed:0.42, arc:0.5,  len:16},
   ];
 
-  // Aroma Drafts (vector field)
-  function draftAt(x,y){ // base sinusoidal bands
+  // Aroma Drafts (vector field) + arrows
+  let time = 0;
+  let assemblyFlow = { fanVec:{x:0,y:0}, damper:0, heater:0, pressureBonus:0 };
+  function draftAt(x,y){
     const s1 = Math.sin((y*0.12)+time*0.6)*0.4;
     const s2 = Math.cos((x*0.08)-time*0.45)*0.25;
-    let vx = s2 + assemblyFlow.fanVec.x*0.8; // assembly fans bend flow
+    let vx = s2 + assemblyFlow.fanVec.x*0.8;
     let vy = s1 + assemblyFlow.fanVec.y*0.8;
-    // dampers reduce amplitude
     const damp = 1/(1+0.4*assemblyFlow.damper);
     return [vx*damp, vy*damp];
   }
 
-  // diagnostics button
-  document.getElementById('runTestsBtn').addEventListener('click', runTests);
+  // ---------- UI panels ----------
+  function renderGoalsList(){
+    const box=document.getElementById('goals'); box.innerHTML='';
+    goals.forEach((g,i)=>{ const div=document.createElement('div'); div.textContent=`Goal ${i+1}: visit (${g.x},${g.y}) ${g.done?'✓':''}`; div.style.color=g.done?'#9f9':'#fff'; box.appendChild(div); });
+  }
+  function renderHazardsList(){
+    const box=document.getElementById('hazards'); box.innerHTML='';
+    hazards.forEach((h)=>{ if(h.dead) return; const div=document.createElement('div');
+      div.textContent=`${h.type}${h.ttl?'/collapse':''} @ (${Math.round(h.x)},${Math.round(h.y)}) s:${h.strength.toFixed(1)} r:${h.radius.toFixed(1)}`;
+      div.style.color=h.type==='heat'?'#f66':(h.type==='acid'?'#6cf':'#e6b3ff');
+      box.appendChild(div);
+    });
+  }
+  function renderColoniesList(){
+    const box=document.getElementById('colonies'); box.innerHTML='';
+    colonies.forEach((c,i)=>{ const div=document.createElement('div'); div.textContent=`Colony ${i+1}: ${c.activated?'activated':(c.revealed?'revealed':'hidden')}`; div.style.color=c.activated?'#b8ffdc':(c.revealed?'#cfe7ff':'#7a8694'); box.appendChild(div); });
+  }
+  function updateNarrativePanel(){
+    const c = document.getElementById('narrCourse');
+    c.innerHTML = `Course <b>${story.course}</b>: ${story.title}`;
+    const moodTxt = story.mood<0.3? 'hostile' : story.mood<0.5? 'skeptical' : story.mood<0.7? 'intrigued' : 'rapt';
+    const moodBar = `<div style="height:6px; background:#0a0f12; border:1px solid #1b2229; border-radius:6px; overflow:hidden;"><div style="height:100%; width:${Math.round(story.mood*100)}%; background:linear-gradient(90deg,#9fe7b9,#b8ffdc)"></div></div>`;
+    document.getElementById('narrMood').innerHTML = `Reviewers: <b>${moodTxt}</b><br/>${moodBar}`;
+    document.getElementById('mutations').innerHTML = activeMutations.map(mutationPill).join('');
+  }
+  function updateDepthsPanel(){
+    const box=document.getElementById('depthList');
+    box.innerHTML = secrets.filter(s=>s.revealed).map(s=>{
+      const n = s.type==='crystal'? 'Unstable Crystal' : s.type==='modifier'? 'Palate Thread' : s.type==='equipment'? (s.id==='rotavap'?'Rotavap Coil':'Chef Gadget') : '???';
+      const st = s.type==='crystal' ? (s.state?.stabilised? 'stabilised' : 'unstable') : s.type==='modifier' ? (s.state?.claimed? 'attuned' : 'latent') : s.type==='equipment' ? (s.state?.built? 'built' : 'broken') : '';
+      return `<div>• ${n} @ (${s.x},${s.y}) — <span style="color:#cfe7ff">${st}</span></div>`;
+    }).join('') || '<div>Explore to discover hidden sites…</div>';
+  }
+  function renderServingPanel(){
+    const box=document.getElementById('serving'); if(!box) return;
+    const traits = pendingTraits.length? ` — motifs: <span style="color:#b8ffdc">${pendingTraits.join(', ')}</span>` : '';
+    if(!servingStation){
+      box.innerHTML = allGoalsComplete() ? 'Station: <span style="color:#b8ffdc">preparing…</span>' : 'Station: <span style="color:#9fb0be">Locked — complete all goals</span>';
+    } else {
+      box.innerHTML = `Station at (<b>${servingStation.x}</b>,<b>${servingStation.y}</b>) — enter ring & press <span class="k">F</span>${traits}`;
+    }
+    const last = document.getElementById('lastDish');
+    if(lastDish){
+      last.innerHTML = `Last Dish → Score: <b>${(lastDish.score*100|0)}%</b><br/>Warmth ${pct(lastDish.warmth)} • Brightness ${pct(lastDish.brightness)}<br/>Texture ${pct(lastDish.texture)} • Aeration ${pct(lastDish.aeration)}<br/>Plating bonus: ${(Math.round(((lastDish.platingBonus||1)-1)*100))}%`;
+    } else last.textContent = 'No dish served yet.';
+  }
 
-  function updateOverlay(){ document.getElementById('toolName').textContent = toolNames[currentTool] || currentTool; document.getElementById('brush').textContent = brush; }
-  function updateNarrativePanel(){ const c = document.getElementById('narrCourse'); c.innerHTML = `Course <b>${story.course}</b>: ${story.title}`; const moodTxt = story.mood<0.3? 'hostile' : story.mood<0.5? 'skeptical' : story.mood<0.7? 'intrigued' : 'rapt'; const moodBar = `<div style="height:6px; background:#0a0f12; border:1px solid #1b2229; border-radius:6px; overflow:hidden;"><div style="height:100%; width:${Math.round(story.mood*100)}%; background:linear-gradient(90deg,#9fe7b9,#b8ffdc)"></div></div>`; document.getElementById('narrMood').innerHTML = `Reviewers: <b>${moodTxt}</b><br/>${moodBar}`; document.getElementById('mutations').innerHTML = activeMutations.map(mutationPill).join(''); }
+  // ---------- Toast ----------
+  function showToast(msg, duration=1200){
+    const t = document.getElementById('toast'); if(!t){ console.log('[toast]', msg); return; }
+    t.textContent = String(msg); t.style.opacity = 1;
+    clearTimeout(t._to); t._to = setTimeout(()=>{ t.style.opacity = 0; }, duration);
+  }
 
-  function updateDepthsPanel(){ const box = document.getElementById('depthList'); box.innerHTML = secrets.filter(s=>s.revealed).map(s=>{ const n = s.type==='crystal'? 'Unstable Crystal' : s.type==='modifier'? 'Palate Thread' : s.type==='equipment'? (s.id==='rotavap'?'Rotavap Coil':'Chef Gadget') : '???'; const st = s.type==='crystal' ? (s.state?.stabilised? 'stabilised' : 'unstable') : s.type==='modifier' ? (s.state?.claimed? 'attuned' : 'latent') : s.type==='equipment' ? (s.state?.built? 'built' : 'broken') : ''; return `<div>• ${n} @ (${s.x},${s.y}) — <span style="color:#cfe7ff">${st}</span></div>`; }).join('') || '<div>Explore to discover hidden sites…</div>'; }
+  // ---------- Helpers ----------
+  function pct(v){ return Math.round(v*100)+'%'; }
+  function clamp01(v){ return Math.max(0, Math.min(1, v)); }
+  function paintCircle(field, x0, y0, r, amount){
+    const r2=r*r, xi=Math.floor(x0), yi=Math.floor(y0);
+    for(let y=-r;y<=r;y++) for(let x=-r;x<=r;x++){
+      if(x*x+y*y<=r2){ const xx=xi+x, yy=yi+y; if(inb(xx,yy)){ const i=idx(xx,yy); field[i]=Math.min(1, field[i]+amount); } }
+    }
+  }
+  function averageField(field, x0, y0, r=3){
+    const r2=r*r; let acc=0, n=0; const xi=Math.floor(x0), yi=Math.floor(y0);
+    for(let y=-r;y<=r;y++) for(let x=-r;x<=r;x++){
+      if(x*x+y*y<=r2){ const xx=xi+x, yy=yi+y; if(inb(xx,yy)){ acc += field[idx(xx,yy)]; n++; } }
+    }
+    return n? acc/n : 0;
+  }
+  function sampleField(field, x, y){
+    const xi=Math.max(0,Math.min(W-1, Math.floor(x)));
+    const yi=Math.max(0,Math.min(H-1, Math.floor(y)));
+    return field[idx(xi,yi)];
+  }
 
-  function idx(x,y){ return x + y*W; }
-  function inb(x,y){ return x>=0 && y>=0 && x<W && y<H; }
-
-  // --- Toast helper ---
-  function showToast(msg, duration=1200){ const t = document.getElementById('toast'); if(!t){ console.log('[toast]', msg); return; } t.textContent = String(msg); t.style.opacity = 1; clearTimeout(t._to); t._to = setTimeout(() => { t.style.opacity = 0; }, duration); }
-
-  // --- Field helpers ---
-  function paintCircle(field, x0, y0, r, amount){ const r2=r*r; const xi=Math.floor(x0), yi=Math.floor(y0); for(let y=-r;y<=r;y++) for(let x=-r;x<=r;x++){ if(x*x+y*y<=r2){ const xx=xi+x, yy=yi+y; if(inb(xx,yy)){ const i=idx(xx,yy); field[i] = Math.min(1, field[i] + amount); } } } }
-  function averageField(field, x0, y0, r){ const r2=r*r; let acc=0, n=0; const xi=Math.floor(x0), yi=Math.floor(y0); for(let y=-r;y<=r;y++) for(let x=-r;x<=r;x++){ if(x*x+y*y<=r2){ const xx=xi+x, yy=yi+y; if(inb(xx,yy)){ acc += field[idx(xx,yy)]; n++; } } } return n? acc/n : 0; }
-  function sampleField(field, x, y){ const xi=Math.max(0,Math.min(W-1, Math.floor(x))), yi=Math.max(0,Math.min(H-1, Math.floor(y))); return field[idx(xi,yi)]; }
-
-  function revealAt(x0,y0,r){ const r2=r*r; for(let y=-r;y<=r;y++) for(let x=-r;x<=r;x++){ if(x*x+y*y<=r2){ const xx=(x0|0)+x, yy=(y0|0)+y; if(inb(xx,yy)) seen[idx(xx,yy)]=1; } } }
-
+  // ---------- Goals / Serving ----------
   function allGoalsComplete(){ return goals.length>0 && goals.every(g=>g.done); }
+  function maybeSpawnServingStation(){
+    if(servingStation || !allGoalsComplete()) return;
+    servingStation = { x: Math.floor(W/2 + (Math.random()-0.5)*10), y: Math.floor(H/2 + (Math.random()-0.5)*8), r: 5 };
+    showToast('Serving station is open — press F inside the ring!');
+    renderServingPanel();
+  }
 
-  function maybeSpawnServingStation(){ if(servingStation || !allGoalsComplete()) return; servingStation = { x: Math.floor(W/2 + (Math.random()-0.5)*10), y: Math.floor(H/2 + (Math.random()-0.5)*8), r: 5 }; showToast('Serving station is open — press F inside the ring!'); renderServingPanel(); }
+  function fieldContributionAt(type, x0, y0){
+    let s=0; hazards.forEach(h=>{ if(!h.dead && h.type===type){ const dx=x0-h.x, dy=y0-h.y; s += h.strength/(1+dx*dx+dy*dy); }});
+    return s;
+  }
+  const TARGETS = { warmth: [0.4, 0.7], brightness: [0.2, 0.5], texture: [0.3, 0.8], aeration: [0.1, 0.6] };
+  function evaluateDishAt(x0,y0){
+    const heat = fieldContributionAt('heat', x0, y0);
+    const acid = fieldContributionAt('acid', x0, y0);
+    const warmth = clamp01(0.5*heat + scoreMods.warmthShift);
+    const brightness = clamp01(0.5*acid + scoreMods.brightnessShift);
+    const texture = clamp01(averageField(gel, x0, y0, 4) + scoreMods.textureShift);
+    const aeration = clamp01(averageField(foam, x0, y0, 4) + scoreMods.aerationShift);
+    const widen = scoreMods.widen || 1;
+    const cs = (v,[lo,hi])=>{ lo=clamp01(lo); hi=clamp01(hi); if(v>=lo&&v<=hi) return 1; const d=v<lo?lo-v:v-hi; return clamp01(1 - d/(0.3*widen)); };
+    const sw=cs(warmth,TARGETS.warmth), sb=cs(brightness,TARGETS.brightness), st=cs(texture,TARGETS.texture), sa=cs(aeration,TARGETS.aeration);
+    const score=(sw+sb+st+sa)/4;
+    return { warmth, brightness, texture, aeration, score };
+  }
+  function updateMood(score){ story.mood = clamp01(story.mood + (score-0.5)*0.35); updateNarrativePanel(); }
 
+  function attemptServe(){
+    if(!servingStation){ showToast('Station not ready'); return false; }
+    const dx=player.x-servingStation.x, dy=player.y-servingStation.y;
+    if(dx*dx+dy*dy > servingStation.r*servingStation.r){ showToast('Step into the ring to serve'); return false; }
+    const m = evaluateDishAt(servingStation.x, servingStation.y);
+    pendingDishEval = m;
+    openOrigami();
+    return true;
+  }
+
+  // ---------- Damage ----------
+  function hazardDPSAt(x,y){
+    let dps=0;
+    hazards.forEach(h=>{
+      if(h.dead) return;
+      const r=(h.radius*h.strength) + Math.sin(h.phase)*2;
+      const dx=x-h.x, dy=y-h.y;
+      if(dx*dx+dy*dy<r*r){
+        if(h.type==='heat') dps += 10*h.strength;
+        else if(h.type==='acid') dps += 15*h.strength;
+        else if(h.type==='collapse') dps += 25;
+      }
+    });
+    return dps;
+  }
+  function inGazeFactor(x,y){
+    let f=0;
+    gazes.forEach(g=>{
+      const dx=x-g.x, dy=y-g.y; const d=Math.hypot(dx,dy); if(d>g.len) return;
+      const ang=Math.atan2(dy,dx); let a=(ang-g.ang+Math.PI*2)%(Math.PI*2); if(a>Math.PI) a-=Math.PI*2;
+      if(Math.abs(a) <= g.arc*0.5){ f = Math.max(f, 1 - d/g.len); }
+    });
+    return f;
+  }
+  function effectiveDPSAt(x,y){
+    const base = hazardDPSAt(x,y);
+    const f = sampleField(foam,x,y); // foam mitigates both
+    let mult = 1 + 0.35*inGazeFactor(x,y); // reviewer gaze amplifies
+    const g = sampleField(gel,x,y); // gel dulls a bit
+    const dull = Math.max(0, 1 - (0.5*f + 0.25*g));
+    mult = 1 + (mult-1)*dull;
+    return base * (1 - 0.6*mods.foamMitigation*f) * mult;
+  }
+  let damageFlash = 0;
+  function takeDamage(amount){
+    player.health -= amount;
+    if(player.health<0) player.health=0;
+    damageFlash = Math.min(1, damageFlash + amount*0.02);
+    if(player.health<=0 && player.alive){ player.alive=false; showToast('You perished in the dish!'); reset(); }
+  }
+
+  // ---------- Swirl ----------
+  let swirlPhase = 0; function swirlCenter(){ swirlPhase += 0.2/60; const cx = W/2 + Math.cos(swirlPhase)*6; const cy = H/2 + Math.sin(swirlPhase)*4; return {cx, cy}; }
+
+  // ---------- Hazard update ----------
+  function updateGazes(dt){ gazes.forEach(g=>{ g.ang += g.speed*dt; }); }
+
+  function updateHazards(dt){
+    const {cx, cy} = swirlCenter();
+    hazards.forEach(h=>{
+      if(h.dead) return; h.phase += dt; if(h.splitCd>0) h.splitCd = Math.max(0, h.splitCd - dt);
+      const [dvx,dvy] = draftAt(h.x,h.y);
+
+      if(h.type==='acid'){
+        // swirl around center & drift with drafts, slow if gel present
+        const rx = h.x - cx, ry = h.y - cy; const dist = Math.hypot(rx, ry) + 1e-6;
+        const tx = -ry/dist, ty = rx/dist;
+        const g = sampleField(gel, h.x, h.y);
+        const slowA = 1 - (0.3*mods.gelSlow)*g;
+        const slowV = 1 - (0.5*mods.gelSlow)*g;
+        let swirlAccel = (1.2 * slowA) / (1 + 0.05*dist);
+        swirlAccel *= mods.acidDrift;
+        h.vx = (h.vx||0) + tx * swirlAccel * dt + dvx*0.8*dt;
+        h.vy = (h.vy||0) + ty * swirlAccel * dt + dvy*0.8*dt;
+        h.vx = h.vx*0.985*slowV + (Math.random()-0.5)*0.02;
+        h.vy = h.vy*0.985*slowV + (Math.random()-0.5)*0.02;
+        h.x += h.vx * dt * 12; h.y += h.vy * dt * 12;
+      }
+      else if(h.type==='heat'){
+        // jitter (convective “jitter”), lightly bent by drafts
+        h.vx = (h.vx||0) + (Math.random()-0.5) * (1.2*mods.heatJitter) * dt + dvx*0.5*dt;
+        h.vy = (h.vy||0) + (Math.random()-0.5) * (1.2*mods.heatJitter) * dt + dvy*0.5*dt;
+        const vmax = 1.5; const sp = Math.hypot(h.vx,h.vy); if(sp>vmax){ h.vx*=vmax/sp; h.vy*=vmax/sp; }
+        h.vx *= 0.9; h.vy *= 0.9;
+        h.x += h.vx * dt * 6; h.y += h.vy * dt * 6;
+      }
+      else if(h.type==='collapse'){
+        h.ttl -= dt; h.radius = Math.max(1.5, h.radius - 6*dt); if(h.ttl<=0) h.dead=true;
+      }
+
+      // bounds
+      if(h.x<0){ h.x=0; h.vx*=-0.6; } if(h.x>W-1){ h.x=W-1; h.vx*=-0.6; }
+      if(h.y<0){ h.y=0; h.vy*=-0.6; } if(h.y>H-1){ h.y=H-1; h.vy*=-0.6; }
+
+      if(h.strength<=0.01) h.dead=true;
+    });
+
+    // Unstable crystals emit collapses
+    secrets.forEach(s=>{
+      if(s.type==='crystal' && s.revealed && !s.state.stabilised){
+        if(Math.random() < dt*0.25){
+          hazards.push({ x: s.x + (Math.random()-0.5)*3, y: s.y + (Math.random()-0.5)*3, type:'collapse', radius:6, phase:0, strength:1, splitCd:0, vx:0, vy:0, ttl:1.6, dead:false });
+        }
+      }
+    });
+
+    // Coalescence (merge acid pools)
+    const merged = coalesceHazards();
+
+    // Random collapses as pressure builds
+    if(Math.random() < dt * 0.02 * mods.collapseRate){
+      const base = hazards.find(z=>!z.dead) || {x:W/2,y:H/2};
+      hazards.push({ x: Math.max(2,Math.min(W-3, base.x + (Math.random()-0.5)*10)), y: Math.max(2,Math.min(H-3, base.y + (Math.random()-0.5)*8)), type:'collapse', radius:8, phase:0, strength:1, splitCd:0, vx:0, vy:0, ttl:2.0, dead:false });
+    }
+
+    if(merged || (hazards.length>0 && Math.random()<0.05)){ hazards = hazards.filter(h=>!h.dead); renderHazardsList(); }
+  }
+
+  function coalesceHazards(){
+    let changed=false;
+    for(let i=0;i<hazards.length;i++){
+      const a=hazards[i]; if(!a||a.dead||a.type!=='acid') continue;
+      for(let j=i+1;j<hazards.length;j++){
+        const b=hazards[j]; if(!b||b.dead||b.type!=='acid') continue;
+        const dx=b.x-a.x, dy=b.y-a.y; const dist2=dx*dx+dy*dy;
+        const ra=(a.radius*a.strength), rb=(b.radius*b.strength);
+        const thresh=Math.min(ra,rb)*0.9;
+        if(dist2 <= thresh*thresh){
+          const areaA=a.radius*a.radius, areaB=b.radius*b.radius;
+          const mA=areaA*a.strength, mB=areaB*b.strength, mT=mA+mB+1e-6;
+          const nx=(a.x*mA+b.x*mB)/mT, ny=(a.y*mA+b.y*mB)/mT;
+          const nvx=((a.vx||0)*mA + (b.vx||0)*mB)/mT, nvy=((a.vy||0)*mA + (b.vy||0)*mB)/mT;
+          const nradius=Math.min(12, Math.sqrt(areaA+areaB));
+          const nstrength=Math.max(0.2, Math.min(2.0, (mT/(areaA+areaB+1e-6))));
+          a.x=nx; a.y=ny; a.vx=nvx; a.vy=nvy; a.radius=nradius; a.strength=nstrength; a.splitCd=Math.max(a.splitCd||0,0.3);
+          b.dead=true; changed=true;
+        }
+      }
+    }
+    return changed;
+  }
+
+  function splitHazard(h){
+    const parts = 2 + Math.floor(Math.random()*2);
+    const baseR = Math.max(2, h.radius * 0.6);
+    const baseS = Math.max(0.4, h.strength * 0.6);
+    for(let i=0;i<parts;i++){
+      const ang = Math.random()*Math.PI*2;
+      const off = baseR * (0.7 + Math.random()*0.6);
+      let nx = h.x + Math.cos(ang)*off;
+      let ny = h.y + Math.sin(ang)*off;
+      nx = Math.max(0, Math.min(W-1, nx));
+      ny = Math.max(0, Math.min(H-1, ny));
+      const pvx = h.vx||0, pvy = h.vy||0;
+      const theta = (Math.random()-0.5) * (Math.PI/6);
+      const cosT = Math.cos(theta), sinT = Math.sin(theta);
+      const ivx = pvx*cosT - pvy*sinT, ivy = pvx*sinT + pvy*cosT;
+      const speedScale = 0.8 + Math.random()*0.4;
+      hazards.push({ x:nx, y:ny, type:h.type, radius: baseR * (0.9 + Math.random()*0.3), phase: Math.random()*Math.PI*2, strength: baseS * (0.8 + Math.random()*0.4), splitCd: 0.6 + Math.random()*0.4, vx: ivx*speedScale + (Math.random()-0.5)*0.05, vy: ivy*speedScale + (Math.random()-0.5)*0.05, ttl:null, dead:false });
+    }
+    h.dead = true;
+  }
+
+  // ---------- Materials update ----------
+  function updateMaterials(dt){
+    // Foam decay (medium), boosted by lecithin buff
+    const decay = 0.03 * dt * (1-0.15*buffs.lecithin);
+    for(let i=0;i<foam.length;i++){ foam[i]=Math.max(0, foam[i]-decay); }
+
+    // Gel formation: precursor → gel gradually, catalysed by acid/heat
+    for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+      const i=idx(x,y);
+      let acidField=0, heatField=0;
+      hazards.forEach(h=>{
+        if(h.dead) return;
+        const dx=x-h.x, dy=y-h.y; const d2=dx*dx+dy*dy;
+        const w= h.strength/(1+d2);
+        if(h.type==='acid') acidField += w;
+        else if(h.type==='heat') heatField += w;
+      });
+      if(precursor[i]>0){
+        const rate = (0.5*acidField + 0.2*heatField) * dt * (1+0.3*buffs.agar);
+        const d = Math.min(precursor[i], rate);
+        precursor[i] -= d; gel[i] = Math.min(1, gel[i] + d);
+      }
+    }
+  }
+
+  // ---------- Spheres ----------
+  function spawnSpheres(x0,y0){
+    const n = Math.max(1, Math.floor(brush/3));
+    for(let i=0;i<n;i++){
+      const jitter=(Math.random()-0.5)*(brush*0.6);
+      spheres.push({ x:x0+jitter, y:y0+jitter, vx:0, vy:0, life:8.0, r:2.2 });
+    }
+  }
+  function updateSpheres(dt){
+    const {cx, cy} = swirlCenter();
+    spheres.forEach(s=>{
+      const [dvx,dvy] = draftAt(s.x,s.y);
+      const rx=s.x-cx, ry=s.y-cy; const dist=Math.hypot(rx,ry)+1e-6;
+      const tx=-ry/dist, ty=rx/dist; const accel=1.0/(1+0.05*dist);
+      s.vx += (tx*accel + dvx*0.6) * dt;
+      s.vy += (ty*accel + dvy*0.6) * dt;
+      s.vx *= 0.985; s.vy *= 0.985;
+      s.x += s.vx * dt * 12; s.y += s.vy * dt * 12;
+
+      if(s.x<0){s.x=0; s.vx*=-0.4;} if(s.x>W-1){s.x=W-1; s.vx*=-0.4;}
+      if(s.y<0){s.y=0; s.vy*=-0.4;} if(s.y>H-1){s.y=H-1; s.vy*=-0.4;}
+
+      let interacting=false;
+      hazards.forEach(h=>{
+        if(h.dead || h.type!=='acid') return;
+        const dx=s.x-h.x, dy=s.y-h.y;
+        const r=h.radius*h.strength + Math.sin(h.phase)*2;
+        if(dx*dx+dy*dy < (r+2)*(r+2)){
+          h.strength = Math.max(0, h.strength - (0.15*mods.sphereRate*(1+0.2*buffs.cacl2))*dt);
+          interacting=true;
+        }
+      });
+      s.life -= (0.15 + (interacting?0.35:0))*dt; // keeps neutralising until dissolve
+    });
+    spheres = spheres.filter(s=>s.life>0);
+  }
+
+  // ---------- Spawn world ----------
+  function spawnIngredients(){
+    for(let i=0;i<4;i++){
+      const t = (['agar','lecithin','cacl2'])[i%3];
+      ingredients.push({ x:Math.floor(Math.random()*W), y:Math.floor(Math.random()*H), type:t, picked:false });
+    }
+  }
+  function applyIngredient(type){
+    buffs[type] = Math.min(BUFF_MAXS[type], buffs[type] + 25);
+    pendingTraits.push(type==='agar'?'lattice':type==='lecithin'?'foam motif':'pearls');
+    showToast(`Picked ${type}!`);
+    renderBuffHUD();
+  }
+  function spawnSecrets(){
+    // A crystal
+    secrets.push({ type:'crystal', x:Math.floor(Math.random()*W), y:Math.floor(Math.random()*H), revealed:false, state:{stabilised:false} });
+    // A palate modifier
+    secrets.push({ type:'modifier', x:Math.floor(Math.random()*W), y:Math.floor(Math.random()*H), revealed:false, state:{claimed:false} });
+    // Equipment site
+    secrets.push({ type:'equipment', id:'rotavap', x:Math.floor(Math.random()*W), y:Math.floor(Math.random()*H), revealed:false, state:{built:false} });
+  }
+
+  // ---------- Reset / New run ----------
   function resetFieldsAndWorld(){
     seen.fill(0); foam.fill(0); precursor.fill(0); gel.fill(0); spheres.length=0; secrets.length=0; ingredients.length=0; pendingTraits.length=0; pendingDishEval=null;
     goals=[]; hazards=[]; colonies=[]; servingStation=null; lastDish=null;
 
     for(let i=0;i<3;i++) goals.push({x:Math.floor(Math.random()*W), y:Math.floor(Math.random()*H), done:false});
-    for(let i=0;i<6;i++){ const type = Math.random()<0.5?'heat':'acid'; hazards.push({ x:Math.floor(Math.random()*W), y:Math.floor(Math.random()*H), type, radius: 4 + Math.random()*4, phase: Math.random()*Math.PI*2, strength: 1.0, splitCd: 0, vx: type==='acid' ? (Math.random()-0.5)*0.6 : 0, vy: type==='acid' ? (Math.random()-0.5)*0.6 : 0, ttl: null, dead:false }); }
+
+    for(let i=0;i<6;i++){
+      const type = Math.random()<0.5?'heat':'acid';
+      hazards.push({ x:Math.floor(Math.random()*W), y:Math.floor(Math.random()*H), type, radius: 4 + Math.random()*4, phase: Math.random()*Math.PI*2, strength: 1.0, splitCd: 0, vx: type==='acid' ? (Math.random()-0.5)*0.6 : 0, vy: type==='acid' ? (Math.random()-0.5)*0.6 : 0, ttl: null, dead:false });
+    }
     for(let i=0;i<4;i++) colonies.push({ x:Math.floor(Math.random()*W), y:Math.floor(Math.random()*H), revealed:false, activated:false });
 
-    // Ingredients
     spawnIngredients();
-
-    // Hidden depths: crystals, modifiers, equipment
     spawnSecrets();
 
     renderGoalsList(); renderHazardsList(); renderColoniesList(); renderServingPanel(); updateOverlay(); updateNarrativePanel(); updateDepthsPanel();
   }
-
-  function reset(){ player = {x: W/2, y:H/2, health: 100, alive:true}; story = {course:1, mood:0.5, title: COURSE_TITLES[0]}; activeMutations = []; Object.assign(mods,{ acidDrift:1, heatJitter:1, foamMitigation:1, sphereRate:1, visionBonus:0, gelSlow:1, collapseRate:1, coolVsHeat:1 }); Object.assign(scoreMods,{ warmthShift:0, brightnessShift:0, textureShift:0, aerationShift:0, widen:1.0 }); Object.assign(buffs,{agar:0,lecithin:0,cacl2:0}); assemblyFlow={fanVec:{x:0,y:0}, damper:0, heater:0, pressureBonus:0}; resetFieldsAndWorld(); renderBuffHUD(); }
-
-  function nextCourse(){ story.course++; story.title = COURSE_TITLES[(story.course-1) % COURSE_TITLES.length]; player.health = Math.min(100, player.health + 20); resetFieldsAndWorld(); showToast(`Course ${story.course}: ${story.title}`); }
-
-  function renderGoalsList(){ const box=document.getElementById('goals'); box.innerHTML=''; goals.forEach((g,i)=>{ const div=document.createElement('div'); div.textContent=`Goal ${i+1}: visit (${g.x},${g.y}) ${g.done?'✓':''}`; div.style.color=g.done?'#9f9':'#fff'; box.appendChild(div); }); }
-  function renderHazardsList(){ const box=document.getElementById('hazards'); box.innerHTML=''; hazards.forEach((h)=>{ if(h.dead) return; const div=document.createElement('div'); div.textContent=`${h.type}${h.ttl?'/collapse':''} @ (${Math.round(h.x)},${Math.round(h.y)}) s:${h.strength.toFixed(1)} r:${h.radius.toFixed(1)}`; div.style.color=h.type==='heat'?'#f66':(h.type==='acid'?'#6cf':'#e6b3ff'); box.appendChild(div); }); }
-  function renderColoniesList(){ const box=document.getElementById('colonies'); box.innerHTML=''; colonies.forEach((c,i)=>{ const div=document.createElement('div'); div.textContent=`Colony ${i+1}: ${c.activated?'activated':'hidden'}`; div.style.color=c.activated?'#b8ffdc':(c.revealed?'#cfe7ff':'#7a8694'); box.appendChild(div); }); }
-  function renderServingPanel(){ const box=document.getElementById('serving'); if(!box) return; const traits = pendingTraits.length? ` — motifs: <span style="color:#b8ffdc">${pendingTraits.join(', ')}</span>` : '';
-    if(!servingStation){ box.innerHTML = allGoalsComplete() ? 'Station: <span style="color:#b8ffdc">preparing…</span>' : 'Station: <span style="color:#9fb0be">Locked — complete all goals</span>'; }
-    else { box.innerHTML = `Station at (<b>${servingStation.x}</b>,<b>${servingStation.y}</b>) — enter ring & press <span class=\"k\">F</span>${traits}`; }
-    const last = document.getElementById('lastDish'); if(lastDish){ last.innerHTML = `Last Dish → Score: <b>${(lastDish.score*100|0)}%</b><br/>Warmth ${pct(lastDish.warmth)} • Brightness ${pct(lastDish.brightness)}<br/>Texture ${pct(lastDish.texture)} • Aeration ${pct(lastDish.aeration)}<br/>Plating bonus: ${(Math.round(((lastDish.platingBonus||1)-1)*100))}%`; } else { last.textContent = 'No dish served yet.'; } }
-
-  function pct(v){ return Math.round(v*100)+'%'; }
-
-  function hazardDPSAt(x,y){ let dps=0; hazards.forEach(h=>{ if(h.dead) return; const r=(h.radius*h.strength) + Math.sin(h.phase)*2; const dx=x-h.x, dy=y-h.y; if(dx*dx+dy*dy<r*r){ if(h.type==='heat') dps += 10*h.strength; else if(h.type==='acid') dps += 15*h.strength; else if(h.type==='collapse') dps += 25; } }); return dps; }
-  function effectiveDPSAt(x,y){ const base = hazardDPSAt(x,y); const f = sampleField(foam,x,y); // foam mitigates both
-    let mult = 1 + 0.35*inGazeFactor(x,y); // reviewer gaze cone amplifies
-    const g = sampleField(gel,x,y); // gel dulls a bit
-    const dull = Math.max(0, 1 - (0.5*f + 0.25*g));
-    mult = 1 + (mult-1)*dull;
-    return base * (1 - 0.6*mods.foamMitigation*f) * mult; }
-
-  function takeDamage(amount){ player.health -= amount; if(player.health<0) player.health=0; damageFlash = Math.min(1, damageFlash + amount*0.02); if(player.health<=0 && player.alive){ player.alive=false; showToast('You perished in the dish!'); reset(); } }
-
-  function movePlayer(dt){ if(inInterlude||inAssembly) return; const sp=10*dt; let dx=0,dy=0; if(keys.has('w')) dy-=sp; if(keys.has('s')) dy+=sp; if(keys.has('a')) dx-=sp; if(keys.has('d')) dx+=sp; player.x=Math.max(0,Math.min(W-1,player.x+dx)); player.y=Math.max(0,Math.min(H-1,player.y+dy)); revealAt(player.x, player.y, VR());
-    colonies.forEach(c=>{ if(!c.revealed){ const ddx=c.x-player.x, ddy=c.y-player.y; if(ddx*ddx+ddy*ddy <= VR()*VR()) { c.revealed=true; renderColoniesList(); showToast('You discovered a colony'); } }});
-    secrets.forEach(s=>{ if(!s.revealed){ const dx=s.x-player.x, dy=s.y-player.y; if(dx*dx+dy*dy <= (VR()*VR())){ s.revealed=true; updateDepthsPanel(); showToast('You uncovered something…'); } }});
-    ingredients.forEach(it=>{ if(it.picked) return; const dx=it.x-player.x, dy=it.y-player.y; if(dx*dx+dy*dy <= 2*2 && seen[idx(it.x,it.y)]){ it.picked=true; applyIngredient(it.type); } });
-    goals.forEach(g=>{ if(!g.done && Math.abs(player.x-g.x)<1 && Math.abs(player.y-g.y)<1){ g.done=true; showToast('Goal reached!'); renderGoalsList(); }});
-    if(allGoalsComplete()) maybeSpawnServingStation();
-    const dps = effectiveDPSAt(player.x, player.y); if(dps>0) takeDamage(dps*dt);
-  }
-
-  // Reviewer gaze helpers
-  function inGazeFactor(x,y){ let f=0; gazes.forEach(g=>{ const dx=x-g.x, dy=y-g.y; const d = Math.hypot(dx,dy); if(d>g.len) return; const ang = Math.atan2(dy,dx); let a = (ang - g.ang + Math.PI*2)%(Math.PI*2); if(a>Math.PI) a-=Math.PI*2; if(Math.abs(a) <= g.arc*0.5){ f = Math.max(f, 1 - d/g.len); } }); return f; }
-
-  function updateGazes(dt){ gazes.forEach(g=>{ g.ang += g.speed*dt; }); }
-
-  // Swirl field params (vinaigrette)
-  let swirlPhase = 0; function swirlCenter(){ swirlPhase += 0.2/60; const cx = W/2 + Math.cos(swirlPhase)*6; const cy = H/2 + Math.sin(swirlPhase)*4; return {cx, cy}; }
-
-  function updateHazards(dt){ const {cx, cy} = swirlCenter(); hazards.forEach(h=>{ if(h.dead) return; h.phase += dt; if(h.splitCd>0) h.splitCd = Math.max(0, h.splitCd - dt);
-      const [dvx,dvy] = draftAt(h.x,h.y); // aroma drafts
-      if(h.type==='acid'){
-        const rx = h.x - cx, ry = h.y - cy; const dist = Math.hypot(rx, ry) + 1e-6; const tx = -ry/dist, ty = rx/dist; const g = sampleField(gel, h.x, h.y); const slowA = 1 - (0.3*mods.gelSlow)*g; const slowV = 1 - (0.5*mods.gelSlow)*g; let swirlAccel = (1.2 * slowA) / (1 + 0.05*dist); swirlAccel *= mods.acidDrift; h.vx = (h.vx||0) + tx * swirlAccel * dt + dvx*0.8*dt; h.vy = (h.vy||0) + ty * swirlAccel * dt + dvy*0.8*dt; h.vx = h.vx*0.985*slowV + (Math.random()-0.5)*0.02; h.vy = h.vy*0.985*slowV + (Math.random()-0.5)*0.02; h.x += h.vx * dt * 12; h.y += h.vy * dt * 12; }
-      else if(h.type==='heat'){
-        h.vx = (h.vx||0) + (Math.random()-0.5) * (1.2*mods.heatJitter) * dt + dvx*0.5*dt;
-        h.vy = (h.vy||0) + (Math.random()-0.5) * (1.2*mods.heatJitter) * dt + dvy*0.5*dt;
-        const vmax = 1.5; const sp = Math.hypot(h.vx,h.vy); if(sp>vmax){ h.vx *= vmax/sp; h.vy *= vmax/sp; } h.vx *= 0.9; h.vy *= 0.9; h.x += h.vx * dt * 6; h.y += h.vy * dt * 6; }
-      else if(h.type==='collapse'){ h.ttl -= dt; h.radius = Math.max(1.5, h.radius - 6*dt); if(h.ttl<=0) h.dead=true; }
-      if(h.x<0){ h.x=0; h.vx*=-0.6; } if(h.x>W-1){ h.x=W-1; h.vx*=-0.6; } if(h.y<0){ h.y=0; h.vy*=-0.6; } if(h.y>H-1){ h.y=H-1; h.vy*=-0.6; }
-      if(h.strength<=0.01){ h.dead=true; }
-    });
-
-    // Crystals emit hazards if unstable
-    secrets.forEach(s=>{ if(s.type==='crystal' && s.revealed && !s.state.stabilised){ if(Math.random() < dt*0.25){ hazards.push({ x: s.x + (Math.random()-0.5)*3, y: s.y + (Math.random()-0.5)*3, type:'collapse', radius:6, phase:0, strength:1, splitCd:0, vx:0, vy:0, ttl:1.6, dead:false }); } } });
-
-    // Coalescence
-    const merged = coalesceHazards();
-
-    // Random collapses as service pressure builds
-    if(Math.random() < dt * 0.02 * mods.collapseRate){ const base = hazards.find(z=>!z.dead) || {x:W/2,y:H/2}; hazards.push({ x: Math.max(2,Math.min(W-3, base.x + (Math.random()-0.5)*10)), y: Math.max(2,Math.min(H-3, base.y + (Math.random()-0.5)*8)), type:'collapse', radius:8, phase:0, strength:1, splitCd:0, vx:0, vy:0, ttl:2.0, dead:false }); }
-
-    if(merged || (hazards.length>0 && Math.random()<0.05)){ hazards = hazards.filter(h=>!h.dead); renderHazardsList(); }
-  }
-
-  // --- Materials update ---
-  function updateMaterials(dt){ const decay = 0.03 * dt * (1-0.15*buffs.lecithin); for(let i=0;i<foam.length;i++){ foam[i] = Math.max(0, foam[i]-decay); } for(let y=0;y<H;y++){ for(let x=0;x<W;x++){ const i = idx(x,y); let acidField=0, heatField=0; hazards.forEach(h=>{ if(h.dead) return; const dx=x-h.x, dy=y-h.y; const d2=dx*dx+dy*dy; const w= h.strength/(1+d2); if(h.type==='acid') acidField += w; else if(h.type==='heat') heatField += w; }); if(precursor[i]>0){ const rate = (0.5*acidField + 0.2*heatField) * dt * (1+0.3*buffs.agar); const d = Math.min(precursor[i], rate); precursor[i] -= d; gel[i] = Math.min(1, gel[i] + d); } } } }
-
-  // --- Spheres (beads) ---
-  function spawnSpheres(x0,y0){ const n = Math.max(1, Math.floor(brush/3)); for(let i=0;i<n;i++){ const jitter = (Math.random()-0.5) * (brush*0.6); spheres.push({ x:x0 + jitter, y:y0 + jitter, vx:0, vy:0, life:8.0, r:2.2 }); } }
-  function updateSpheres(dt){ const {cx, cy} = swirlCenter(); spheres.forEach(s=>{ const [dvx,dvy] = draftAt(s.x,s.y); const rx = s.x - cx, ry = s.y - cy; const dist = Math.hypot(rx, ry)+1e-6; const tx=-ry/dist, ty=rx/dist; const accel = 1.0/(1+0.05*dist); s.vx += (tx*accel + dvx*0.6) * dt; s.vy += (ty*accel + dvy*0.6) * dt; s.vx *= 0.985; s.vy *= 0.985; s.x += s.vx * dt * 12; s.y += s.vy * dt * 12; if(s.x<0){s.x=0; s.vx*=-0.4;} if(s.x>W-1){s.x=W-1; s.vx*=-0.4;} if(s.y<0){s.y=0; s.vy*=-0.4;} if(s.y>H-1){s.y=H-1; s.vy*=-0.4;} let interacting=false; hazards.forEach(h=>{ if(h.dead || h.type!=='acid') return; const dx=s.x-h.x, dy=s.y-h.y; const r=h.radius*h.strength + Math.sin(h.phase)*2; if(dx*dx+dy*dy < (r+2)*(r+2)){ h.strength = Math.max(0, h.strength - (0.15*mods.sphereRate*(1+0.2*buffs.cacl2))*dt); interacting=true; } }); s.life -= (0.15 + (interacting?0.35:0))*dt; }); spheres = spheres.filter(s=>s.life>0); }
-
-  // --- Coalescence (merge nearby acid pools) ---
-  function coalesceHazards(){ let changed = false; for(let i=0;i<hazards.length;i++){ const a = hazards[i]; if(!a || a.dead || a.type!=='acid') continue; for(let j=i+1;j<hazards.length;j++){ const b = hazards[j]; if(!b || b.dead || b.type!=='acid') continue; const dx = b.x - a.x, dy = b.y - a.y; const dist2 = dx*dx + dy*dy; const ra = (a.radius*a.strength), rb = (b.radius*b.strength); const thresh = Math.min(ra, rb) * 0.9; if(dist2 <= thresh*thresh){ const areaA = a.radius*a.radius, areaB = b.radius*b.radius; const mA = areaA * a.strength, mB = areaB * b.strength; const mT = mA + mB + 1e-6; const nx = (a.x*mA + b.x*mB)/mT, ny = (a.y*mA + b.y*mB)/mT; const nvx = ((a.vx||0)*mA + (b.vx||0)*mB)/mT, nvy = ((a.vy||0)*mA + (b.vy||0)*mB)/mT; const nradius = Math.min(12, Math.sqrt(areaA + areaB)); const nstrength = Math.max(0.2, Math.min(2.0, (mT/(areaA+areaB+1e-6)))); a.x=nx; a.y=ny; a.vx=nvx; a.vy=nvy; a.radius=nradius; a.strength=nstrength; a.splitCd = Math.max(a.splitCd||0, 0.3); b.dead = true; changed = true; } } } return changed; }
-
-  // --- splitting helper ---
-  function splitHazard(h){ const parts = 2 + Math.floor(Math.random()*2); const baseR = Math.max(2, h.radius * 0.6); const baseS = Math.max(0.4, h.strength * 0.6); for(let i=0;i<parts;i++){ const ang = Math.random()*Math.PI*2; const off = baseR * (0.7 + Math.random()*0.6); let nx = h.x + Math.cos(ang)*off; let ny = h.y + Math.sin(ang)*off; nx = Math.max(0, Math.min(W-1, nx)); ny = Math.max(0, Math.min(H-1, ny)); const pvx = h.vx||0, pvy = h.vy||0; const theta = (Math.random()-0.5) * (Math.PI/6); const cosT = Math.cos(theta), sinT = Math.sin(theta); const ivx = pvx*cosT - pvy*sinT, ivy = pvx*sinT + pvy*cosT; const speedScale = 0.8 + Math.random()*0.4; hazards.push({ x:nx, y:ny, type:h.type, radius: baseR * (0.9 + Math.random()*0.3), phase: Math.random()*Math.PI*2, strength: baseS * (0.8 + Math.random()*0.4), splitCd: 0.6 + Math.random()*0.4, vx: ivx*speedScale + (Math.random()-0.5)*0.05, vy: ivy*speedScale + (Math.random()-0.5)*0.05, ttl:null, dead:false }); } h.dead = true; }
-
-  // --- Dish evaluation & serving ---
-  const TARGETS = { warmth: [0.4, 0.7], brightness: [0.2, 0.5], texture: [0.3, 0.8], aeration: [0.1, 0.6] };
-  function clamp01(v){ return Math.max(0, Math.min(1, v)); }
-  function fieldContributionAt(type, x0, y0){ let s=0; hazards.forEach(h=>{ if(!h.dead && h.type===type){ const dx=x0-h.x, dy=y0-h.y; s += h.strength/(1+dx*dx+dy*dy); }}); return s; }
-  function evaluateDishAt(x0,y0){ const heat = fieldContributionAt('heat', x0, y0); const acid = fieldContributionAt('acid', x0, y0); const warmth = clamp01(0.5*heat + scoreMods.warmthShift); const brightness = clamp01(0.5*acid + scoreMods.brightnessShift); const texture = clamp01(averageField(gel, x0, y0, 4) + scoreMods.textureShift); const aeration = clamp01(averageField(foam, x0, y0, 4) + scoreMods.aerationShift); const widen = scoreMods.widen || 1; const cs = (v,[lo,hi])=>{ lo = clamp01(lo); hi = clamp01(hi); if(v>=lo && v<=hi) return 1; const d=v<lo?lo-v:v-hi; return clamp01(1 - d/(0.3*widen)); }; const sw = cs(warmth, TARGETS.warmth), sb = cs(brightness, TARGETS.brightness), st = cs(texture, TARGETS.texture), sa = cs(aeration, TARGETS.aeration); const score = (sw+sb+st+sa)/4; return {warmth, brightness, texture, aeration, score}; }
-
-  function updateMood(score){ story.mood = clamp01(story.mood + (score-0.5)*0.35); updateNarrativePanel(); }
-
-  function attemptServe(){ if(!servingStation) { showToast('Station not ready'); return false; } const dx=player.x-servingStation.x, dy=player.y-servingStation.y; if(dx*dx+dy*dy > servingStation.r*servingStation.r){ showToast('Step into the ring to serve'); return false; } const m = evaluateDishAt(servingStation.x, servingStation.y); pendingDishEval = m; // store for plating mini-game
-    openOrigami(); return true; }
-
-  // --- TOOL EFFECTS ---
-  function applyToolAt(x0,y0){ if(inInterlude||inAssembly) return; const R = brush; if(currentTool==='foam'){ paintCircle(foam, x0, y0, R, 0.35*(1+0.25*buffs.lecithin)); return; } if(currentTool==='gel'){ paintCircle(precursor, x0, y0, R, 0.35*(1+0.3*buffs.agar)); return; } if(currentTool==='spheres'){ spawnSpheres(x0,y0); return; } hazards.forEach(h=>{ if(h.dead) return; const dx = h.x - x0, dy = h.y - y0; const dist = Math.hypot(dx,dy); if(dist <= R + h.radius){ if(currentTool==='cool' && h.type==='heat'){ h.strength = Math.max(0, h.strength - 0.25*mods.coolVsHeat); h.radius = Math.max(2, h.radius - 0.2*mods.coolVsHeat); } else if(currentTool==='heat' && h.type==='heat'){ h.strength = Math.min(2.0, h.strength + 0.2); h.radius = Math.min(12, h.radius + 0.15); } else if(currentTool==='ph' && h.type==='acid'){ const mult = (1+0.3*buffs.cacl2); h.strength = Math.max(0, h.strength - 0.35*mult); h.radius = Math.max(2, h.radius - 0.25*mult); } else if(currentTool==='shear'){ const bigEnough = (h.type==='acid') && (h.radius*h.strength > 8 || h.radius>7 || h.strength>1.2); if(bigEnough && h.splitCd<=0){ splitHazard(h); return; } const push = 0.6 / Math.max(1, dist); const ux = dx * push, uy = dy * push; h.x += ux; h.y += uy; if(h.type==='acid') { h.vx += ux*0.2; h.vy += uy*0.2; h.strength = Math.max(0, h.strength - 0.05); h.splitCd = Math.max(h.splitCd, 0.15); } h.x=Math.max(0,Math.min(W-1,h.x)); h.y=Math.max(0,Math.min(H-1,h.y)); } } }); renderHazardsList(); }
-
-  // --- Ingredients ---
-  function spawnIngredients(){ const kinds=['agar','lecithin','cacl2']; for(let i=0;i<3;i++){ ingredients.push({ x:randX(), y:randY(), type:kinds[i], picked:false }); } }
-  function applyIngredient(type){ if(type==='agar'){ buffs.agar=60; pendingTraits.push('lattice'); showToast('Picked: Agar — gel grows faster (60s)'); }
-    if(type==='lecithin'){ buffs.lecithin=60; pendingTraits.push('feather'); showToast('Picked: Lecithin — foam protects more (60s)'); }
-    if(type==='cacl2'){ buffs.cacl2=60; pendingTraits.push('pearls'); showToast('Picked: CaCl₂ — pH/spheres stronger (60s)'); }
-    renderServingPanel(); }
-  function tickBuffs(dt){
-    for(const k of Object.keys(buffs)){
-      if(buffs[k]>0){
-        buffs[k]-=dt;
-        if(buffs[k]<0) buffs[k]=0;
-      }
-    }
+  function reset(){
+    player = {x: Math.round(W/2), y: Math.round(H/2), fx: W/2, fy: H/2, health: 100, alive:true};
+    story = {course:1, mood:0.5, title: COURSE_TITLES[0]};
+    activeMutations = [];
+    Object.assign(mods,{ acidDrift:1, heatJitter:1, foamMitigation:1, sphereRate:1, visionBonus:0, gelSlow:1, collapseRate:1, coolVsHeat:1 });
+    Object.assign(scoreMods,{ warmthShift:0, brightnessShift:0, textureShift:0, aerationShift:0, widen:1.0 });
+    Object.assign(buffs,{agar:0,lecithin:0,cacl2:0});
+    assemblyFlow={fanVec:{x:0,y:0}, damper:0, heater:0, pressureBonus:0};
+    resetFieldsAndWorld();
     renderBuffHUD();
+    openInterlude(true); // gift/curse at start
+  }
+  function nextCourse(){
+    story.course++; story.title = COURSE_TITLES[(story.course-1) % COURSE_TITLES.length];
+    player.health = Math.min(100, player.health + 20);
+    resetFieldsAndWorld(); showToast(`Course ${story.course}: ${story.title}`);
+    openInterlude(true);
   }
 
-  // --- Buff HUD logic ---
-  function renderBuffHUD(){ const el=document.getElementById('buffHUD'); if(!el) return; const items=[
-      {key:'agar', name:'Agar', color:'#7cff9a'},
-      {key:'lecithin', name:'Lecithin', color:'#b8ffdc'},
-      {key:'cacl2', name:'CaCl₂', color:'#cfe7ff'}];
-    let any=false; items.forEach(({key,color})=>{ const v=Math.max(0,buffs[key]||0); if(v>0) any=true; const max=BUFF_MAXS[key]||60; const pct=Math.max(0,Math.min(1,v/max)); const f=document.getElementById('hud_'+key); const t=document.getElementById('hud_'+key+'_t'); if(f){ f.style.width=(pct*100).toFixed(0)+'%'; f.style.background = `linear-gradient(90deg, ${color}, rgba(255,255,255,0.25))`; } if(t){ t.textContent = v>0 ? (Math.ceil(v)+'s') : ''; } }); el.style.display = any ? 'block' : 'none'; }
+  // ---------- Tools ----------
+  function applyToolAt(x0,y0){
+    x0=Math.round(x0); y0=Math.round(y0);
+    if(inInterlude||inAssembly) return;
+    const R = brush;
 
-  // --- Colonies ---
-  function activateNearbyColony(){ if(inInterlude||inAssembly) return false; let found=null; for(const c of colonies){ if(c.activated) continue; const dx=c.x-player.x, dy=c.y-player.y; if(dx*dx+dy*dy <= 3*3 && c.revealed){ found=c; break; } } if(!found){ showToast('No colony nearby'); return false; } activateColony(found); return true; }
-  function activateColony(c){ c.activated = true; renderColoniesList(); showToast('Colony activated: stabilisation pulse'); const R = 8; const R2 = R*R; let shock=false; hazards.forEach(h=>{ const dx=h.x-c.x, dy=h.y-c.y; if(dx*dx+dy*dy<=R2){ if(h.type==='acid'){ h.strength *= 0.6; h.radius *= 0.9; } if(h.type==='heat'){ h.radius *= 0.85; } if(h.type==='collapse'){ h.ttl = Math.max(0, h.ttl-0.5); } shock = true; } }); if(shock){ hazards.push({ x:c.x, y:c.y, type:'collapse', radius:8, phase:0, strength:1, splitCd:0, vx:0, vy:0, ttl:2.0, dead:false }); renderHazardsList(); } }
+    if(currentTool==='foam'){ paintCircle(foam, x0, y0, R, 0.35*(1+0.25*buffs.lecithin)); return; }
+    if(currentTool==='gel'){ paintCircle(precursor, x0, y0, R, 0.35*(1+0.3*buffs.agar)); return; }
+    if(currentTool==='spheres'){ spawnSpheres(x0,y0); return; }
 
-  // --- Hidden Depths: spawn & interact ---
-  function spawnSecrets(){ secrets.push({type:'equipment', id:'rotavap', x:randX(), y:randY(), revealed:false, state:{built:false}}); for(let i=0;i<2;i++) secrets.push({type:'crystal', x:randX(), y:randY(), revealed:false, state:{stabilised:false}}); secrets.push({type:'modifier', x:randX(), y:randY(), revealed:false, state:{claimed:false, effect:'brightnessShift+0.05'}}); secrets.push({type:'modifier', x:randX(), y:randY(), revealed:false, state:{claimed:false, effect:'widen+0.2'}}); }
-  function randX(){ return Math.floor(Math.random()*W); } function randY(){ return Math.floor(Math.random()*H); }
-
-  function interactNearby(){ if(inInterlude||inAssembly) return false; let target=null; let best=9999; for(const s of secrets){ if(!s.revealed) continue; const dx=s.x-player.x, dy=s.y-player.y; const d2=dx*dx+dy*dy; if(d2<= (3*3) && d2<best){ best=d2; target=s; } } if(!target){ showToast('Nothing to interact with'); return false; } if(target.type==='crystal') return stabiliseCrystal(target); if(target.type==='modifier') return claimModifier(target); if(target.type==='equipment') return openAssembly(target); return false; }
-
-  function stabiliseCrystal(s){ if(s.state.stabilised){ showToast('Crystal already stabilised'); return false; } s.state.stabilised=true; hazards.forEach(h=>{ const dx=h.x-s.x, dy=h.y-s.y; if(dx*dx+dy*dy <= 9*9){ if(h.type==='acid') h.strength*=0.7; if(h.type==='heat') h.radius*=0.9; }}); paintCircle(gel, s.x, s.y, 4, 0.5); updateDepthsPanel(); showToast('Crystal stabilised — calm returns'); return true; }
-  function claimModifier(s){ if(s.state.claimed){ showToast('Already attuned'); return false; } s.state.claimed=true; const e=s.state.effect; if(e==='brightnessShift+0.05') scoreMods.brightnessShift += 0.05; if(e==='widen+0.2') scoreMods.widen += 0.2; updateDepthsPanel(); showToast('Palate thread attuned'); return true; }
-
-  // --- Assembly mini-game (Zachtronics-style) ---
-  // Tile connection bitmask: N=1, E=2, S=4, W=8
-  const N=1,E=2,S=4,Ww=8;
-  const TileDefs = {
-    empty:   {mask:0, label:''},
-    pipe:    {mask:E|Ww, label:'─'},
-    elbow:   {mask:N|E,   label:'└'},
-    tee:     {mask:N|E|Ww,label:'┴'},
-    cross:   {mask:N|E|S|Ww,label:'┼'},
-    fan:     {mask:E|Ww, label:'F', mod:'fan'},
-    damper:  {mask:E|Ww, label:'⎯', mod:'damper'},
-    heater:  {mask:E|Ww, label:'H', mod:'heater'},
-    valve:   {mask:E|Ww, label:'▶', mod:'valve'},
-    chill:   {mask:E|Ww, label:'C', mod:'chill'},
-    vacuum:  {mask:E|Ww, label:'V', mod:'vacuum'},
-    condense:{mask:E|Ww, label:'D', mod:'condense'},
-    source:  {mask:E,     label:'F', locked:true, feed:1},
-    brine:   {mask:E,     label:'B', locked:true, feed:2},
-    aroma:   {mask:E,     label:'A', locked:true, feed:4},
-    sink:    {mask:Ww,    label:'O', locked:true}
-  };
-  function rotMask(mask, rot){ rot%=4; let m=mask; while(rot-->0){ const up=(m&N)?E:0, right=(m&E)?S:0, down=(m&S)?Ww:0, left=(m&Ww)?N:0; m=up|right|down|left; } return m; }
-
-  function asmIndex(x,y){ return x + y*asm.W; }
-  function asmInb(x,y){ return x>=0 && y>=0 && x<asm.W && y<asm.H; }
-
-  function drawTile(ac, x,y,t){ const CELL=asm.CELL; const cx=x*CELL, cy=y*CELL; ac.save(); ac.translate(cx,cy); // bg grid faint
-    ac.fillStyle='rgba(255,255,255,0.02)'; ac.fillRect(0,0,CELL,CELL);
-    const def=TileDefs[t.type]||TileDefs.empty; const mask=rotMask(def.mask,t.rot|0);
-    // connectors
-    ac.strokeStyle='rgba(180,220,255,0.9)'; ac.lineWidth=6; ac.lineCap='round'; const mid=CELL/2; const r=CELL/2-8;
-    function drawArm(dir){ ac.beginPath(); ac.moveTo(mid,mid); if(dir===0) ac.lineTo(mid, mid-r); else if(dir===1) ac.lineTo(mid+r, mid); else if(dir===2) ac.lineTo(mid, mid+r); else ac.lineTo(mid-r, mid); ac.stroke(); }
-    if(mask&N) drawArm(0); if(mask&E) drawArm(1); if(mask&S) drawArm(2); if(mask&Ww) drawArm(3);
-    // module cores / labels
-    if(def.mod){
-      ac.fillStyle = def.mod==='chill'? 'rgba(0,240,255,0.85)'
-        : def.mod==='vacuum'? 'rgba(255,0,230,0.85)'
-        : def.mod==='condense'? 'rgba(255,230,0,0.85)'
-        : def.mod==='fan'? 'rgba(120,200,255,0.85)'
-        : def.mod==='damper'? 'rgba(100,140,160,0.85)'
-        : def.mod==='heater'? 'rgba(255,120,60,0.85)'
-        : 'rgba(200,220,255,0.85)';
-      ac.beginPath(); ac.arc(mid,mid,12,0,Math.PI*2); ac.fill();
-    }
-    if(t.type==='source'||t.type==='brine'||t.type==='aroma'||t.type==='sink'){ ac.fillStyle='rgba(255,255,255,0.08)'; ac.fillRect(6,6,CELL-12,CELL-12); ac.strokeStyle='rgba(255,255,255,0.25)'; ac.strokeRect(6,6,CELL-12,CELL-12); }
-    // label
-    ac.fillStyle='rgba(255,255,255,0.9)'; ac.font='700 16px ui-monospace,monospace'; ac.textAlign='center'; ac.textBaseline='middle'; ac.fillText(def.label, mid, mid);
-    ac.restore(); }
-
-  function initAssemblyOnce(){ if(asmInit) return; asmInit=true; const canv=document.getElementById('asmCanvas'); const dpr = window.devicePixelRatio||1; canv.width = asm.W*asm.CELL*dpr; canv.height = asm.H*asm.CELL*dpr; canv.style.width = (asm.W*asm.CELL)+'px'; canv.style.height = (asm.H*asm.CELL)+'px'; const ac=canv.getContext('2d'); ac.scale(dpr,dpr);
-    asm.tiles = new Array(asm.W*asm.H).fill(null).map(()=>({type:'empty', rot:0, locked:false}));
-    // Fixed sources/sink
-    const sy = Math.floor(asm.H/2);
-    const by = 1, ay = asm.H-2;
-    asm.tiles[asmIndex(0,sy)] = {type:'source', rot:1, locked:true}; // Feed
-    asm.tiles[asmIndex(0,by)] = {type:'brine', rot:1, locked:true};  // Brine
-    asm.tiles[asmIndex(0,ay)] = {type:'aroma', rot:1, locked:true};  // Aroma
-    asm.tiles[asmIndex(asm.W-1,sy)] = {type:'sink', rot:3, locked:true}; // Outlet
-
-    // Inventory
-    asm.inv = { pipe:24, elbow:14, tee:8, cross:4, fan:2, damper:2, heater:1, valve:4, chill:1, vacuum:1, condense:1 };
-    updateInvBadges();
-
-    canv.addEventListener('mousemove', (e)=>{ const r=canv.getBoundingClientRect(); const x=Math.floor((e.clientX-r.left)/asm.CELL); const y=Math.floor((e.clientY-r.top)/asm.CELL); asm.hover={x,y}; asm.draw(); });
-    canv.addEventListener('mouseleave', ()=>{ asm.hover={x:-1,y:-1}; asm.draw(); });
-    canv.addEventListener('click', (e)=>{ const r=canv.getBoundingClientRect(); const x=Math.floor((e.clientX-r.left)/asm.CELL); const y=Math.floor((e.clientY-r.top)/asm.CELL); placeAsm(x,y); });
-    canv.addEventListener('contextmenu', (e)=>{ e.preventDefault(); const r=canv.getBoundingClientRect(); const x=Math.floor((e.clientX-r.left)/asm.CELL); const y=Math.floor((e.clientY-r.top)/asm.CELL); rotateAsm(x,y); return false; });
-    document.getElementById('asmRun').addEventListener('click', ()=>{ const ok = runAssemblySimulation(); showToast(ok?'Equipment assembled!':'Flow invalid — merge all feeds before D, path order C→V→D, pressure≥30, valves correct'); if(ok){ if(assemblyFor){ assemblyFor.state.built=true; updateDepthsPanel(); if(!activeMutations.includes('gift_rotavap')){ activeMutations.push('gift_rotavap'); MUTATIONS['gift_rotavap'].apply(); updateNarrativePanel(); } // reflect fans/dampers to world drafts
-          updateAssemblyFlowToWorld(); }
-        closeAssembly(); } });
-    document.getElementById('asmClear').addEventListener('click', ()=>{ clearAsm(false); asm.draw(); });
-    document.getElementById('asmClose').addEventListener('click', ()=>closeAssembly());
-    document.getElementById('asmRotate').addEventListener('click', rotatePlacement);
-    function rotatePlacement(){ asm.placeRot=(asm.placeRot+1)%4; updateOriBadge(); showToast('Placement rotation: '+['↑','→','↓','←'][asm.placeRot]); }
-    function updateOriBadge(){ const b=document.getElementById('asmOri'); if(b) b.textContent=['↑','→','↓','←'][asm.placeRot]; }
-    document.addEventListener('keydown', (e)=>{ if(!inAssembly) return; if(e.key==='Delete'){ eraseAsm(asm.hover.x, asm.hover.y); asm.draw(); } });
-    document.querySelectorAll('#asmToolbar .tool').forEach(btn=>{ btn.addEventListener('click',()=>{ document.querySelectorAll('#asmToolbar .tool').forEach(b=>b.classList.remove('sel')); btn.classList.add('sel'); asm.sel = btn.dataset.type; }); });
-    document.querySelector('#asmToolbar .tool[data-type="pipe"]').classList.add('sel');
-    updateOriBadge();
-
-    function drawAsm(){ ac.clearRect(0,0,canv.width/dpr,canv.height/dpr); ac.save(); ac.strokeStyle='rgba(40,60,80,0.9)'; for(let y=0;y<asm.H;y++){ for(let x=0;x<asm.W;x++){ ac.strokeRect(x*asm.CELL, y*asm.CELL, asm.CELL, asm.CELL); } }
-      for(let y=0;y<asm.H;y++) for(let x=0;x<asm.W;x++){ const t = asm.tiles[asmIndex(x,y)]; drawTile(ac, x,y,t); }
-      if(asm.hover.x>=0 && asm.hover.y>=0){ ac.strokeStyle='rgba(200,230,255,0.9)'; ac.lineWidth=2; ac.strokeRect(asm.hover.x*asm.CELL+2, asm.hover.y*asm.CELL+2, asm.CELL-4, asm.CELL-4); }
-      ac.restore(); }
-    asm.draw = drawAsm; drawAsm();
-  }
-
-  function updateInvBadges(){ const set=(id,v)=>{ const el=document.getElementById('inv_'+id); if(el) el.textContent = String(v); }; if(!asm.inv) return; set('pipe',asm.inv.pipe); set('elbow',asm.inv.elbow); set('tee',asm.inv.tee); set('cross',asm.inv.cross); set('fan',asm.inv.fan); set('damper',asm.inv.damper); set('heater',asm.inv.heater); set('valve',asm.inv.valve); set('chill',asm.inv.chill); set('vacuum',asm.inv.vacuum); set('condense',asm.inv.condense); }
-
-  function clearAsm(keepLocks){ for(let i=0;i<asm.tiles.length;i++){ if(keepLocks && asm.tiles[i].locked) continue; const was=asm.tiles[i]; if(!was.locked){ asm.tiles[i]={type:'empty', rot:0, locked:false}; } }
-    asm.inv = { pipe:24, elbow:14, tee:8, cross:4, fan:2, damper:2, heater:1, valve:4, chill:1, vacuum:1, condense:1 };
-    const sy = Math.floor(asm.H/2); const by=1, ay=asm.H-2; asm.tiles[asmIndex(0,sy)] = {type:'source', rot:1, locked:true}; asm.tiles[asmIndex(0,by)] = {type:'brine', rot:1, locked:true}; asm.tiles[asmIndex(0,ay)] = {type:'aroma', rot:1, locked:true}; asm.tiles[asmIndex(asm.W-1,sy)] = {type:'sink', rot:3, locked:true}; updateInvBadges(); }
-
-  function placeAsm(x,y){ if(!asmInb(x,y)) return; const i=asmIndex(x,y); const cur=asm.tiles[i]; if(cur.locked){ showToast('Locked tile'); return; }
-    if(asm.sel==='eraser'){ eraseAsm(x,y); asm.draw(); return; }
-    const t=asm.sel; if(!asm.inv[t] && t!=='pipe' && t!=='elbow' && t!=='tee' && t!=='cross' && t!=='fan' && t!=='damper' && t!=='heater' && t!=='valve'){ showToast('No modules of that type left'); return; }
-    refund(cur.type);
-    asm.tiles[i] = {type:t, rot:asm.placeRot||0, locked:false};
-    takeFromInv(t);
-    updateInvBadges(); asm.draw(); }
-
-  function rotateAsm(x,y){ if(!asmInb(x,y)) return; const i=asmIndex(x,y); const cur=asm.tiles[i]; if(cur.locked) return; cur.rot = (cur.rot+1)%4; asm.draw(); }
-  function eraseAsm(x,y){ if(!asmInb(x,y)) return; const i=asmIndex(x,y); const cur=asm.tiles[i]; if(cur.locked) return; refund(cur.type); asm.tiles[i]={type:'empty', rot:0, locked:false}; updateInvBadges(); }
-  function refund(type){ if(!asm.inv) return; if(type==='pipe') asm.inv.pipe++; else if(type==='elbow') asm.inv.elbow++; else if(type==='tee') asm.inv.tee++; else if(type==='cross') asm.inv.cross++; else if(type==='fan') asm.inv.fan++; else if(type==='damper') asm.inv.damper++; else if(type==='heater') asm.inv.heater++; else if(type==='valve') asm.inv.valve++; else if(type==='chill') asm.inv.chill++; else if(type==='vacuum') asm.inv.vacuum++; else if(type==='condense') asm.inv.condense++; }
-  function takeFromInv(type){ if(!asm.inv) return; if(type==='pipe') asm.inv.pipe=Math.max(0,asm.inv.pipe-1); else if(type==='elbow') asm.inv.elbow=Math.max(0,asm.inv.elbow-1); else if(type==='tee') asm.inv.tee=Math.max(0,asm.inv.tee-1); else if(type==='cross') asm.inv.cross=Math.max(0,asm.inv.cross-1); else if(type==='fan') asm.inv.fan=Math.max(0,asm.inv.fan-1); else if(type==='damper') asm.inv.damper=Math.max(0,asm.inv.damper-1); else if(type==='heater') asm.inv.heater=Math.max(0,asm.inv.heater-1); else if(type==='valve') asm.inv.valve=Math.max(0,asm.inv.valve-1); else if(type==='chill') asm.inv.chill=Math.max(0,asm.inv.chill-1); else if(type==='vacuum') asm.inv.vacuum=Math.max(0,asm.inv.vacuum-1); else if(type==='condense') asm.inv.condense=Math.max(0,asm.inv.condense-1); }
-
-  function tileAt(x,y){ if(!asmInb(x,y)) return {type:'empty', rot:0, locked:false}; return asm.tiles[asmIndex(x,y)] || {type:'empty', rot:0, locked:false}; }
-  function connsAt(x,y){ const t=tileAt(x,y); const def=TileDefs[t.type]||TileDefs.empty; return rotMask(def.mask, t.rot); }
-
-  function dirsFromMask(mask){ const a=[]; if(mask&N) a.push(0); if(mask&E) a.push(1); if(mask&S) a.push(2); if(mask&Ww) a.push(3); return a; }
-  function stepXY(x,y,dir){ if(dir===0) return {x,y:y-1}; if(dir===1) return {x:x+1,y}; if(dir===2) return {x,y:y+1}; return {x:x-1,y}; }
-  function opposite(dir){ return (dir+2)&3; }
-
-  function runAssemblySimulation(){ // returns true if a token reaches sink with all feeds merged and C→V→D order and pressure≥30
-    // find sources & sink
-    let sx=-1,sy=-1, bx=-1,by=-1, ax=-1,ay=-1, tx=-1,ty=-1; for(let y=0;y<asm.H;y++) for(let x=0;x<asm.W;x++){ const t=tileAt(x,y).type; if(t==='source'){ sx=x; sy=y; } if(t==='brine'){ bx=x; by=y; } if(t==='aroma'){ ax=x; ay=y; } if(t==='sink'){ tx=x; ty=y; } }
-    if(sx<0||bx<0||ax<0||tx<0) return false;
-    const FEED=1, BRINE=2, AROMA=4, ALL=FEED|BRINE|AROMA;
-    const starts=[{x:sx,y:sy,flag:FEED},{x:bx,y:by,flag:BRINE},{x:ax,y:ay,flag:AROMA}];
-    let tokens=[]; for(const s of starts){ const dirs = dirsFromMask(connsAt(s.x,s.y)); if(dirs.length) tokens.push({x:s.x,y:s.y,dir:dirs[0],stage:0,flags:s.flag,steps:0,pressure:100,heat:0}); }
-    const visited=new Set(); const flagMap=new Map(); // key: x,y,stage -> flags merged here
-    let success=false; const MAX=1200; let spins=0;
-    while(tokens.length && !success && spins++<6000){ const t = tokens.shift(); if(t.steps>MAX) continue; const next = stepXY(t.x,t.y,t.dir); if(!asmInb(next.x,next.y)) continue; const nTile = tileAt(next.x,next.y); const mask = connsAt(next.x,next.y); // require that tile connects back
-      const backBit = (opposite(t.dir)===0?N:opposite(t.dir)===1?E:opposite(t.dir)===2?S:Ww); if(!(mask & backBit)) continue;
-      // check valve one-way (rot: 0=W→E, 1=N→S, 2=E→W, 3=S→N)
-      if(nTile.type==='valve'){
-        const allowed = (nTile.rot===0 && t.dir===1) || (nTile.rot===1 && t.dir===2) || (nTile.rot===2 && t.dir===3) || (nTile.rot===3 && t.dir===0);
-        if(!allowed) { continue; }
+    // Interact with hazards
+    hazards.forEach(h=>{
+      if(h.dead) return;
+      const dx=h.x-x0, dy=h.y-y0; const dist=Math.hypot(dx,dy);
+      if(dist <= R + h.radius){
+        if(currentTool==='cool' && h.type==='heat'){
+          h.strength = Math.max(0, h.strength - 0.25*mods.coolVsHeat);
+          h.radius = Math.max(2, h.radius - 0.2*mods.coolVsHeat);
+        } else if(currentTool==='heat' && h.type==='heat'){
+          h.strength = Math.min(2.0, h.strength + 0.2);
+          h.radius = Math.min(12, h.radius + 0.15);
+        } else if(currentTool==='ph' && h.type==='acid'){
+          const mult = (1+0.3*buffs.cacl2);
+          h.strength = Math.max(0, h.strength - 0.35*mult);
+          h.radius = Math.max(2, h.radius - 0.25*mult);
+        } else if(currentTool==='shear' && h.type==='acid'){
+          const bigEnough = (h.radius*h.strength) > 6 && (h.splitCd||0)<=0;
+          if(bigEnough){ splitHazard(h); }
+        }
       }
-      let outDirs = dirsFromMask(mask).filter(d=>d!==opposite(t.dir)); if(outDirs.length===0) outDirs=[t.dir];
-      // merge flags at this cell/stage
-      const fkey = next.x+','+next.y+','+t.stage; const merged = (flagMap.get(fkey)||0) | t.flags; flagMap.set(fkey, merged);
-      let flags = merged; let stage=t.stage; let pressure = t.pressure-1; let heat=t.heat;
-      if(nTile.type==='fan'){ pressure+=10; }
-      if(nTile.type==='damper'){ pressure=Math.max(0, pressure-10); }
-      if(nTile.type==='heater'){ heat=1; pressure-=2; }
-      if(nTile.type==='chill' && stage===0) { stage=1; pressure-=5; }
-      else if(nTile.type==='vacuum' && stage===1) { stage=2; pressure-=5; }
-      else if(nTile.type==='condense'){ if(stage===2 && (flags&ALL)===ALL) { stage=3; pressure-=8; } }
-      if(nTile.type==='sink'){ if(stage===3 && (flags&ALL)===ALL && pressure>=30){ success=true; break; } else { continue; } }
-      const key=next.x+','+next.y+','+outDirs.join('.')+','+stage+','+flags+','+pressure; if(visited.has(key)) continue; visited.add(key);
-      // branch
-      for(const od of outDirs){ tokens.push({x:next.x,y:next.y,dir:od,stage,flags,steps:t.steps+1,pressure,heat}); }
+    });
+  }
+
+  // ---------- Input ----------
+  let miniVisible = true;
+  function updateGridButton(){ const b=document.getElementById('gridToggle'); if(b) b.textContent = `Grid: ${gridVisible?'ON':'OFF'}`; }
+  function toggleGrid(){ gridVisible = !gridVisible; updateGridButton(); showToast(`Grid: ${gridVisible?'ON':'OFF'}`); }
+
+  document.addEventListener('keydown', (e)=>{
+    if(e.repeat) return;
+    const k=e.key.toLowerCase();
+    if(inAssembly){
+      if(k==='x'){ closeAssembly(); }
+      return;
     }
-    return success;
-  }
+    if(inInterlude){
+      if(k==='4'||k==='5'||k==='6'){ chooseInterludeByKey(k); }
+      return;
+    }
 
-  function updateAssemblyFlowToWorld(){ // derive a vector from placed fans' orientation
-    let fx=0, fy=0, damp=0, heat=0; for(let y=0;y<asm.H;y++) for(let x=0;x<asm.W;x++){ const t=tileAt(x,y); if(t.type==='fan'){ const r=t.rot%4; if(r===0) fy-=1; else if(r===1) fx+=1; else if(r===2) fy+=1; else fx-=1; } if(t.type==='damper') damp++; if(t.type==='heater') heat++; }
-    const m=Math.hypot(fx,fy)||1; assemblyFlow.fanVec={x:fx/m, y:fy/m}; assemblyFlow.damper=damp; assemblyFlow.heater=heat; assemblyFlow.pressureBonus = Math.min(20, (fx*fx+fy*fy)*2 + damp*-2 + heat*1);
-  }
+    if(k==='w'||k==='a'||k==='s'||k==='d') keys.add(k);
+    if(k==='q'){ brush=Math.max(1, brush-1); updateOverlay(); }
+    if(k==='e'){ brush=Math.min(12, brush+1); updateOverlay(); }
 
-  function openAssembly(site){ inAssembly=true; assemblyFor=site; document.getElementById('assembly').style.display='flex'; document.getElementById('asmTitle').textContent = `Assemble: ${site.id==='rotavap'?'Rotavap Coil':'Equipment'}`; if(!asmInit) initAssemblyOnce(); clearAsm(true); asm.draw(); }
-  function closeAssembly(){ inAssembly=false; assemblyFor=null; document.getElementById('assembly').style.display='none'; }
+    if(k==='1') { currentTool='foam'; updateOverlay(); }
+    if(k==='2') { currentTool='gel'; updateOverlay(); }
+    if(k==='3') { currentTool='spheres'; updateOverlay(); }
+    if(k==='t') { currentTool='heat'; updateOverlay(); }
+    if(k==='y') { currentTool='cool'; updateOverlay(); }
+    if(k==='u') { currentTool='shear'; updateOverlay(); }
+    if(k==='i') { currentTool='ph'; updateOverlay(); }
 
-  // --- Origami plating mini-game ---
-  const orig = { wedges: 8, angles: new Array(8).fill(0), ctx: null, canv:null, open:false };
-  function openOrigami(){ const wrp=document.getElementById('origami'); wrp.style.display='flex'; orig.open=true; const canv=document.getElementById('origamiCanvas'); const dpr=window.devicePixelRatio||1; canv.width=720*dpr; canv.height=420*dpr; canv.style.width='720px'; canv.style.height='420px'; const oc=canv.getContext('2d'); oc.scale(dpr,dpr); orig.ctx=oc; orig.canv=canv; orig.angles = orig.angles.map(()=>Math.floor(Math.random()*4)); drawOrigami(); canv.addEventListener('click', onOrigamiClick); document.getElementById('origamiRotate').onclick=rotateRandomWedge; document.getElementById('origamiAuto').onclick=autoFold; document.getElementById('origamiPlate').onclick=plateNow; updateOrigamiScore(); }
-  function closeOrigami(){ const wrp=document.getElementById('origami'); wrp.style.display='none'; orig.open=false; if(orig.canv) orig.canv.removeEventListener('click', onOrigamiClick); }
-  function onOrigamiClick(e){ const r=orig.canv.getBoundingClientRect(); const x=e.clientX-r.left, y=e.clientY-r.top; const cx=360, cy=210; const ang=(Math.atan2(y-cy,x-cx)+Math.PI*2)%(Math.PI*2); const wedge=Math.floor(ang/(Math.PI*2/orig.wedges)); orig.angles[wedge]=(orig.angles[wedge]+1)%4; drawOrigami(); updateOrigamiScore(); }
-  function rotateRandomWedge(){ const i=Math.floor(Math.random()*orig.wedges); orig.angles[i]=(orig.angles[i]+1)%4; drawOrigami(); updateOrigamiScore(); }
-  function autoFold(){ const avg = Math.round(orig.angles.reduce((a,b)=>a+b,0)/orig.angles.length); orig.angles=orig.angles.map(()=>avg%4); drawOrigami(); updateOrigamiScore(); }
-  function drawOrigami(){ const oc=orig.ctx; oc.clearRect(0,0,720,420); const cx=360, cy=210, R=160; oc.save(); oc.translate(cx,cy); for(let i=0;i<orig.wedges;i++){ const baseAng = i*(Math.PI*2/orig.wedges); const rot = orig.angles[i]*(Math.PI/2); const a0=baseAng+rot, a1=a0+(Math.PI*2/orig.wedges); const hue = (i*45 + 60)%360; oc.beginPath(); oc.moveTo(0,0); oc.arc(0,0,R,a0,a1); oc.closePath(); oc.fillStyle = `hsla(${hue},100%,60%,0.9)`; oc.fill(); oc.strokeStyle='rgba(0,0,0,0.35)'; oc.stroke(); // fold creases
-      oc.beginPath(); oc.moveTo(0,0); oc.lineTo(Math.cos(a0)*R, Math.sin(a0)*R); oc.moveTo(0,0); oc.lineTo(Math.cos(a1)*R, Math.sin(a1)*R); oc.strokeStyle='rgba(255,255,255,0.25)'; oc.stroke(); }
-    oc.restore(); }
-  function computeOrigamiSymmetry(){ // compare opposite wedges
-    let score=0, max=orig.wedges/2; for(let i=0;i<orig.wedges/2;i++){ if(orig.angles[i]===orig.angles[i+orig.wedges/2]) score++; }
-    return score/max; }
-  function updateOrigamiScore(){ const s=computeOrigamiSymmetry(); document.getElementById('origamiScore').textContent = `Score: ${Math.round(s*100)}%`; }
-  function plateNow(){ const sym = computeOrigamiSymmetry(); const bonus = 1 + 0.15*sym + 0.05*Math.min(2,pendingTraits.length); const m = pendingDishEval || evaluateDishAt(servingStation.x, servingStation.y); lastDish = {...m, platingBonus:bonus, score: clamp01(m.score*bonus)}; dishes.push({t:Date.now(), ...lastDish}); closeOrigami(); renderServingPanel(); updateMood(lastDish.score); openInterlude(randomInterlude()); pendingTraits.length=0; pendingDishEval=null; showToast(`Plated! Origami bonus +${Math.round((bonus-1)*100)}%`); }
+    if(k==='m'){ document.body.classList.toggle('melt'); showToast(`Psychedelia++: ${document.body.classList.contains('melt')?'ON':'OFF'}`); }
+    if(k==='n'){ miniVisible = !miniVisible; mini.style.display = miniVisible?'block':'none'; showToast(`Minimap: ${miniVisible?'ON':'OFF'}`); }
+    if(k==='g'){ toggleGrid(); }
+    if(k==='f'){ attemptServe(); }
+    if(k==='r'){ reset(); }
+    if(k==='z'){ activateNearestColony(); }
+    if(k==='x'){ interactAtPlayer(); }
+  });
+  document.addEventListener('keyup', (e)=>{ const k=e.key.toLowerCase(); keys.delete(k); });
 
-  // mouse painting for tools
-  canvas.addEventListener('mousemove', (e)=>{ const rect=canvas.getBoundingClientRect(); mouse.x=(e.clientX-rect.left)/rect.width*W; mouse.y=(e.clientY-rect.top)/rect.height*H; if(mouse.down) { applyToolAt(mouse.x, mouse.y); } });
+  canvas.addEventListener('mousemove', (e)=>{
+    const rect=canvas.getBoundingClientRect();
+    mouse.x = Math.max(0, Math.min(W-1, (e.clientX-rect.left)/SCALE));
+    mouse.y = Math.max(0, Math.min(H-1, (e.clientY-rect.top)/SCALE));
+    if(mouse.down) applyToolAt(mouse.x, mouse.y);
+  });
   canvas.addEventListener('mousedown', ()=>{ mouse.down=true; applyToolAt(mouse.x, mouse.y); });
   window.addEventListener('mouseup', ()=>{ mouse.down=false; });
 
-  let time=0; let melt=false; let miniVisible=true;
-  function toggleMinimap(force){ if(typeof force==='boolean'){ miniVisible=force; } else { miniVisible=!miniVisible; } const el=document.getElementById('mini'); if(el) el.style.display = miniVisible?'block':'none'; }
-  function toggleMelt(force){ if(typeof force==='boolean'){ melt=force; } else { melt=!melt; } document.body.classList.toggle('melt', melt); }
+  document.getElementById('meltBtn').addEventListener('click', ()=>{ document.body.classList.toggle('melt'); showToast(`Psychedelia++: ${document.body.classList.contains('melt')?'ON':'OFF'}`); });
+  document.getElementById('miniToggle').addEventListener('click', ()=>{ miniVisible=!miniVisible; mini.style.display=miniVisible?'block':'none'; showToast(`Minimap: ${miniVisible?'ON':'OFF'}`); });
+  document.getElementById('gridToggle').addEventListener('click', toggleGrid); updateGridButton();
 
-  function render(){ time += 1/60; ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(0,0,canvas.width,canvas.height);
-    // materials neon
-    for(let y=0;y<H;y++){ for(let x=0;x<W;x++){ if(!seen[idx(x,y)]) continue; const f = foam[idx(x,y)], gV = gel[idx(x,y)]; if(f>0){ ctx.fillStyle = `hsla(${(190+Math.sin(time*3+ x*0.1 + y*0.1)*60)%360},100%,70%,${0.10+0.30*f})`; ctx.fillRect(x*SCALE,y*SCALE,SCALE,SCALE); } if(gV>0){ ctx.fillStyle = `hsla(${(130+Math.cos(time*2+ x*0.08 - y*0.08)*70)%360},100%,60%,${0.08+0.28*gV})`; ctx.fillRect(x*SCALE,y*SCALE,SCALE,SCALE); } } }
-    // hazards (fog-aware, neon color cycle)
-    function neon(type,phase){ const base = type==='heat'? 0 : (type==='acid'? 210 : 300); const hue = (base + (Math.sin(time*2+phase)*90))%360; return `hsl(${hue},100%,60%)`; }
-    hazards.forEach(h=>{ if(h.dead) return; const vx = Math.floor(h.x), vy=Math.floor(h.y); const visible = ((vx-player.x)**2 + (vy-player.y)**2) <= VR()*VR(); if(!visible && !seen[idx(vx,vy)]) return; const r = (h.radius*h.strength) + Math.sin(h.phase)*2; ctx.globalAlpha = visible?0.95:0.4; ctx.fillStyle = neon(h.type,h.phase); ctx.beginPath(); ctx.arc((h.x+0.5)*SCALE,(h.y+0.5)*SCALE,r,0,Math.PI*2); ctx.fill(); ctx.globalAlpha = 1; });
-    // spheres
-    spheres.forEach(s=>{ const visible = ((s.x-player.x)**2 + (s.y-player.y)**2) <= VR()*VR() || seen[idx(Math.floor(s.x),Math.floor(s.y))]; if(!visible) return; ctx.fillStyle = 'white'; ctx.beginPath(); ctx.arc((s.x+0.5)*SCALE,(s.y+0.5)*SCALE,s.r,0,Math.PI*2); ctx.fill(); });
-    // goals
-    goals.forEach(g=>{ const visible = ((g.x-player.x)**2 + (g.y-player.y)**2) <= VR()*VR(); if(!visible && !seen[idx(g.x,g.y)]) return; ctx.globalAlpha = visible?1:0.5; ctx.fillStyle='yellow'; ctx.beginPath(); ctx.arc((g.x+0.5)*SCALE,(g.y+0.5)*SCALE,6,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1; });
-    // colonies
-    colonies.forEach(c=>{ if(!c.revealed) return; const visible = ((c.x-player.x)**2 + (c.y-player.y)**2) <= VR()*VR(); ctx.globalAlpha = visible?1:0.6; ctx.fillStyle = c.activated? '#b8ffdc' : '#cfe7ff'; ctx.beginPath(); ctx.arc((c.x+0.5)*SCALE,(c.y+0.5)*SCALE,4,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1; });
-    // ingredients
-    ingredients.forEach(it=>{ if(it.picked) return; if(!seen[idx(it.x,it.y)]) return; ctx.fillStyle = it.type==='agar'? '#7cff9a' : it.type==='lecithin'? '#b8ffdc' : '#cfe7ff'; ctx.fillRect((it.x+0.2)*SCALE,(it.y+0.2)*SCALE,SCALE*0.6,SCALE*0.6); });
-    // secrets (fog-aware, only if revealed)
-    secrets.forEach(s=>{ if(!s.revealed) return; const visible = ((s.x-player.x)**2 + (s.y-player.y)**2) <= VR()*VR() || seen[idx(s.x,s.y)]; if(!visible) return; if(s.type==='crystal'){ ctx.fillStyle='hsl(285,100%,75%)'; ctx.beginPath(); ctx.arc((s.x+0.5)*SCALE,(s.y+0.5)*SCALE,5,0,Math.PI*2); ctx.fill(); } else if(s.type==='modifier'){ ctx.fillStyle='hsl(150,100%,65%)'; ctx.fillRect((s.x+0.2)*SCALE,(s.y+0.2)*SCALE, SCALE*0.6, SCALE*0.6); } else if(s.type==='equipment'){ ctx.strokeStyle='hsl(195,100%,80%)'; ctx.strokeRect((s.x+0.2)*SCALE,(s.y+0.2)*SCALE, SCALE*0.6, SCALE*0.6); }
+  // ---------- Movement (grid-snapped) ----------
+  function movePlayer(dt){
+    if(inInterlude||inAssembly) return;
+    const sp=10*dt;
+    let dx=0,dy=0; if(keys.has('w')) dy-=sp; if(keys.has('s')) dy+=sp; if(keys.has('a')) dx-=sp; if(keys.has('d')) dx+=sp;
+
+    player.fx = Math.max(0, Math.min(W-1, (player.fx ?? player.x) + dx));
+    player.fy = Math.max(0, Math.min(H-1, (player.fy ?? player.y) + dy));
+    player.x  = Math.max(0, Math.min(W-1, Math.round(player.fx)));
+    player.y  = Math.max(0, Math.min(H-1, Math.round(player.fy)));
+
+    revealAt(player.x, player.y, VR());
+
+    colonies.forEach(c=>{
+      if(!c.revealed){
+        const ddx=c.x-player.x, ddy=c.y-player.y;
+        if(ddx*ddx+ddy*ddy <= VR()*VR()) { c.revealed=true; renderColoniesList(); showToast('You discovered a colony'); }
+      }
     });
-    // serving station
-    if(servingStation){ const sx=servingStation.x, sy=servingStation.y, rr=servingStation.r*SCALE; const visible = ((sx-player.x)**2 + (sy-player.y)**2) <= VR()*VR() || seen[idx(sx,sy)]; if(visible){ ctx.save(); ctx.strokeStyle='hsl(50,100%,70%)'; ctx.lineWidth=3; ctx.globalAlpha=0.95; ctx.beginPath(); ctx.arc((sx+0.5)*SCALE,(sy+0.5)*SCALE, rr, 0, Math.PI*2); ctx.stroke(); ctx.fillStyle='hsl(50,100%,70%)'; ctx.globalAlpha=0.9; ctx.fillRect((sx+0.5)*SCALE-2,(sy+0.5)*SCALE-2,4,4); ctx.restore(); } }
-    // reviewer gaze cones
-    ctx.save(); ctx.globalAlpha=0.22; gazes.forEach(g=>{ const grad=ctx.createRadialGradient((g.x+0.5)*SCALE,(g.y+0.5)*SCALE, 16, (g.x+0.5)*SCALE,(g.y+0.5)*SCALE, g.len*SCALE); grad.addColorStop(0,'rgba(255,255,255,0.3)'); grad.addColorStop(1,'rgba(255,0,80,0)'); ctx.fillStyle=grad; ctx.beginPath(); ctx.moveTo((g.x+0.5)*SCALE,(g.y+0.5)*SCALE); const a0=g.ang-g.arc/2, a1=g.ang+g.arc/2; ctx.arc((g.x+0.5)*SCALE,(g.y+0.5)*SCALE,g.len*SCALE,a0,a1); ctx.closePath(); ctx.fill(); }); ctx.restore();
-    drawDraftArrows();
-    // fog overlay
-    ctx.save(); ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.globalCompositeOperation='source-over'; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.globalCompositeOperation='destination-out'; ctx.beginPath(); ctx.arc((player.x+0.5)*SCALE,(player.y+0.5)*SCALE,(VR()+0.5)*SCALE,0,Math.PI*2); ctx.fill(); ctx.restore();
-    // player
-    ctx.strokeStyle='hsl(160,100%,80%)'; ctx.shadowColor='rgba(184,255,220,.6)'; ctx.shadowBlur=8; ctx.strokeRect(player.x*SCALE-6,player.y*SCALE-6,12,12); ctx.shadowBlur=0;
-    // health bar
-    ctx.fillStyle='hsl(0,100%,60%)'; ctx.fillRect(10,10,player.health*2,10); ctx.strokeStyle='#fff'; ctx.strokeRect(10,10,200,10);
-    // damage telegraph
-    if(damageFlash>0){ ctx.globalAlpha = Math.min(0.6, damageFlash); ctx.fillStyle = 'rgba(255,0,80,0.45)'; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.globalAlpha = 1; damageFlash *= 0.88; }
-    // brush ring
-    drawBrushRing();
-    // minimap
-    if(miniVisible) renderMinimap(); }
+    secrets.forEach(s=>{
+      if(!s.revealed){
+        const dx=s.x-player.x, dy=s.y-player.y;
+        if(dx*dx+dy*dy <= (VR()*VR())){ s.revealed=true; updateDepthsPanel(); showToast('You uncovered something…'); }
+      }
+    });
+    ingredients.forEach(it=>{
+      if(it.picked) return;
+      const dx=it.x-player.x, dy=it.y-player.y;
+      if(dx*dx+dy*dy <= 4 && seen[idx(it.x,it.y)]){ it.picked=true; applyIngredient(it.type); }
+    });
+    goals.forEach(g=>{ if(!g.done && Math.abs(player.x-g.x)<1 && Math.abs(player.y-g.y)<1){ g.done=true; showToast('Goal reached!'); renderGoalsList(); }});
+    if(allGoalsComplete()) maybeSpawnServingStation();
 
-  function drawBrushRing(){ const color = currentTool==='heat'  ? 'hsl(20,100%,60)'
-                 : currentTool==='cool'  ? 'hsl(195,100%,65%)'
-                 : currentTool==='shear' ? 'hsl(55,100%,70%)'
-                 : currentTool==='ph'    ? 'hsl(300,100%,65%)'
-                 : currentTool==='foam'  ? 'hsl(190,100%,70%)'
-                 : currentTool==='gel'   ? 'hsl(140,100%,60%)'
-                 : currentTool==='spheres' ? 'hsl(0,0%,100%)'
-                 : 'rgba(184,255,220,0.9)'; ctx.save(); ctx.strokeStyle=color; ctx.globalAlpha=0.95; ctx.lineWidth=2; ctx.beginPath(); ctx.arc((mouse.x+0.5)*SCALE,(mouse.y+0.5)*SCALE,(brush*SCALE)+2,0,Math.PI*2); ctx.stroke(); ctx.restore(); }
-
-  function drawDraftArrows(){ const step=8; const pxLen=SCALE*2.6; const alpha=0.28; ctx.save(); ctx.globalAlpha=alpha; ctx.strokeStyle='rgba(184,255,220,0.65)'; ctx.fillStyle='rgba(184,255,220,0.65)'; for(let y=0;y<H;y+=step){ for(let x=0;x<W;x+=step){ if(!seen[idx(x,y)]) continue; const v=draftAt(x+0.5,y+0.5); const mag=Math.hypot(v[0],v[1]); if(mag<0.05) continue; const nx=v[0]/mag, ny=v[1]/mag; const len=Math.min(1.0,mag)*pxLen; const cxp=(x+0.5)*SCALE, cyp=(y+0.5)*SCALE; ctx.beginPath(); ctx.moveTo(cxp-nx*len*0.5, cyp-ny*len*0.5); ctx.lineTo(cxp+nx*len*0.5, cyp+ny*len*0.5); ctx.stroke(); const ang=Math.atan2(ny,nx), ah=4; const hx=cxp+nx*len*0.5, hy=cyp+ny*len*0.5; ctx.beginPath(); ctx.moveTo(hx,hy); ctx.lineTo(hx-Math.cos(ang-Math.PI/6)*ah, hy-Math.sin(ang-Math.PI/6)*ah); ctx.lineTo(hx-Math.cos(ang+Math.PI/6)*ah, hy-Math.sin(ang+Math.PI/6)*ah); ctx.closePath(); ctx.fill(); } } ctx.restore(); }
-
-  function drawDraftArrowsMini(){ const step=8; const len=2; const alpha=0.75; mctx.save(); mctx.globalAlpha=alpha; mctx.strokeStyle='rgba(184,255,220,0.8)'; mctx.lineWidth=1; for(let y=0;y<H;y+=step){ for(let x=0;x<W;x+=step){ if(!seen[idx(x,y)]) continue; const v=draftAt(x+0.5, y+0.5); const mag=Math.hypot(v[0],v[1]); if(mag<0.05) continue; const nx=v[0]/mag, ny=v[1]/mag; const cx=x+0.5, cy=y+0.5; mctx.beginPath(); mctx.moveTo(cx-nx*len*0.5, cy-ny*len*0.5); mctx.lineTo(cx+nx*len*0.5, cy+ny*len*0.5); mctx.stroke(); } } mctx.restore(); }
-
-  function renderMinimap(){ mctx.clearRect(0,0,mini.width, mini.height); mctx.fillStyle = '#090c0f'; mctx.fillRect(0,0,mini.width, mini.height); mctx.fillStyle = 'rgba(0,0,0,0.65)'; for(let y=0;y<H;y++) for(let x=0;x<W;x++){ if(!seen[idx(x,y)]) mctx.fillRect(x,y,1,1); } hazards.forEach(h=>{ if(h.dead) return; const x=Math.floor(h.x), y=Math.floor(h.y); if(!seen[idx(x,y)]) return; mctx.fillStyle = h.type==='heat'? '#ff5577' : (h.type==='acid' ? '#66bbff' : '#e6b3ff'); mctx.fillRect(x,y,1,1); }); goals.forEach(g=>{ if(!seen[idx(g.x,g.y)]) return; mctx.fillStyle='yellow'; mctx.fillRect(g.x,g.y,1,1); }); colonies.forEach(c=>{ if(!c.revealed) return; mctx.fillStyle = c.activated? '#b8ffdc' : '#cfe7ff'; mctx.fillRect(c.x,c.y,1,1); }); spheres.forEach(s=>{ if(!seen[idx(Math.floor(s.x),Math.floor(s.y))]) return; mctx.fillStyle='#fff'; mctx.fillRect(Math.floor(s.x),Math.floor(s.y),1,1); }); drawDraftArrowsMini(); if(servingStation && seen[idx(servingStation.x,servingStation.y)]){ mctx.fillStyle='#ffe58f'; mctx.fillRect(servingStation.x, servingStation.y, 1, 1); } mctx.fillStyle = '#fff'; mctx.fillRect(Math.floor(player.x), Math.floor(player.y), 1,1); mctx.strokeStyle = 'rgba(255,255,255,0.5)'; mctx.beginPath(); mctx.arc(player.x, player.y, VR(), 0, Math.PI*2); mctx.stroke(); }
-
-  // keyboard
-  window.addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); keys.add(k); if(k==='r' && !inAssembly) reset(); if(k==='1'){ currentTool='foam'; updateOverlay(); } if(k==='2'){ currentTool='gel'; updateOverlay(); } if(k==='3'){ currentTool='spheres'; updateOverlay(); } if(k==='t'){ currentTool='heat'; updateOverlay(); } if(k==='y'){ currentTool='cool'; updateOverlay(); } if(k==='u'){ currentTool='shear'; updateOverlay(); } if(k==='i'){ currentTool='ph'; updateOverlay(); } if(k==='f' && !inAssembly){ attemptServe(); } if(k==='q'){ brush=Math.max(1,brush-1); updateOverlay(); } if(k==='e'){ brush=Math.min(12,brush+1); updateOverlay(); } if(k==='z' && !inAssembly){ activateNearbyColony(); } if(k==='x'){ if(inAssembly) closeAssembly(); else interactNearby(); } if(inInterlude && (k==='4'||k==='5'||k==='6')){ chooseInterlude(Number(k)-4); } if(k==='m'){ toggleMelt(); const mb=document.getElementById('meltBtn'); if(mb) mb.textContent = `Psychedelia++: ${melt?'ON':'OFF'}`; } if(k==='n'){ toggleMinimap(); const tb=document.getElementById('miniToggle'); if(tb) tb.textContent = `Minimap: ${miniVisible?'ON':'OFF'}`; } });
-  window.addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));
-
-  // --- Interlude (Choices) ---
-  function randomOf(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
-  function randomInterlude(){ const gifts = Object.keys(MUTATIONS).filter(id=>MUTATIONS[id].type==='gift'); const curses= Object.keys(MUTATIONS).filter(id=>MUTATIONS[id].type==='curse'); const o1 = randomOf(gifts), o2 = randomOf(gifts), o3 = randomOf(curses); return [o1,o2,o3]; }
-  function openInterlude(options){ inInterlude = true; interOptions = options.slice(0,3); const inter = document.getElementById('interlude'); const opts = document.getElementById('interOpts'); document.getElementById('interTitle').textContent = `Between Courses — ${story.title}`; document.getElementById('interSub').textContent = 'In Heston\'s head, emissaries of the kitchen arrive with gifts and curses.'; opts.innerHTML = ''; interOptions.forEach((id,idx)=>{ const m = MUTATIONS[id]; const div = document.createElement('div'); div.className='opt'; div.innerHTML = `<div class="name">${idx+4}. ${m.name} <span class="pill ${m.type}">${m.type}</span></div><div class="who">${m.who}</div><div class="flavor">${m.flavor}</div>`; div.addEventListener('click',()=>chooseInterlude(idx)); opts.appendChild(div); }); inter.style.display='flex'; }
-  function chooseInterlude(index){ const id = interOptions[index]; if(!id) return; applyMutationById(id); closeInterlude(); nextCourse(); }
-  function closeInterlude(){ inInterlude=false; interOptions=[]; document.getElementById('interlude').style.display='none'; }
-  function applyMutationById(id){ const m=MUTATIONS[id]; if(!m) return false; m.apply(); activeMutations.push(id); updateNarrativePanel(); showToast(`${m.type==='gift'?'Gift':'Curse'}: ${m.name}`); return true; }
-
-  // --- Self tests ---
-  function appendTestResult(name, pass, note=''){ const box = document.getElementById('tests'); const div = document.createElement('div'); div.innerHTML = `<span style="color:${pass?'#b8ffdc':'#ffb8b8'}">${pass?'PASS':'FAIL'}</span> — ${name} ${note?('<span style=\"color:#9fb0be\">('+note+')</span>'):''}`; box.appendChild(div); }
-
-  function runTests(){ const box = document.getElementById('tests'); if(!box) return; box.innerHTML=''; try { appendTestResult('splitHazard exists', typeof splitHazard==='function'); } catch(e){} try { appendTestResult('coalesceHazards exists', typeof coalesceHazards==='function'); } catch(e){} try { appendTestResult('revealAt exists', typeof revealAt==='function'); } catch(e){} try { appendTestResult('activateColony exists', typeof activateColony==='function'); } catch(e){} try { appendTestResult('showToast exists', typeof showToast==='function'); } catch(e){} try { appendTestResult('evaluateDishAt exists', typeof evaluateDishAt==='function'); } catch(e){} try { appendTestResult('openInterlude exists', typeof openInterlude==='function'); } catch(e){}
-    // Placement rotation test
-    try { initAssemblyOnce(); clearAsm(true); asm.sel='pipe'; asm.placeRot=2; placeAsm(2, Math.floor(asm.H/2)); appendTestResult('placement orientation respected', tileAt(2,Math.floor(asm.H/2)).rot===2); } catch(e){ appendTestResult('placement orientation respected', false, e.message); }
-    // Psychedelia toggle
-    try { const was = document.body.classList.contains('melt'); toggleMelt(true); const on = document.body.classList.contains('melt'); toggleMelt(false); const off = !document.body.classList.contains('melt'); appendTestResult('psychedelia toggle works', on && off); } catch(e){ appendTestResult('psychedelia toggle works', false, e.message); }
-    // Velocity inheritance test
-    try { const parent = {x:40, y:30, type:'acid', radius:9, phase:0, strength:1.4, splitCd:0, vx:0.8, vy:0.2, dead:false}; hazards.push(parent); splitHazard(parent); const kids = hazards.filter(h=>!h.dead && h!==parent && h.type==='acid').slice(-3); const dir = (vx,vy)=>{ const m=Math.hypot(vx,vy)||1; return [vx/m, vy/m]; }; const [px,py]=dir(0.8,0.2); const ok = kids.some(k=>{ const [kx,ky]=dir(k.vx||0.0001,k.vy||0.0001); return (kx*px+ky*py) > 0.7; }); appendTestResult('children inherit parent drift direction', ok); } catch(e){ appendTestResult('children inherit parent drift direction', false, e.message); }
-    // Swirl tangential motion
-    try { const {cx, cy} = (()=>{ const p=swirlPhase; return {cx:W/2 + Math.cos(p)*6, cy:H/2 + Math.sin(p)*4}; })(); const h = {x:cx+10, y:cy, type:'acid', radius:5, strength:1, phase:0, splitCd:0, vx:0, vy:0,dead:false}; hazards.push(h); updateHazards(1.0); const tangential = h.vy > 0; appendTestResult('acid tangential swirl', tangential); } catch(e){ appendTestResult('acid tangential swirl', false, e.message); }
-    // Heat jitter
-    try { const hx0=20, hy0=12; const h = {x:hx0, y:hy0, type:'heat', radius:5, strength:1, phase:0, splitCd:0, vx:0, vy:0, dead:false}; hazards.push(h); let moved=false; for(let s=0;s<6;s++) updateHazards(0.2), moved = moved || (Math.hypot(h.x-hx0, h.y-hy0) > 0.05); appendTestResult('heat zones jitter', moved); } catch(e){ appendTestResult('heat zones jitter', false, e.message); }
-    // Draft vector exists & influences
-    try { const before = draftAt(10,10); assemblyFlow.fanVec={x:1,y:0}; const after = draftAt(10,10); appendTestResult('draftAt responds to fans', Math.abs(after[0])>Math.abs(before[0])); } catch(e){ appendTestResult('draftAt responds to fans', false, e.message); }
-    // Coalesce
-    try { const n0 = hazards.filter(z=>!z.dead).length; const a1 = {x:5, y:5, type:'acid', radius:4, strength:1, phase:0, splitCd:0, vx:0, vy:0, dead:false}; const a2 = {x:6.5, y:5, type:'acid', radius:4, strength:1, phase:0, splitCd:0, vx:0, vy:0, dead:false}; hazards.push(a1,a2); const changed = coalesceHazards(); const n1 = hazards.filter(z=>!z.dead).length; appendTestResult('acid coalesces', changed && n1 === n0 + 1); } catch(e){ appendTestResult('acid coalesces', false, e.message); }
-    // Fog reveal
-    try { seen.fill(0); revealAt(10,10,4); const cells = seen.reduce((a,b)=>a+b,0); appendTestResult('fog reveal marks cells', cells>0); } catch(e){ appendTestResult('fog reveal marks cells', false, e.message); }
-    // Colony activation reduces local hazard
-    try { hazards.length=0; colonies.length=0; const c={x:30, y:30, revealed:true, activated:false}; colonies.push(c); hazards.push({x:30, y:30, type:'acid', radius:6, strength:1, phase:0, splitCd:0, vx:0, vy:0, dead:false}); const before = hazards[0].strength; activateColony(c); const after = hazards[0].strength; appendTestResult('activateColony weakens hazards', after < before); } catch(e){ appendTestResult('activateColony weakens hazards', false, e.message); }
-    // Damage telegraph
-    try { const df0=damageFlash; takeDamage(5); appendTestResult('damage telegraph spikes', damageFlash>df0); } catch(e){ appendTestResult('damage telegraph spikes', false, e.message); }
-    // Toast behavior
-    try { const t = document.getElementById('toast'); showToast('Test Toast', 200); const visible = getComputedStyle(t).opacity !== '0'; appendTestResult('showToast visible & text', visible && /Test Toast/.test(t.textContent)); } catch(e){ appendTestResult('showToast visible & text', false, e.message); }
-    // Buff HUD appears
-    try { applyIngredient('agar'); renderBuffHUD(); const hud=document.getElementById('buffHUD'); const vis=getComputedStyle(hud).display!=='none'; appendTestResult('buff HUD appears', vis); } catch(e){ appendTestResult('buff HUD appears', false, e.message); }
-    // Draft arrows function exists
-    try { appendTestResult('draft arrows function exists', typeof drawDraftArrows==='function'); } catch(e){ appendTestResult('draft arrows function exists', false, e.message); }
-    // Materials & Spheres
-    try { hazards.push({x:10,y:10,type:'heat',radius:6,strength:1.2,phase:0,splitCd:0,dead:false}); const base = effectiveDPSAt(10,10); paintCircle(foam,10,10,2,1); const reduced = effectiveDPSAt(10,10); appendTestResult('foam reduces DPS at point', reduced < base); } catch(e){ appendTestResult('foam reduces DPS at point', false, e.message); }
-    try { precursor[idx(20,20)] = 1.0; hazards.push({x:20,y:20,type:'acid',radius:6,strength:1,phase:0,splitCd:0,dead:false}); const g0=gel[idx(20,20)]; updateMaterials(1.0); const g1=gel[idx(20,20)]; appendTestResult('gel increases near acid', g1>g0); } catch(e){ appendTestResult('gel increases near acid', false, e.message); }
-    try { const h = {x:30,y:30,type:'acid',radius:5,strength:1,phase:0,splitCd:0,vx:0,vy:0,dead:false}; hazards.push(h); const gpos = idx(30,30); gel[gpos]=1.0; const px=h.x,py=h.y; updateHazards(1.0); const dist = Math.hypot(h.x-px,h.y-py); appendTestResult('gel slows hazard (short move)', dist < 2.0); } catch(e){ appendTestResult('gel slows hazard (short move)', false, e.message); }
-    try { const h = {x:50,y:30,type:'acid',radius:6,strength:1.0,phase:0,splitCd:0,vx:0,vy:0,dead:false}; hazards.push(h); spawnSpheres(50,30); const s0 = h.strength; for(let t=0;t<10;t++) { updateSpheres(0.2); } appendTestResult('spheres reduce acid strength', h.strength < s0); } catch(e){ appendTestResult('spheres reduce acid strength', false, e.message); }
-    // Reviewer gaze dulling with foam
-    try { const base = effectiveDPSAt(W*0.25|0,H*0.35|0); paintCircle(foam,W*0.25|0,H*0.35|0,3,1); const after = effectiveDPSAt(W*0.25|0,H*0.35|0); appendTestResult('foam dulls gaze damage', after <= base); } catch(e){ appendTestResult('foam dulls gaze damage', false, e.message); }
-    // Assembly success with fans (pressure)
-    try { initAssemblyOnce(); clearAsm(true); const sy=Math.floor(asm.H/2); for(let x=1;x<asm.W-1;x++){ asm.tiles[asmIndex(x,sy)]={type:'pipe',rot:1}; } asm.tiles[asmIndex(5,sy)]={type:'chill',rot:1}; asm.tiles[asmIndex(7,sy)]={type:'vacuum',rot:1}; asm.tiles[asmIndex(9,sy)]={type:'condense',rot:1}; asm.tiles[asmIndex(3,sy)]={type:'fan',rot:1}; const ok=runAssemblySimulation(); appendTestResult('assembly success with fan pressure', ok===true); }
-    catch(e){ appendTestResult('assembly success with fan pressure', false, e.message); }
-    // Valve one-way blocks wrong dir
-    try { initAssemblyOnce(); clearAsm(true); const sy=Math.floor(asm.H/2); asm.tiles[asmIndex(1,sy)]={type:'valve',rot:0}; asm.tiles[asmIndex(2,sy)]={type:'pipe',rot:1}; asm.tiles[asmIndex(5,sy)]={type:'condense',rot:1}; const ok2=runAssemblySimulation(); appendTestResult('valve blocks without full chain', ok2===false); }
-    catch(e){ appendTestResult('valve blocks without full chain', false, e.message); }
-    // Origami score within [0,1]
-    try { openOrigami(); autoFold(); const s = computeOrigamiSymmetry(); closeOrigami(); appendTestResult('origami score bounds', s>=0 && s<=1); } catch(e){ appendTestResult('origami score bounds', false, e.message); }
-    // Minimap toggle + helpers
-    try { const el=document.getElementById('mini'); toggleMinimap(false); const hidden=getComputedStyle(el).display==='none'; toggleMinimap(true); const shown=getComputedStyle(el).display!=='none'; appendTestResult('minimap toggle works', hidden && shown); } catch(e){ appendTestResult('minimap toggle works', false, e.message); }
-    try { appendTestResult('mini draft arrows function exists', typeof drawDraftArrowsMini==='function'); } catch(e){ appendTestResult('mini draft arrows function exists', false, e.message); }
+    const dps = effectiveDPSAt(player.x, player.y); if(dps>0) takeDamage(dps*dt);
   }
 
-  function openInterludeAndMaybe(){ openInterlude(randomInterlude()); }
+  function activateNearestColony(){
+    const c = colonies.find(c=>c.revealed && !c.activated && Math.hypot(c.x-player.x, c.y-player.y)<=2.5);
+    if(!c){ showToast('No colony nearby'); return; }
+    c.activated=true; renderColoniesList(); showToast('Colony activated');
+    // reward: small buff or reveal
+    if(Math.random()<0.5){ mods.visionBonus += 1; } else { buffs.lecithin = Math.min(BUFF_MAXS.lecithin, buffs.lecithin+15); renderBuffHUD(); }
+  }
 
-  let last=performance.now();
-  function loop(now){ const dt=(now-last)/1000; last=now; movePlayer(dt); updateMaterials(dt); updateSpheres(dt); updateHazards(dt); updateGazes(dt); tickBuffs(dt); render();
-    // extra psychedelic overlay on main canvas
-    if(melt){ ctx.save(); ctx.globalCompositeOperation='lighter'; const step=4; for(let y=0;y<canvas.height;y+=step){ for(let x=0;x<canvas.width;x+=step){ const hue = (Math.sin((x+time*120)*0.02)+Math.cos((y-time*140)*0.018))*180 + 180; ctx.fillStyle = `hsla(${hue%360},100%,55%,0.06)`; ctx.fillRect(x,y,step,step); } } ctx.restore(); }
-    requestAnimationFrame(loop); }
+  function interactAtPlayer(){
+    // interact with secrets
+    const s = secrets.find(s=>s.revealed && Math.hypot(s.x-player.x, s.y-player.y)<=2.5);
+    if(s){
+      if(s.type==='crystal' && !s.state.stabilised){ s.state.stabilised=true; updateDepthsPanel(); showToast('Crystal stabilised'); }
+      else if(s.type==='modifier' && !s.state.claimed){ s.state.claimed=true; scoreMods.widen *= 1.12; updateDepthsPanel(); showToast('Palate thread attuned'); }
+      else if(s.type==='equipment' && !s.state.built){ openAssembly(s); }
+      return;
+    }
+    showToast('Nothing to interact with');
+  }
 
+  // ---------- Visual helpers ----------
+  function drawBrushRing(){
+    const gx=Math.round(mouse.x), gy=Math.round(mouse.y);
+    const color = currentTool==='heat'  ? 'hsl(20,100%,60%)'
+               : currentTool==='cool'  ? 'hsl(195,100%,65%)'
+               : currentTool==='shear' ? 'hsl(55,100%,70%)'
+               : currentTool==='ph'    ? 'hsl(300,100%,65%)'
+               : currentTool==='foam'  ? 'hsl(190,100%,70%)'
+               : currentTool==='gel'   ? 'hsl(140,100%,60%)'
+               : currentTool==='spheres' ? 'hsl(0,0%,100%)'
+               : 'rgba(184,255,220,0.9)';
+    ctx.save(); ctx.strokeStyle=color; ctx.globalAlpha=0.95; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc((gx+0.5)*SCALE,(gy+0.5)*SCALE,(brush*SCALE)+2,0,Math.PI*2); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawDraftArrows(step=8){
+    ctx.save();
+    ctx.globalAlpha = 0.45;
+    for(let y=step/2; y<H; y+=step){
+      for(let x=step/2; x<W; x+=step){
+        const [vx,vy] = draftAt(x,y);
+        const len = Math.min(6, Math.hypot(vx,vy)*10 + 2);
+        const ang = Math.atan2(vy,vx);
+        const cx = (x+0.5)*SCALE, cy=(y+0.5)*SCALE;
+        ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+Math.cos(ang)*len, cy+Math.sin(ang)*len); ctx.strokeStyle='rgba(184,255,220,0.5)'; ctx.stroke();
+        // arrowhead
+        const a1=ang+2.5, a2=ang-2.5;
+        ctx.beginPath(); ctx.moveTo(cx+Math.cos(ang)*len, cy+Math.sin(ang)*len);
+        ctx.lineTo(cx+Math.cos(a1)*3, cy+Math.sin(a1)*3);
+        ctx.lineTo(cx+Math.cos(a2)*3, cy+Math.sin(a2)*3);
+        ctx.closePath(); ctx.fillStyle='rgba(184,255,220,0.5)'; ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+  function drawMiniDraftArrows(step=8){
+    mctx.save();
+    mctx.globalAlpha=0.6;
+    for(let y=step/2; y<H; y+=step){
+      for(let x=step/2; x<W; x+=step){
+        const [vx,vy]=draftAt(x,y);
+        const len=Math.min(2, Math.hypot(vx,vy)*3 + 0.6);
+        const ang=Math.atan2(vy,vx);
+        const cx=x+0.5, cy=y+0.5;
+        mctx.beginPath(); mctx.moveTo(cx,cy); mctx.lineTo(cx+Math.cos(ang)*len, cy+Math.sin(ang)*len); mctx.strokeStyle='rgba(184,255,220,0.7)'; mctx.stroke();
+      }
+    }
+    mctx.restore();
+  }
+
+  // ---------- Buff HUD ----------
+  function renderBuffHUD(){
+    const hud=document.getElementById('buffHUD');
+    const any = buffs.agar>0 || buffs.lecithin>0 || buffs.cacl2>0;
+    hud.style.display = any?'block':'none';
+    const set=(k,v)=>{ const pct=Math.round((v/BUFF_MAXS[k])*100); document.getElementById('hud_'+k).style.width = pct+'%'; document.getElementById('hud_'+k+'_t').textContent = v.toFixed(0)+'s'; };
+    set('agar',buffs.agar); set('lecithin',buffs.lecithin); set('cacl2',buffs.cacl2);
+  }
+
+  // ---------- Interlude (mutations) ----------
+  let inInterlude=false; let interOptions=[];
+  function openInterlude(initial=false){
+    inInterlude=true;
+    const el=document.getElementById('interlude'); el.style.display='flex';
+    interOptions=[];
+    // pick 3 options, mix gifts/curses
+    const keys=Object.keys(MUTATIONS); while(interOptions.length<3){
+      const k=keys[Math.floor(Math.random()*keys.length)];
+      if(!interOptions.includes(k)) interOptions.push(k);
+    }
+    const box=document.getElementById('interOpts'); box.innerHTML='';
+    interOptions.forEach((id,ix)=>{
+      const m=MUTATIONS[id];
+      const div=document.createElement('div'); div.className='opt'; div.innerHTML=`<div class="name">${m.name}</div><div class="who">${m.who}</div><div class="flavor">${m.flavor}</div>`;
+      div.addEventListener('click',()=>chooseInterlude(ix));
+      box.appendChild(div);
+    });
+    document.getElementById('interTitle').textContent = initial ? 'Welcome to Service' : 'Between Courses';
+    document.getElementById('interSub').textContent = initial ? 'The pass steams; voices multiply. Choose your edge.' : 'Gifts and curses knock on copper.'
+  }
+  function chooseInterlude(ix){
+    const id=interOptions[ix]; if(!id) return;
+    activeMutations.push(id); MUTATIONS[id].apply(); updateNarrativePanel();
+    closeInterlude(); showToast(`${MUTATIONS[id].name} applied`);
+  }
+  function chooseInterludeByKey(k){ const map={'4':0,'5':1,'6':2}; chooseInterlude(map[k]); }
+  function closeInterlude(){ inInterlude=false; document.getElementById('interlude').style.display='none'; }
+
+  // ---------- Assembly (Zach-like) ----------
+  let inAssembly=false, asmInit=false, assemblyFor=null;
+  const asm = { W:14, H:7, CELL:64, tiles:[], inv:null, sel:'pipe', hover:{x:-1,y:-1}, placeRot:0 };
+  const asmCanvas = document.getElementById('asmCanvas'), actx = asmCanvas.getContext('2d');
+
+  function openAssembly(s){
+    inAssembly=true; document.getElementById('assembly').style.display='flex'; assemblyFor=s;
+    if(!asmInit){ initAsm(); asmInit=true; }
+    showToast('Assemble the rig. Merge feeds before Condense.');
+  }
+  function closeAssembly(){ inAssembly=false; document.getElementById('assembly').style.display='none'; }
+  function initAsm(){
+    asm.tiles = Array.from({length:asm.W*asm.H},()=>({t:'', r:0}));
+    asm.inv = { pipe:24, elbow:14, tee:8, cross:4, fan:2, damper:2, heater:1, valve:4, chill:1, vacuum:1, condense:1 };
+    // Sources & outlet pinned (not counted)
+    asm.sources = [{x:0,y:1,t:'feed'},{x:0,y:3,t:'brine'},{x:0,y:5,t:'aroma'}];
+    asm.outlet = {x:asm.W-1, y:Math.floor(asm.H/2)};
+    wireAsmUI();
+    drawAsm();
+  }
+  function wireAsmUI(){
+    document.querySelectorAll('#asmToolbar .tool').forEach(el=>{
+      el.addEventListener('click', ()=>{
+        document.querySelectorAll('#asmToolbar .tool').forEach(x=>x.classList.remove('sel'));
+        el.classList.add('sel'); asm.sel=el.dataset.type;
+      });
+    });
+    document.getElementById('asmRotate').addEventListener('click', ()=>{ asm.placeRot=(asm.placeRot+1)%4; document.getElementById('asmOri').textContent = ['→','↓','←','↑'][asm.placeRot]; });
+    document.getElementById('asmRun').addEventListener('click', runAsm);
+    document.getElementById('asmClear').addEventListener('click', ()=>{ initAsm(); });
+    document.getElementById('asmClose').addEventListener('click', closeAssembly);
+    asmCanvas.addEventListener('contextmenu', e=>e.preventDefault());
+    asmCanvas.addEventListener('mousemove', e=>{
+      const r=asmCanvas.getBoundingClientRect(); const x=Math.floor((e.clientX-r.left)/asm.CELL); const y=Math.floor((e.clientY-r.top)/asm.CELL);
+      asm.hover={x,y}; drawAsm();
+    });
+    asmCanvas.addEventListener('mousedown', e=>{
+      const r=asmCanvas.getBoundingClientRect(); const x=Math.floor((e.clientX-r.left)/asm.CELL); const y=Math.floor((e.clientY-r.top)/asm.CELL);
+      if(e.button===2){ rotateAsm(x,y); return; }
+      placeAsm(x,y);
+    });
+    document.addEventListener('keydown', (e)=>{ if(!inAssembly) return; if(e.key==='Delete'){ eraseAsm(asm.hover.x, asm.hover.y); } });
+  }
+  function aidx(x,y){ return x+y*asm.W; }
+  function placeAsm(x,y){
+    if(x<=0 || x>=asm.W-1 || y<0 || y>=asm.H) return; // keep edges free for IO
+    const cell=asm.tiles[aidx(x,y)];
+    if(asm.sel==='eraser'){ cell.t=''; cell.r=0; drawAsm(); return; }
+    if(asm.inv[asm.sel]<=0){ showToast('No inventory'); return; }
+    cell.t=asm.sel; cell.r=asm.placeRot; asm.inv[asm.sel]--; updateAsmInv(); drawAsm();
+  }
+  function rotateAsm(x,y){ if(x<0||y<0||x>=asm.W||y>=asm.H) return; const cell=asm.tiles[aidx(x,y)]; if(!cell.t) return; cell.r=(cell.r+1)%4; drawAsm(); }
+  function eraseAsm(x,y){ if(x<0||y<0||x>=asm.W||y>=asm.H) return; const cell=asm.tiles[aidx(x,y)]; if(!cell.t) return; asm.inv[cell.t] = (asm.inv[cell.t]||0)+1; cell.t=''; cell.r=0; updateAsmInv(); drawAsm(); }
+  function updateAsmInv(){ Object.keys(asm.inv).forEach(k=>{ const el=document.getElementById('inv_'+k); if(el) el.textContent = asm.inv[k]; }); }
+
+  function drawAsm(){
+    actx.clearRect(0,0,asmCanvas.width,asmCanvas.height);
+    actx.fillStyle='#0e1317'; actx.fillRect(0,0,asmCanvas.width,asmCanvas.height);
+
+    // grid
+    actx.strokeStyle='rgba(200,220,255,0.08)';
+    for(let x=0;x<=asm.W;x++){ actx.beginPath(); actx.moveTo(x*asm.CELL,0); actx.lineTo(x*asm.CELL,asm.H*asm.CELL); actx.stroke(); }
+    for(let y=0;y<=asm.H;y++){ actx.beginPath(); actx.moveTo(0,y*asm.CELL); actx.lineTo(asm.W*asm.CELL,y*asm.CELL); actx.stroke(); }
+
+    // sources & outlet
+    asm.sources.forEach(s=>{
+      drawAsmCell(s.x,s.y,'source',0,s.t);
+    });
+    drawAsmCell(asm.outlet.x, asm.outlet.y, 'outlet', 0, 'OUT');
+
+    // tiles
+    for(let y=0;y<asm.H;y++) for(let x=0;x<asm.W;x++){
+      const c=asm.tiles[aidx(x,y)]; if(!c.t) continue;
+      drawAsmCell(x,y,c.t,c.r);
+    }
+
+    // hover
+    const h=asm.hover; if(h.x>=0 && h.y>=0 && h.x<asm.W && h.y<asm.H){
+      actx.strokeStyle='rgba(184,255,220,0.6)'; actx.lineWidth=2;
+      actx.strokeRect(h.x*asm.CELL+1, h.y*asm.CELL+1, asm.CELL-2, asm.CELL-2);
+    }
+  }
+  function drawAsmCell(x,y,t,r,label){
+    const gx=x*asm.CELL, gy=y*asm.CELL;
+    actx.save();
+    actx.translate(gx+asm.CELL/2, gy+asm.CELL/2);
+    actx.rotate(r*(Math.PI/2));
+    actx.translate(-asm.CELL/2, -asm.CELL/2);
+    actx.fillStyle='#11171c'; actx.strokeStyle='#21303b';
+    actx.fillRect(4,4,asm.CELL-8,asm.CELL-8); actx.strokeRect(4,4,asm.CELL-8,asm.CELL-8);
+
+    actx.lineWidth=6; actx.lineCap='round'; actx.strokeStyle='#78c2ff';
+
+    const drawPipe = (dirs)=>{ // dirs: array of 0:→,1:↓,2:←,3:↑
+      dirs.forEach(d=>{
+        actx.beginPath();
+        const cx=asm.CELL/2, cy=asm.CELL/2;
+        const dx = d===0?1:d===2?-1:0; const dy = d===1?1:d===3?-1:0;
+        actx.moveTo(cx,cy); actx.lineTo(cx+dx*(asm.CELL/2-10), cy+dy*(asm.CELL/2-10));
+        actx.stroke();
+      });
+    };
+
+    if(t==='source'){
+      actx.fillStyle='#21303b'; actx.fillRect(10,10,asm.CELL-20,asm.CELL-20);
+      actx.fillStyle='#9fe7b9'; actx.font='12px monospace'; actx.textAlign='center'; actx.fillText(label.toUpperCase(), asm.CELL/2, asm.CELL/2+4);
+      drawPipe([0]); // to right
+    } else if(t==='outlet'){
+      actx.fillStyle='#2f243b'; actx.fillRect(10,10,asm.CELL-20,asm.CELL-20);
+      actx.fillStyle='#ffe58f'; actx.font='12px monospace'; actx.textAlign='center'; actx.fillText('OUT', asm.CELL/2, asm.CELL/2+4);
+      drawPipe([2]); // from left
+    } else if(t==='pipe'){ drawPipe([0,2]); }
+    else if(t==='elbow'){ drawPipe([0,3]); }
+    else if(t==='tee'){ drawPipe([0,2,3]); }
+    else if(t==='cross'){ drawPipe([0,1,2,3]); }
+    else if(t==='fan'){ drawPipe([0,2]); actx.fillStyle='#b8ffdc'; actx.beginPath(); actx.arc(asm.CELL/2,asm.CELL/2,8,0,Math.PI*2); actx.fill(); }
+    else if(t==='damper'){ drawPipe([0,2]); actx.fillStyle='#9fb0be'; actx.fillRect(asm.CELL/2-8, asm.CELL/2-3, 16,6); }
+    else if(t==='heater'){ drawPipe([0,2]); actx.fillStyle='#ff9f7a'; actx.fillRect(asm.CELL/2-7, asm.CELL/2-7, 14,14); }
+    else if(t==='valve'){ drawPipe([0,2]); actx.fillStyle='#cfe7ff'; actx.beginPath(); actx.moveTo(asm.CELL/2-6, asm.CELL/2); actx.lineTo(asm.CELL/2+6, asm.CELL/2-6); actx.lineTo(asm.CELL/2+6, asm.CELL/2+6); actx.closePath(); actx.fill(); }
+    else if(t==='chill'){ drawPipe([0,2]); actx.fillStyle='#78c2ff'; actx.fillRect(asm.CELL/2-7, asm.CELL/2-7, 14,14); }
+    else if(t==='vacuum'){ drawPipe([0,2]); actx.strokeStyle='#ffe58f'; actx.strokeRect(asm.CELL/2-7, asm.CELL/2-7, 14,14); }
+    else if(t==='condense'){ drawPipe([0,2]); actx.fillStyle='#ffe58f'; actx.beginPath(); actx.arc(asm.CELL/2,asm.CELL/2,10,0,Math.PI*2); actx.fill(); }
+    actx.restore();
+  }
+
+  function runAsm(){
+    // Simple flow sim: we only verify that paths from FEED, BRINE, AROMA merge before a CONDENSE
+    // and reach OUTLET with enough pressure; side effects adjust assemblyFlow.
+    const grid = Array.from({length:asm.H},(_,y)=>Array.from({length:asm.W},(_,x)=>({t:'',r:0})));
+    for(let y=0;y<asm.H;y++) for(let x=0;x<asm.W;x++){
+      const c=asm.tiles[aidx(x,y)]; if(c.t){ grid[y][x]={t:c.t,r:c.r}; }
+    }
+    asm.sources.forEach(s=>grid[s.y][s.x]={t:s.t,r:0});
+    grid[asm.outlet.y][asm.outlet.x]={t:'out',r:0};
+
+    // BFS from sources following pipes; collect flags
+    function dirsFor(t,r){
+      const rot = (d)=> (d+r)%4;
+      if(t==='pipe') return [rot(0),rot(2)];
+      if(t==='elbow') return [rot(0),rot(3)];
+      if(t==='tee') return [rot(0),rot(2),rot(3)];
+      if(t==='cross') return [0,1,2,3].map(rot);
+      if(t==='fan') return [rot(0),rot(2)];
+      if(t==='damper') return [rot(0),rot(2)];
+      if(t==='heater') return [rot(0),rot(2)];
+      if(t==='valve') return [rot(0)]; // one-way →
+      if(t==='chill') return [rot(0),rot(2)];
+      if(t==='vacuum') return [rot(0),rot(2)];
+      if(t==='condense') return [rot(0),rot(2)];
+      if(t==='source') return [0]; // →
+      if(t==='out') return [2]; // ←
+      return [];
+    }
+    const dx=[1,0,-1,0], dy=[0,1,0,-1], opp=[2,3,0,1];
+
+    const visited = Array.from({length:asm.H},()=>Array(asm.W).fill(null));
+    let q=[];
+    asm.sources.forEach(s=> q.push({x:s.x,y:s.y, feed:s.t==='feed', brine:s.t==='brine', aroma:s.t==='aroma', warm:false, pressure:10}) );
+
+    let passedCondense=false, mergedBeforeCondense=false, reachedOut=false;
+    let fanCount=0, damperCount=0, heaterCount=0, vacuumCount=0, chillCount=0;
+
+    while(q.length){
+      const cur=q.shift(); const cell=grid[cur.y][cur.x]; if(!cell) continue;
+      if(visited[cur.y][cur.x]){
+        // merge feeds state
+        const v=visited[cur.y][cur.x];
+        v.feed = v.feed||cur.feed; v.brine = v.brine||cur.brine; v.aroma=v.aroma||cur.aroma;
+        v.warm = v.warm||cur.warm; v.pressure = Math.max(v.pressure, cur.pressure);
+      } else visited[cur.y][cur.x] = {...cur};
+
+      if(cell.t==='fan'){ fanCount++; cur.pressure+=8; }
+      if(cell.t==='damper'){ damperCount++; cur.pressure=Math.max(0, cur.pressure-5); }
+      if(cell.t==='heater'){ heaterCount++; cur.warm=true; }
+      if(cell.t==='vacuum'){ vacuumCount++; cur.pressure+=6; }
+      if(cell.t==='chill'){ chillCount++; cur.warm=false; }
+      if(cell.t==='condense'){
+        // check merged inputs
+        const v=visited[cur.y][cur.x];
+        if(v.feed && v.brine && v.aroma) { passedCondense=true; mergedBeforeCondense=true; }
+      }
+      if(cell.t==='out'){
+        reachedOut=true;
+        // need pressure ≥ 30 and passed condense with merged streams
+        break;
+      }
+
+      const outs = dirsFor(cell.t, cell.r);
+      outs.forEach(d=>{
+        const nx=cur.x+dx[d], ny=cur.y+dy[d];
+        if(nx<0||ny<0||nx>=asm.W||ny>=asm.H) return;
+        const nxt=grid[ny][nx];
+        if(!nxt || !nxt.t) return;
+        const ins = dirsFor(nxt.t, nxt.r);
+        if(!ins.includes(opp[d])) return; // must connect
+        const state={...cur};
+        q.push({x:nx,y:ny, ...state});
+      });
+    }
+
+    const finalPressure = 10 + fanCount*8 + vacuumCount*6 - damperCount*5 + assemblyFlow.pressureBonus;
+    const ok = reachedOut && passedCondense && mergedBeforeCondense && finalPressure>=30;
+    if(ok){
+      assemblyFlow.fanVec = { x: Math.min(1.5, fanCount*0.15), y: Math.min(1.5, (fanCount-damperCount)*0.1) };
+      assemblyFlow.damper = damperCount;
+      assemblyFlow.heater = heaterCount;
+      assemblyFlow.pressureBonus = finalPressure-10;
+      if(assemblyFor){ assemblyFor.state.built=true; updateDepthsPanel(); }
+      showToast('Rig online ✓ Drafts boosted');
+      closeAssembly();
+    } else {
+      showToast('Rig invalid — merge feeds before Condense and reach Outlet with ≥30 pressure');
+    }
+  }
+
+  // ---------- Origami plating ----------
+  const origami = { wedges:10, rots:[], motifs:[] };
+  const ocan = document.getElementById('origamiCanvas'), octx = ocan.getContext('2d');
+  function openOrigami(){
+    document.getElementById('origami').style.display='flex';
+    origami.rots = Array.from({length:origami.wedges},()=>Math.floor(Math.random()*4));
+    origami.motifs = pendingTraits.slice(); // carry motifs
+    drawOrigami(); updateOrigamiScore();
+  }
+  function closeOrigami(){ document.getElementById('origami').style.display='none'; }
+  function drawOrigami(){
+    const w=ocan.width, h=ocan.height; octx.clearRect(0,0,w,h);
+    octx.fillStyle='#0f1418'; octx.fillRect(0,0,w,h);
+    const cx=w/2, cy=h/2, R=Math.min(w,h)*0.38;
+    for(let i=0;i<origami.wedges;i++){
+      const a0=(i/origami.wedges)*Math.PI*2, a1=((i+1)/origami.wedges)*Math.PI*2;
+      octx.beginPath(); octx.moveTo(cx,cy); octx.arc(cx,cy,R,a0,a1); octx.closePath();
+      const hue=(i*36 + origami.rots[i]*45)%360;
+      octx.fillStyle=`hsl(${hue},75%,${55+origami.rots[i]*6}%)`; octx.fill();
+      // motif tick
+      if(origami.motifs[i%origami.motifs.length]){
+        octx.strokeStyle='rgba(255,255,255,.5)'; octx.setLineDash([4,4]); octx.beginPath(); octx.arc(cx,cy,R-10,a0,a1); octx.stroke(); octx.setLineDash([]);
+      }
+    }
+  }
+  function symmetryScore(){
+    // score by how many opposite wedges match rotation
+    let score=0, pairs=0;
+    for(let i=0;i<origami.wedges/2;i++){
+      const a=origami.rots[i], b=origami.rots[(i+origami.wedges/2)%origami.wedges];
+      pairs++; if(a===b) score++;
+    }
+    return score/pairs;
+  }
+  function updateOrigamiScore(){
+    const s = symmetryScore();
+    document.getElementById('origamiScore').textContent = 'Score: ' + Math.round(s*100)+'%';
+    return s;
+  }
+  document.getElementById('origamiRotate').addEventListener('click', ()=>{
+    const i=Math.floor(Math.random()*origami.wedges); origami.rots[i]=(origami.rots[i]+1)%4; drawOrigami(); updateOrigamiScore();
+  });
+  document.getElementById('origamiAuto').addEventListener('click', ()=>{
+    // safe: align opposites
+    for(let i=0;i<origami.wedges/2;i++){ origami.rots[(i+origami.wedges/2)%origami.wedges]=origami.rots[i]; }
+    drawOrigami(); updateOrigamiScore();
+  });
+  document.getElementById('origamiPlate').addEventListener('click', ()=>{
+    const plating = 1 + 0.25*updateOrigamiScore() + 0.05*(pendingTraits.length||0);
+    const m = pendingDishEval || evaluateDishAt(servingStation?.x||player.x, servingStation?.y||player.y);
+    const finalScore = clamp01(m.score*plating);
+    lastDish = {...m, platingBonus:plating, score:finalScore};
+    dishes.push(lastDish); updateMood(finalScore); renderServingPanel();
+    pendingDishEval=null; pendingTraits.length=0;
+    closeOrigami(); nextCourse();
+  });
+
+  // ---------- Rendering ----------
+  function drawFields(){
+    // draw foam and gel as subtle overlays
+    for(let y=0;y<H;y++){
+      for(let x=0;x<W;x++){
+        const i=idx(x,y);
+        const f=foam[i], g=gel[i];
+        if(f>0){
+          ctx.fillStyle=`rgba(180,255,235,${Math.min(0.28, f*0.28)})`;
+          ctx.fillRect(x*SCALE,y*SCALE,SCALE,SCALE);
+        }
+        if(g>0){
+          ctx.fillStyle=`rgba(140,255,160,${Math.min(0.25, g*0.25)})`;
+          ctx.fillRect(x*SCALE,y*SCALE,SCALE,SCALE);
+        }
+        if(precursor[i]>0){
+          ctx.fillStyle=`rgba(100,160,120,${Math.min(0.15, precursor[i]*0.2)})`;
+          ctx.fillRect(x*SCALE,y*SCALE,SCALE,SCALE);
+        }
+      }
+    }
+  }
+  function drawHazards(){
+    hazards.forEach(h=>{
+      if(h.dead) return;
+      ctx.save();
+      let color = h.type==='acid' ? 'rgba(120,200,255,.55)' : h.type==='heat' ? 'rgba(255,120,100,.55)' : 'rgba(220,200,255,.55)';
+      ctx.fillStyle=color;
+      ctx.beginPath(); ctx.arc((h.x+0.5)*SCALE,(h.y+0.5)*SCALE,(h.radius*SCALE),0,Math.PI*2); ctx.fill();
+      ctx.restore();
+    });
+  }
+  function drawPlayer(){
+    ctx.save();
+    ctx.fillStyle='#fff';
+    ctx.fillRect(player.x*SCALE+SCALE*0.25, player.y*SCALE+SCALE*0.25, SCALE*0.5, SCALE*0.5);
+    ctx.restore();
+  }
+  function drawServing(){
+    if(!servingStation) return;
+    ctx.save();
+    ctx.strokeStyle='rgba(255,230,150,0.9)'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc((servingStation.x+0.5)*SCALE,(servingStation.y+0.5)*SCALE, servingStation.r*SCALE, 0, Math.PI*2); ctx.stroke();
+    ctx.restore();
+  }
+  function drawSeenFog(){
+    ctx.save();
+    ctx.fillStyle='rgba(0,0,0,0.72)';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.globalCompositeOperation='destination-out';
+    ctx.beginPath();
+    for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+      if(seen[idx(x,y)]) ctx.fillRect(x*SCALE,y*SCALE,SCALE,SCALE);
+    }
+    ctx.fill();
+    ctx.restore();
+  }
+  function drawDamageFlash(){
+    if(damageFlash<=0) return;
+    ctx.save();
+    ctx.fillStyle=`rgba(255,60,60,${Math.min(0.35, damageFlash*0.35)})`;
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.restore();
+  }
+  function drawMini(){
+    if(!miniVisible) return;
+    // background
+    mctx.fillStyle='#050708'; mctx.fillRect(0,0,W,H);
+    // seen
+    mctx.fillStyle='#0f151a';
+    for(let y=0;y<H;y++) for(let x=0;x<W;x++){ if(seen[idx(x,y)]) mctx.fillRect(x,y,1,1); }
+    // hazards points
+    hazards.forEach(h=>{
+      if(h.dead) return;
+      mctx.fillStyle = h.type==='acid' ? '#7ec5ff' : h.type==='heat' ? '#ff8f7a' : '#dccbff';
+      mctx.fillRect(Math.floor(h.x), Math.floor(h.y), 2, 2);
+    });
+    // tiny draft arrows
+    drawMiniDraftArrows(8);
+    // player
+    mctx.fillStyle='#fff'; mctx.fillRect(player.x, player.y, 1,1);
+  }
+
+  // ---------- Main Loop ----------
+  let lastTs=performance.now();
+  function tick(now){
+    const dt=Math.min(0.05, (now-lastTs)/1000); lastTs=now; time+=dt;
+
+    movePlayer(dt);
+    updateGazes(dt);
+    updateHazards(dt);
+    updateMaterials(dt);
+    updateSpheres(dt);
+
+    // decay buffs
+    ['agar','lecithin','cacl2'].forEach(k=>{ if(buffs[k]>0){ buffs[k]=Math.max(0, buffs[k]-dt); }});
+    renderBuffHUD();
+
+    // render
+    ctx.fillStyle='#0a0f12'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    if(gridVisible) drawGrid();
+    drawFields();
+    drawHazards();
+    drawDraftArrows(8);
+    drawServing();
+    drawPlayer();
+    drawBrushRing();
+    drawSeenFog();
+    drawDamageFlash(); damageFlash=Math.max(0, damageFlash - dt*0.8);
+
+    drawMini();
+
+    requestAnimationFrame(tick);
+  }
+
+  // ---------- Self-tests ----------
+  function appendTestResult(name, ok, extra){
+    const t=document.getElementById('tests'); const div=document.createElement('div');
+    div.style.color=ok?'#b8ffdc':'#ffb8b8'; div.textContent = (ok?'✓ ':'✗ ')+name + (ok?'':(' — '+(extra||''))); t.appendChild(div);
+  }
+  function runTests(){
+    const t=document.getElementById('tests'); t.innerHTML='';
+    try{ appendTestResult('showToast exists', typeof showToast==='function'); }catch(e){ appendTestResult('showToast exists', false, e.message); }
+    try{ const was=gridVisible; toggleGrid(); const t1=(gridVisible!==was); toggleGrid(); const t2=(gridVisible===was); appendTestResult('grid toggle flips state', t1 && t2); }catch(e){ appendTestResult('grid toggle flips state', false, e.message); }
+    try{ player.fx=10.3; player.fy=20.7; movePlayer(0); appendTestResult('player snaps to grid', Number.isInteger(player.x) && Number.isInteger(player.y)); }catch(e){ appendTestResult('player snaps to grid', false, e.message); }
+    try{ const s0=spheres.length; spawnSpheres(20,20); appendTestResult('spawn spheres', spheres.length>s0); }catch(e){ appendTestResult('spawn spheres', false, e.message); }
+  }
+  document.getElementById('runTestsBtn').addEventListener('click', runTests);
+
+  // ---------- Init ----------
   reset();
-  // UI: melt + minimap buttons
-  const mb = document.getElementById('meltBtn'); if(mb) mb.addEventListener('click', ()=>{ toggleMelt(); mb.textContent = `Psychedelia++: ${melt?'ON':'OFF'}`; });
-  const nbtn = document.getElementById('miniToggle'); if(nbtn) nbtn.addEventListener('click', ()=>{ toggleMinimap(); nbtn.textContent = `Minimap: ${miniVisible?'ON':'OFF'}`; });
-  requestAnimationFrame(loop);
+  requestAnimationFrame(tick);
+
 })();
 </script>
 </body>
