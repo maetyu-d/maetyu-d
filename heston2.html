@@ -592,11 +592,29 @@
     }
     mctx.globalAlpha=1;
     mctx.fillStyle='#0f151a'; for(let y=0;y<WORLD_H;y+=2){ for(let x=0;x<WORLD_W;x+=2){ if(seen[idx(x,y)]) mctx.fillRect(Math.floor(x*sx), Math.floor(y*sy), Math.ceil(2*sx), Math.ceil(2*sy)); } }
-    hazards.forEach(h=>{ if(h.dead) return; mctx.fillStyle = psychedelic ? (h.type==='acid' ? '#7efcff' : h.type==='heat' ? '#ff7aff' : '#dccbff') : (h.type==='acid' ? '#7ec5ff' : '#ff8f7a'); mctx.fillRect(Math.floor(h.x*sx), Math.floor(h.y*sy), Math.max(1,Math.floor(2*sx)), Math.max(1,Math.floor(2*sy)); });
+    hazards.forEach(h=>{
+      if(h.dead) return;
+      mctx.fillStyle = psychedelic ? (h.type==='acid' ? '#7efcff' : h.type==='heat' ? '#ff7aff' : '#dccbff') : (h.type==='acid' ? '#7ec5ff' : '#ff8f7a');
+      mctx.fillRect(
+        Math.floor(h.x*sx),
+        Math.floor(h.y*sy),
+        Math.max(1, Math.floor(2*sx)),
+        Math.max(1, Math.floor(2*sy))
+      );
+    });
     // spheres on minimap
     mctx.fillStyle = psychedelic ? '#d7fff9' : '#c8fff2';
     spheres.forEach(s=>{ mctx.fillRect(Math.floor(s.x*sx), Math.floor(s.y*sy), 2,2); });
-    mctx.save(); mctx.globalAlpha=0.7; mctx.strokeStyle='rgba(184,255,220,0.7)'; for(let y=8; y<mini.height; y+=12){ for(let x=8; x<mini.width; x+=12){ const wx=x/sx, wy=y/sy; const [vx,vy]=draftAt(wx,wy); const len=Math.min(2, Math.hypot(vx,vy)*3+0.6); const ang=Math.atan2(vy,vx); mctx.beginPath(); mctx.moveTo(x,y); mctx.lineTo(x+Math.cos(ang)*len, y+Math.sin(ang)*len); mctx.stroke(); } } mctx.restore();
+    // tiny draft arrows
+    mctx.save(); mctx.globalAlpha=0.7; mctx.strokeStyle='rgba(184,255,220,0.7)';
+    for(let y=8; y<mini.height; y+=12){
+      for(let x=8; x<mini.width; x+=12){
+        const wx=x/sx, wy=y/sy; const [vx,vy]=draftAt(wx,wy);
+        const len=Math.min(2, Math.hypot(vx,vy)*3+0.6); const ang=Math.atan2(vy,vx);
+        mctx.beginPath(); mctx.moveTo(x,y); mctx.lineTo(x+Math.cos(ang)*len, y+Math.sin(ang)*len); mctx.stroke();
+      }
+    }
+    mctx.restore();
     mctx.fillStyle='#fff'; mctx.fillRect(Math.floor(player.tx*sx), Math.floor(player.ty*sy), 2,2);
     mctx.strokeStyle='rgba(255,255,255,0.6)'; mctx.strokeRect(Math.floor(camX*sx), Math.floor(camY*sy), Math.floor(VIEW_W*sx), Math.floor(VIEW_H*sy));
   }
