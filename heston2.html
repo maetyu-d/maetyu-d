@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Heston's Head</title>
+  <style>
+    :root{ --neon-1:#ff00e6; --neon-2:#00ffe1; --neon-3:#ffd400; --neon-4:#7aff00; --neon-5:#4f61ff; }
+    html, body { height:100%; margin:0; color:#e6e6e6; background:#0b0d0f; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    #ui { position: fixed; inset: 0; display: grid; grid-template-columns: 440px 1fr; }
+    #sidebar { padding: 12px 14px; border-right: 1px solid #1b1f24; background:rgba(10,14,18,.78); backdrop-filter: blur(6px); overflow:auto; }
+    #sidebar h1 { margin: 0 0 8px; font-size: 16px; letter-spacing: .5px; color:#b8ffdc; text-shadow:0 0 6px rgba(184,255,220,.35); }
+    #sidebar .card { background:rgba(8,12,15,.75); border:1px solid rgba(18,22,26,.9); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
+    .k { display:inline-block; padding:2px 6px; border:1px solid #2a3138; border-radius:6px; background:#0d1216; color:#d0e2ff; font-size:12px; margin-right:6px }
+    .btn { border:1px solid #26323c; background:#0f151a; color:#cfe7ff; border-radius:8px; padding:6px 10px; cursor:pointer; }
+
+    #canvasWrap { position: relative; }
+    #c { display:block; width:100%; height:100%; image-rendering: pixelated; cursor: crosshair; }
+    #overlay { position:absolute; left:16px; bottom:16px; background:rgba(0,0,0,0.5); border:1px solid #1a2128; padding:8px 10px; border-radius:8px; font-size:12px }
+    #toast { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); background: linear-gradient(135deg, rgba(0,0,0,.75), rgba(20,20,30,.75)); color: #d6ffe9; border: 1px solid #22303a; padding: 10px 14px; border-radius: 10px; opacity: 0; transition: opacity .25s ease; pointer-events:none; }
+
+    #mini { position:absolute; right:16px; top:16px; width:240px; height:150px; image-rendering: pixelated; border:1px solid #1a2128; background:#07090b; border-radius:8px; box-shadow: 0 6px 18px rgba(0,0,0,.45) }
+
+    /* Quick toggle bar */
+    .topbar { position:absolute; left:16px; top:16px; background:rgba(8,12,15,.7); padding:6px 8px; border-radius:10px; border:1px solid rgba(18,22,26,.9); display:flex; gap:8px; align-items:center; }
+
+    /* Buff HUD */
+    #buffHUD { position:absolute; right:16px; bottom:16px; width:230px; background:rgba(8,12,15,.72); border:1px solid #1a2128; border-radius:10px; padding:8px 10px; }
+    #buffHUD .row { display:flex; align-items:center; gap:8px; margin:3px 0; }
+    #buffHUD .lbl { width:70px; font-size:12px; color:#cfe7ff; }
+    #buffHUD .bar { position:relative; flex:1; height:6px; background:#0a0f12; border:1px solid #1b2229; border-radius:999px; overflow:hidden; }
+    #buffHUD .fill { height:100%; width:0%; background:linear-gradient(90deg, #b8ffdc, rgba(255,255,255,.25)); }
+    #buffHUD .t { width:38px; text-align:right; font-size:11px; color:#9fb0be; }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <aside id="sidebar">
+      <h1>Heston's Head</h1>
+
+      <div class="card">
+        <div style="font-weight:600; margin-bottom:6px; color:#cfe7ff">Controls</div>
+        <div><span class="k">WASD</span>Move <span class="k">Mouse</span> Use tool  <span class="k">Q/E</span> Brush −/+</div>
+        <div style="margin-top:6px"><span class="k">1</span>Foam  <span class="k">2</span>Gel Precursor  <span class="k">3</span>Spheres</div>
+        <div style="margin-top:6px"><span class="k">T</span>Heat  <span class="k">Y</span>Cool  <span class="k">U</span>Stir/Shear  <span class="k">I</span>pH Drop</div>
+        <div style="margin-top:6px"><span class="k">N</span>Minimap  <span class="k">G</span>Grid  <span class="k">P</span>Psychedelia  <span class="k">R</span>New Run</div>
+      </div>
+
+      <div class="card">
+        <div style="font-weight:600; margin-bottom:6px; color:#cfe7ff">World</div>
+        <div id="worldMeta" style="font-size:12px; color:#9fb0be"></div>
+        <div id="biomeLegend" style="font-size:11px; color:#9fb0be; margin-top:6px"></div>
+      </div>
+
+      <div class="card">
+        <div style="font-weight:600; margin-bottom:6px; color:#cfe7ff">Goals</div>
+        <div id="goals"></div>
+      </div>
+      <div class="card">
+        <div style="font-weight:600; margin-bottom:6px; color:#cfe7ff">Hazards</div>
+        <div id="hazards"></div>
+      </div>
+      <div class="card">
+        <div style="font-weight:600; margin-bottom:6px; color:#cfe7ff">Adjacency Checks</div>
+        <div id="adjChecks" style="font-size:12px; color:#9fb0be"></div>
+      </div>
+    </aside>
+
+    <main id="canvasWrap">
+      <canvas id="c"></canvas>
+      <canvas id="mini"></canvas>
+      <div class="topbar">
+        <span style="font-size:12px; color:#cfe7ff">Visuals</span>
+        <button class="btn" id="gridToggle">Grid: ON</button>
+        <button class="btn" id="miniToggle">Minimap: ON</button>
+        <button class="btn" id="psyToggle">Psychedelia: OFF</button>
+      </div>
+      <div id="overlay">Tool: <span id="toolName">Heat</span> • Brush: <span id="brush">3</span></div>
+      <div id="toast"></div>
+
+      <div id="buffHUD" aria-label="Ingredient Buffs HUD" style="display:none">
+        <div class="row"><span class="lbl">Agar</span><div class="bar"><div class="fill" id="hud_agar"></div></div><span class="t" id="hud_agar_t"></span></div>
+        <div class="row"><span class="lbl">Lecithin</span><div class="bar"><div class="fill" id="hud_lecithin"></div></div><span class="t" id="hud_lecithin_t"></span></div>
+        <div class="row"><span class="lbl">CaCl₂</span><div class="bar"><div class="fill" id="hud_cacl2"></div></div><span class="t" id="hud_cacl2_t"></span></div>
+      </div>
+    </main>
+  </div>
+
+<script>
+(()=>{
+  // ===== Viewport vs World =====
+  const VIEW_W = 96, VIEW_H = 60, SCALE = 12; // on-screen tiles
+  const MOD_W = 48, MOD_H = 30;               // one module (tile of world)
+  const GRID_X = 8, GRID_Y = 6;               // module grid → world size (bigger)
+  const WORLD_W = MOD_W*GRID_X;               // 384
+  const WORLD_H = MOD_H*GRID_Y;               // 180
+
+  const canvas = document.getElementById('c');
+  canvas.width = VIEW_W * SCALE; canvas.height = VIEW_H * SCALE;
+  const ctx = canvas.getContext('2d');
+
+  const mini = document.getElementById('mini');
+  mini.width = 240; mini.height = Math.floor(240 * (WORLD_H/WORLD_W));
+  const mctx = mini.getContext('2d');
+
+  // ===== State =====
+  let gridVisible = true, miniVisible = true, psychedelic=false;
+  const keys = new Set();
+  const mouse = {x:0,y:0,down:false};
+
+  // Player — grid-tweened movement
+  let player = {
+    tx: Math.floor(WORLD_W/2), ty: Math.floor(WORLD_H/2),
+    rx: 0, ry: 0,
+    fromX:0, fromY:0, toX:0, toY:0, t:1, moving:false,
+    speedTiles: 10,
+    faceX:0, faceY:1, health:100
+  };
+  player.rx = player.tx; player.ry = player.ty; player.fromX=player.tx; player.fromY=player.ty; player.toX=player.tx; player.toY=player.ty;
+  let lastDir = {dx:0,dy:1};
+
+  // Materials (world-sized)
+  const seen = new Uint8Array(WORLD_W*WORLD_H);
+  const foam = new Float32Array(WORLD_W*WORLD_H);
+  const precursor = new Float32Array(WORLD_W*WORLD_H);
+  const gel = new Float32Array(WORLD_W*WORLD_H);
+  const idx = (x,y)=> x + y*WORLD_W;
+  const inb = (x,y)=> x>=0 && y>=0 && x<WORLD_W && y<WORLD_H;
+
+  // Camera (smoothed)
+  let camFx = Math.max(0, Math.min(WORLD_W - VIEW_W, player.rx - VIEW_W/2));
+  let camFy = Math.max(0, Math.min(WORLD_H - VIEW_H, player.ry - VIEW_H/2));
+  let camX = Math.round(camFx), camY = Math.round(camFy);
+  function updateCamera(){
+    const targetX = Math.max(0, Math.min(WORLD_W - VIEW_W, player.rx - VIEW_W/2));
+    const targetY = Math.max(0, Math.min(WORLD_H - VIEW_H, player.ry - VIEW_H/2));
+    camFx += (targetX - camFx) * 0.18;
+    camFy += (targetY - camFy) * 0.18;
+    camX = Math.round(camFx); camY = Math.round(camFy);
+  }
+
+  // UI helpers
+  let currentTool='heat'; let brush=3;
+  const toolNames = {heat:'Heat', cool:'Cool', shear:'Stir/Shear', ph:'pH Drop', foam:'Foam', gel:'Gel Precursor', spheres:'Spheres'};
+  function updateOverlay(){ document.getElementById('toolName').textContent = toolNames[currentTool] || currentTool; document.getElementById('brush').textContent = brush; }
+  function showToast(msg, duration=1200){ const t=document.getElementById('toast'); t.textContent=msg; t.style.opacity=1; clearTimeout(t._to); t._to=setTimeout(()=>t.style.opacity=0,duration); }
+
+  // ===== Modules & Biomes =====
+  const MODULES = [
+    { key:'heat',        name:'Heat Lab',       tags:['heat'],    hazards:[{t:'heat',r:5,s:1},{t:'heat',r:4,s:1}], goals:[], picks:1,
+      rules:{ needCalmMin:2 } },
+    { key:'acid',        name:'Acid Marsh',     tags:['acid'],    hazards:[{t:'acid',r:6,s:1},{t:'acid',r:3,s:0.8}], goals:[{x:0.7,y:0.4}], picks:1 },
+    { key:'vinaigrette', name:'Vinaigrette',    tags:['mix'],     hazards:[{t:'acid',r:5,s:1},{t:'acid',r:4,s:0.9},{t:'heat',r:3,s:0.8}], goals:[{x:0.25,y:0.7}], picks:1,
+      rules:{ needAcidMin:1 } },
+    { key:'calm',        name:'Calm Pass',      tags:['calm'],    hazards:[], goals:[{x:0.5,y:0.5}], picks:1 },
+    { key:'crystal',     name:'Crystal Garden', tags:['crystal'], hazards:[{t:'acid',r:3,s:0.8}], goals:[], picks:1, special:'crystal' },
+  ];
+  const MOD_BY_KEY = Object.fromEntries(MODULES.map((m,i)=>[m.key,i]));
+
+  const BIOMES = {
+    hot:     { name:'Hot Kitchen',       color:'#221312', tagBias:{heat:3, acid:0.8, calm:0.6, mix:1.2, crystal:0.9}, hazardScale:1.25, pickBias:{agar:0.9, lecithin:0.9, cacl2:1.2} },
+    acid:    { name:'Sour Marsh',        color:'#0e1b26', tagBias:{acid:3, heat:0.8, calm:0.7, mix:1.2, crystal:1.0}, hazardScale:1.3,  pickBias:{agar:0.8, lecithin:1.1, cacl2:1.3} },
+    calm:    { name:'Calm Gallery',      color:'#101a14', tagBias:{calm:3, heat:0.6, acid:0.6, mix:1.1, crystal:1.1}, hazardScale:0.7,  pickBias:{agar:1.2, lecithin:1.1, cacl2:0.8} },
+    crystal: { name:'Crystal Preserve',  color:'#181329', tagBias:{crystal:3, acid:1.2, heat:0.8, mix:1.0, calm:0.9}, hazardScale:1.0,  pickBias:{agar:1.3, lecithin:0.9, cacl2:1.0} },
+    mix:     { name:'Service Corridor',  color:'#181818', tagBias:{mix:2, heat:1, acid:1, calm:1, crystal:1}, hazardScale:1.0, pickBias:{agar:1.0, lecithin:1.0, cacl2:1.0} },
+  };
+  const BIOME_KEYS = Object.keys(BIOMES);
+
+  const worldModules = [];
+  const biomeGrid = [];
+  let hazards=[], goals=[], ingredients=[];
+
+  function seedBiomes(){
+    biomeGrid.length = GRID_X*GRID_Y;
+    const seeds = BIOME_KEYS.slice(0,5).map((k,ix)=>({k, x: Math.floor((ix+0.5)*(GRID_X/5)), y: Math.floor(Math.random()*GRID_Y)}));
+    for(let gy=0; gy<GRID_Y; gy++){
+      for(let gx=0; gx<GRID_X; gx++){
+        let best=null, bestd=1e9;
+        seeds.forEach(s=>{ const d=Math.abs(s.x-gx)+Math.abs(s.y-gy); if(d<bestd){ bestd=d; best=s.k; } });
+        biomeGrid[gy*GRID_X+gx]=best;
+      }
+    }
+  }
+
+  function tagWeightFor(biomeKey, module){
+    const b=BIOMES[biomeKey]; if(!b) return 1;
+    let w=0; module.tags.forEach(t=>{ w += (b.tagBias[t]||1); });
+    return w/(module.tags.length||1);
+  }
+
+  function leftUp(gx,gy){
+    const left = gx>0 ? MODULES[ worldModules[gy*GRID_X + (gx-1)] ] : null;
+    const up   = gy>0 ? MODULES[ worldModules[(gy-1)*GRID_X + gx] ] : null;
+    return {left,up};
+  }
+
+  function chooseModule(gx,gy){
+    const {left,up} = leftUp(gx,gy);
+    const biomeKey = biomeGrid[gy*GRID_X+gx];
+    let bestIndex=0, bestScore=-1;
+    for(let i=0;i<MODULES.length;i++){
+      const m = MODULES[i];
+      let repeatPenalty = 1.0;
+      const tag = m.tags[0];
+      if(left && left.tags.includes(tag)) repeatPenalty *= 0.6;
+      if(up   && up.tags.includes(tag))   repeatPenalty *= 0.6;
+      let adjHint = 1.0;
+      if(m.key==='heat'){
+        const calmAdj = (left&&left.tags.includes('calm')?1:0) + (up&&up.tags.includes('calm')?1:0);
+        adjHint *= [0.7, 1.0, 1.2][Math.min(calmAdj,2)];
+      }
+      if(m.key==='vinaigrette'){
+        const acidAdj = (left&&left.tags.includes('acid')?1:0) + (up&&up.tags.includes('acid')?1:0);
+        if(acidAdj===0) adjHint *= 0.7;
+      }
+      if(m.key==='acid'){
+        const heatAdj = (left&&left.key==='heat'?1:0) + (up&&up.key==='heat'?1:0);
+        if(heatAdj>0) adjHint *= 0.85; if(heatAdj>1) adjHint *= 0.6;
+      }
+      if(m.key==='crystal'){
+        const heatAdj = (left&&left.key==='heat'?1:0) + (up&&up.key==='heat'?1:0);
+        if(heatAdj>0) adjHint *= 0.5;
+      }
+      const score = tagWeightFor(biomeKey,m) * repeatPenalty * adjHint * (0.8 + Math.random()*0.4);
+      if(score>bestScore){ bestScore=score; bestIndex=i; }
+    }
+    return bestIndex;
+  }
+
+  function neighborsOf(gx,gy){
+    const res=[];
+    if(gx>0)         res.push({gx:gx-1, gy, m: MODULES[ worldModules[gy*GRID_X + (gx-1)] ]});
+    if(gx<GRID_X-1)  res.push({gx:gx+1, gy, m: MODULES[ worldModules[gy*GRID_X + (gx+1)] ]});
+    if(gy>0)         res.push({gx, gy:gy-1, m: MODULES[ worldModules[(gy-1)*GRID_X + gx] ]});
+    if(gy<GRID_Y-1)  res.push({gx, gy:gy+1, m: MODULES[ worldModules[(gy+1)*GRID_X + gx] ]});
+    return res;
+  }
+
+  function violatesRule(gx,gy){
+    const mi = worldModules[gy*GRID_X+gx]; const mod = MODULES[mi];
+    const nb = neighborsOf(gx,gy);
+    const countTag = (tag)=> nb.reduce((a,n)=> a + (n.m?.tags?.includes(tag)?1:0), 0);
+    const calmN = countTag('calm');
+    const acidN = countTag('acid');
+    const heatN = nb.reduce((a,n)=> a + (n.m?.key==='heat'?1:0), 0);
+    if(mod.key==='heat' && calmN < (mod.rules?.needCalmMin||0)) return `Heat needs ≥${mod.rules.needCalmMin} Calm (has ${calmN})`;
+    if(mod.key==='vinaigrette' && acidN < (mod.rules?.needAcidMin||0)) return `Vinaigrette needs ≥${mod.rules.needAcidMin} Acid (has ${acidN})`;
+    if(mod.key==='acid' && heatN > 1) return `Acid touches Heat ${heatN}× (>1)`;
+    if(mod.key==='crystal' && heatN > 0) return `Crystal adjacent to Heat (${heatN})`;
+    return null;
+  }
+
+  function tryFixLocal(gx,gy){
+    const err = violatesRule(gx,gy); if(!err) return false;
+    const hereIdx = worldModules[gy*GRID_X+gx];
+    const nb = neighborsOf(gx,gy);
+    let bestSwap=null, bestScore=-1;
+    nb.forEach(n=>{
+      const thereIdx = worldModules[n.gy*GRID_X+n.gx];
+      worldModules[n.gy*GRID_X+n.gx] = hereIdx; worldModules[gy*GRID_X+gx] = thereIdx;
+      const okHere = !violatesRule(gx,gy); const okThere = !violatesRule(n.gx,n.gy);
+      const score = (okHere?1:0) + (okThere?1:0);
+      worldModules[n.gy*GRID_X+n.gx] = thereIdx; worldModules[gy*GRID_X+gx] = hereIdx;
+      if(score>bestScore){ bestScore=score; bestSwap=n; }
+    });
+    if(bestSwap && bestScore>0){
+      const thereIdx = worldModules[bestSwap.gy*GRID_X+bestSwap.gx];
+      worldModules[bestSwap.gy*GRID_X+bestSwap.gx] = hereIdx; worldModules[gy*GRID_X+gx] = thereIdx;
+      return true;
+    }
+    return false;
+  }
+
+  function enforceAdjacency(maxPasses=6){
+    const issues=[];
+    for(let pass=0; pass<maxPasses; pass++){
+      let fixed=0; issues.length=0;
+      for(let gy=0; gy<GRID_Y; gy++){
+        for(let gx=0; gx<GRID_X; gx++){
+          const reason = violatesRule(gx,gy);
+          if(reason){ if(tryFixLocal(gx,gy)) fixed++; else issues.push({gx,gy,reason}); }
+        }
+      }
+      if(!fixed) break;
+    }
+    const el=document.getElementById('adjChecks');
+    el.dataset.issues = JSON.stringify(issues);
+    if(issues.length===0) el.textContent = 'All module adjacency constraints satisfied (pre-corridor).';
+    else el.innerHTML = issues.slice(0,10).map(it=>`• (${it.gx},${it.gy}) ${it.reason}`).join('<br>') + (issues.length>10?`<br>…+${issues.length-10} more`: '');
+  }
+
+  function ensureCalmCorridor(){
+    const calmIdx = MOD_BY_KEY['calm'];
+    const isCalm = (gx,gy)=> MODULES[ worldModules[gy*GRID_X+gx] ].key==='calm';
+
+    const Q=[]; const seenC=new Set();
+    for(let y=0;y<GRID_Y;y++) if(isCalm(0,y)) { Q.push({gx:0,gy:y}); seenC.add(`0,${y}`); }
+    while(Q.length){ const {gx,gy}=Q.shift(); if(gx===GRID_X-1){ return {created:0, note:'Calm corridor already spans left→right.'}; }
+      neighborsOf(gx,gy).forEach(n=>{ if(isCalm(n.gx,n.gy)){ const k=`${n.gx},${n.gy}`; if(!seenC.has(k)){ seenC.add(k); Q.push({gx:n.gx,gy:n.gy}); } } });
+    }
+
+    const deque=[]; const dist=Array(GRID_X*GRID_Y).fill(Infinity); const prev=Array(GRID_X*GRID_Y).fill(-1);
+    const idx2=(x,y)=> y*GRID_X+x;
+    for(let y=0;y<GRID_Y;y++){ const i=idx2(0,y); dist[i]= isCalm(0,y)?0:1; deque.push({gx:0,gy:y}); }
+    while(deque.length){ const {gx,gy}=deque.shift(); const i=idx2(gx,gy); neighborsOf(gx,gy).forEach(n=>{
+      const j=idx2(n.gx,n.gy); const w = isCalm(n.gx,n.gy)?0:1; if(dist[i]+w < dist[j]){ dist[j]=dist[i]+w; prev[j]=i; if(w===0) deque.unshift({gx:n.gx,gy:n.gy}); else deque.push({gx:n.gx,gy:n.gy}); }
+    }); }
+    let bestGy=0, bestD=Infinity; for(let y=0;y<GRID_Y;y++){ const d=dist[idx2(GRID_X-1,y)]; if(d<bestD){ bestD=d; bestGy=y; } }
+    if(!isFinite(bestD)) return {created:0, note:'No path found?!'};
+
+    const path=[]; let cur=idx2(GRID_X-1,bestGy); while(cur!==-1){ path.push(cur); cur=prev[cur]; }
+    let created=0; path.forEach(i=>{ const gx=i%GRID_X, gy=(i/GRID_X)|0; if(!isCalm(gx,gy)){ worldModules[gy*GRID_X+gx]=calmIdx; created++; } });
+    return {created, note:`Carved Calm corridor by converting ${created} module(s).`};
+  }
+
+  function generateWorld(){
+    hazards.length=0; goals.length=0; ingredients.length=0; worldModules.length=0;
+    seedBiomes();
+    for(let gy=0; gy<GRID_Y; gy++){
+      for(let gx=0; gx<GRID_X; gx++){
+        const mi = chooseModule(gx,gy); worldModules.push(mi);
+      }
+    }
+    enforceAdjacency();
+    const corr = ensureCalmCorridor();
+    const el=document.getElementById('adjChecks');
+    const issues = (()=>{ try { return JSON.parse(el.dataset.issues||'[]'); } catch(e){ return []; } })();
+    el.innerHTML = (issues.length? issues.slice(0,10).map(it=>`• (${it.gx},${it.gy}) ${it.reason}`).join('<br>')+'<br>':'' ) + `<i>${corr.note}</i>`;
+
+    for(let gy=0; gy<GRID_Y; gy++){
+      for(let gx=0; gx<GRID_X; gx++){
+        const mi = worldModules[gy*GRID_X+gx]; const m = MODULES[mi]; const biomeKey = biomeGrid[gy*GRID_X+gx]; const biome = BIOMES[biomeKey];
+        const ox=gx*MOD_W, oy=gy*MOD_H;
+        const hzScale = biome.hazardScale;
+        m.hazards.forEach(h=>{
+          const count = Math.max(1, Math.round(hzScale));
+          for(let c=0;c<count;c++){
+            const px = ox + 4 + Math.floor(Math.random()*(MOD_W-8));
+            const py = oy + 4 + Math.floor(Math.random()*(MOD_H-8));
+            hazards.push({ x:px, y:py, type:h.t, radius: h.r, strength:h.s, phase:Math.random()*Math.PI*2, splitCd:0, vx:0, vy:0, dead:false });
+          }
+        });
+        if(biomeKey==='hot' && Math.random()<0.3){ hazards.push({ x:ox+Math.random()*MOD_W, y:oy+Math.random()*MOD_H, type:'heat', radius:3+Math.random()*3, strength:1, phase:0, splitCd:0, vx:0, vy:0, dead:false }); }
+        if(biomeKey==='acid' && Math.random()<0.35){ hazards.push({ x:ox+Math.random()*MOD_W, y:oy+Math.random()*MOD_H, type:'acid', radius:3+Math.random()*3, strength:1, phase:0, splitCd:0, vx:0, vy:0, dead:false }); }
+
+        m.goals.forEach(g=>{ goals.push({ x: ox + Math.floor(g.x*MOD_W), y: oy + Math.floor(g.y*MOD_H), done:false }); });
+
+        const picks = m.picks||0;
+        for(let i=0;i<picks;i++){
+          const t = weightedPick(biome.pickBias);
+          const px = ox + 6 + Math.floor(Math.random()*(MOD_W-12));
+          const py = oy + 6 + Math.floor(Math.random()*(MOD_H-12));
+          ingredients.push({x:px,y:py,type:t,picked:false});
+        }
+
+        if(m.special==='crystal'){
+          hazards.push({ x: ox+Math.floor(MOD_W*0.5), y: oy+Math.floor(MOD_H*0.5), type:'collapse', radius:8, strength:1, phase:0, splitCd:0, vx:0, vy:0, ttl:2.2, dead:false });
+        }
+      }
+    }
+
+    while(goals.length<3){ goals.push({ x: Math.floor(Math.random()*WORLD_W), y: Math.floor(Math.random()*WORLD_H), done:false }); }
+    renderGoalsList(); renderHazardsList(); updateWorldMeta();
+  }
+
+  function weightedPick(weights){
+    const entries = Object.entries(weights);
+    const sum = entries.reduce((a,[,w])=>a+w,0);
+    let r = Math.random()*sum;
+    for(const [k,w] of entries){ if((r-=w)<=0) return k; }
+    return entries[0][0];
+  }
+
+  function updateWorldMeta(){
+    const counts={}; for(const k of biomeGrid){ counts[k]=(counts[k]||0)+1; }
+    const el=document.getElementById('worldMeta');
+    el.innerHTML = `World: <b>${WORLD_W}×${WORLD_H}</b> • Modules: ${GRID_X}×${GRID_Y} (${MOD_W}×${MOD_H})<br/>Hazards: ${hazards.length} • Goals: ${goals.length}`;
+    const leg=document.getElementById('biomeLegend');
+    leg.innerHTML = Object.entries(counts).map(([k,v])=>{ const b=BIOMES[k]; return `<span style="display:inline-block; width:10px; height:10px; background:${b.color}; border:1px solid #223; margin-right:6px;"></span>${b.name}: ${v}`; }).join('<br>');
+  }
+
+  // ===== Drafts =====
+  let time=0;
+  function draftAt(x,y){ const s1 = Math.sin((y*0.12)+time*0.6)*0.4; const s2 = Math.cos((x*0.08)-time*0.45)*0.25; return [s2, s1]; }
+
+  // ===== Lists =====
+  function renderGoalsList(){ const box=document.getElementById('goals'); box.innerHTML=''; goals.forEach((g,i)=>{ const d=document.createElement('div'); d.textContent=`Goal ${i+1}: (${g.x},${g.y}) ${g.done?'✓':''}`; d.style.color=g.done?'#9f9':'#fff'; box.appendChild(d); }); }
+  function renderHazardsList(){ const box=document.getElementById('hazards'); box.innerHTML=''; hazards.forEach((h)=>{ if(h.dead) return; const d=document.createElement('div'); d.textContent=`${h.type} @ (${Math.round(h.x)},${Math.round(h.y)}) r:${h.radius.toFixed(1)} s:${(h.strength??1).toFixed(2)}`; d.style.color=h.type==='heat'?'#f66':(h.type==='acid'?'#6cf':'#e6b3ff'); box.appendChild(d); }); }
+
+  // ===== Materials & paint =====
+  function paintCircle(field, x0, y0, r, amount){ const r2=r*r; const xi=Math.floor(x0), yi=Math.floor(y0); for(let y=-r;y<=r;y++) for(let x=-r;x<=r;x++) if(x*x+y*y<=r2){ const xx=xi+x, yy=yi+y; if(inb(xx,yy)){ const i=idx(xx,yy); field[i]=Math.min(1, field[i]+amount); } } }
+  function applyToolAt(x0,y0){ x0=Math.round(x0); y0=Math.round(y0); const R=brush; if(currentTool==='foam'){ paintCircle(foam, x0,y0,R,0.35); return; } if(currentTool==='gel'){ paintCircle(precursor, x0,y0,R,0.35); return; } if(currentTool==='spheres'){ spawnSpheres(x0,y0); return; } hazards.forEach(h=>{ if(h.dead) return; const dx=h.x-x0, dy=h.y-y0; const dist=Math.hypot(dx,dy); if(dist<=R+h.radius){ if(currentTool==='cool' && h.type==='heat'){ h.strength=Math.max(0, (h.strength??1)-0.25); h.radius=Math.max(2, h.radius-0.2); } else if(currentTool==='heat' && h.type==='heat'){ h.strength=Math.min(2.0,(h.strength??1)+0.2); h.radius=Math.min(12,h.radius+0.15); } else if(currentTool==='ph' && h.type==='acid'){ h.strength=Math.max(0, (h.strength??1)-0.35); h.radius=Math.max(2, h.radius-0.25); } else if(currentTool==='shear' && h.type==='acid'){ if((h.radius*(h.strength??1))>6 && (h.splitCd||0)<=0){ splitHazard(h); } } } }); }
+
+  // ===== Spheres & hazards dynamics =====
+  let spheres=[];
+  function spawnSpheres(x0,y0){ const n=Math.max(1, Math.floor(brush/3)); for(let i=0;i<n;i++){ const j=(Math.random()-0.5)*(brush*0.6); spheres.push({x:x0+j,y:y0+j,vx:0,vy:0,life:8.0}); } }
+  function updateSpheres(dt){ spheres.forEach(s=>{ const [dvx,dvy]=draftAt(s.x,s.y); s.vx=(s.vx+dvx*0.6*dt)*0.985; s.vy=(s.vy+dvy*0.6*dt)*0.985; s.x+=s.vx*dt*12; s.y+=s.vy*dt*12; s.x=Math.max(0,Math.min(WORLD_W-1,s.x)); s.y=Math.max(0,Math.min(WORLD_H-1,s.y)); hazards.forEach(h=>{ if(h.dead||h.type!=='acid')return; const dx=s.x-h.x, dy=s.y-h.y; const r=h.radius + 2; if(dx*dx+dy*dy<r*r){ h.strength=Math.max(0,(h.strength??1)-0.15*dt); }}); s.life-=0.15*dt; }); spheres = spheres.filter(s=>s.life>0); }
+
+  function splitHazard(h){ const parts=2+Math.floor(Math.random()*2), baseR=Math.max(2, h.radius*0.6), baseS=Math.max(0.4,(h.strength??1)*0.6); for(let i=0;i<parts;i++){ const ang=Math.random()*Math.PI*2; const off=baseR*(0.7+Math.random()*0.6); let nx=h.x+Math.cos(ang)*off, ny=h.y+Math.sin(ang)*off; nx=Math.max(0,Math.min(WORLD_W-1,nx)); ny=Math.max(0,Math.min(WORLD_H-1,ny)); hazards.push({ x:nx,y:ny,type:h.type,radius:baseR*(0.9+Math.random()*0.3), strength:baseS*(0.8+Math.random()*0.4), phase:Math.random()*Math.PI*2, splitCd:0.6+Math.random()*0.4, vx:h.vx||0, vy:h.vy||0, dead:false }); } h.dead=true; }
+
+  function updateHazards(dt){ hazards.forEach(h=>{ if(h.dead) return; h.phase+=dt; const [dvx,dvy]=draftAt(h.x,h.y); if(h.type==='acid'){ h.vx=(h.vx||0)+dvx*0.8*dt; h.vy=(h.vy||0)+dvy*0.8*dt; h.vx*=0.985; h.vy*=0.985; h.x+=h.vx*dt*12; h.y+=h.vy*dt*12; } else if(h.type==='heat'){ h.vx=(h.vx||0)+(Math.random()-0.5)*1.2*dt + dvy*0.5*dt; h.vy=(h.vy||0)+(Math.random()-0.5)*1.2*dt + dvx*0.5*dt; const sp=Math.hypot(h.vx,h.vy), vmax=1.5; if(sp>vmax){ h.vx*=vmax/sp; h.vy*=vmax/sp; } h.vx*=0.9; h.vy*=0.9; h.x+=h.vx*dt*6; h.y+=h.vy*dt*6; } else if(h.type==='collapse'){ h.ttl=(h.ttl??2.0)-dt; h.radius=Math.max(1.5, h.radius-6*dt); if(h.ttl<=0) h.dead=true; } if(h.x<0){h.x=0;h.vx*=-0.6;} if(h.x>WORLD_W-1){h.x=WORLD_W-1;h.vx*=-0.6;} if(h.y<0){h.y=0;h.vy*=-0.6;} if(h.y>WORLD_H-1){h.y=WORLD_H-1;h.vy*=-0.6;} if((h.strength??1)<=0.01) h.dead=true; });
+    for(let i=0;i<hazards.length;i++){ const a=hazards[i]; if(!a||a.dead||a.type!=='acid') continue; for(let j=i+1;j<hazards.length;j++){ const b=hazards[j]; if(!b||b.dead||b.type!=='acid') continue; const dx=b.x-a.x, dy=b.y-a.y; const dist2=dx*dx+dy*dy; const thresh=Math.min(a.radius,b.radius)*0.9; if(dist2<=thresh*thresh){ a.x=(a.x+b.x)/2; a.y=(a.y+b.y)/2; a.radius=Math.min(12, Math.sqrt(a.radius*a.radius+b.radius*b.radius)); a.strength=Math.min(2,(a.strength??1)+(b.strength??1)); b.dead=true; } } }
+    hazards = hazards.filter(h=>!h.dead);
+  }
+
+  function updateMaterials(dt){ const decay=0.03*dt; for(let i=0;i<foam.length;i++) foam[i]=Math.max(0, foam[i]-decay); for(let y=0;y<WORLD_H;y++) for(let x=0;x<WORLD_W;x++){ const i=idx(x,y); let acidField=0, heatField=0; hazards.forEach(h=>{ const dx=x-h.x, dy=y-h.y; const w=(h.strength??1)/(1+dx*dx+dy*dy); if(h.type==='acid') acidField+=w; else if(h.type==='heat') heatField+=w; }); if(precursor[i]>0){ const rate=(0.5*acidField + 0.2*heatField)*dt; const d=Math.min(precursor[i], rate); precursor[i]-=d; gel[i]=Math.min(1, gel[i]+d); } } }
+
+  // ===== Movement & vision =====
+  const VISION=12;
+  function revealAt(x0,y0,r){ const r2=r*r; for(let y=-r;y<=r;y++) for(let x=-r;x<=r;x++){ if(x*x+y*y<=r2){ const xx=(x0|0)+x, yy=(y0|0)+y; if(inb(xx,yy)) seen[idx(xx,yy)]=1; } } }
+
+  function requestMove(dx,dy){ if(player.moving) return; if(dx===0 && dy===0) return; const nx=player.tx+dx, ny=player.ty+dy; if(!inb(nx,ny)) return; player.fromX=player.tx; player.fromY=player.ty; player.toX=nx; player.toY=ny; player.t=0; player.moving=true; player.faceX=dx; player.faceY=dy; lastDir={dx,dy}; }
+
+  function stepIntent(){ let dx=0,dy=0; if(keys.has('w')) dy-=1; if(keys.has('s')) dy+=1; if(keys.has('a')) dx-=1; if(keys.has('d')) dx+=1; if(dx&&dy){ dx=lastDir.dx; dy=lastDir.dy; } return {dx,dy}; }
+
+  function movePlayer(dt){
+    if(!player.moving){ const {dx,dy}=stepIntent(); if(dx||dy) requestMove(dx,dy); }
+    if(player.moving){ const sp=player.speedTiles; player.t += sp*dt; const t = (player.t>1?1:player.t); const ease = t<0.5 ? 2*t*t : -1+(4-2*t)*t; player.rx = player.fromX + (player.toX-player.fromX)*ease; player.ry = player.fromY + (player.toY-player.fromY)*ease; if(player.t>=1){ player.tx=player.toX; player.ty=player.toY; player.rx=player.tx; player.ry=player.ty; player.moving=false; }
+    } else { player.rx = player.tx; player.ry = player.ty; }
+
+    revealAt(player.tx,player.ty,VISION);
+
+    goals.forEach(g=>{ if(!g.done && Math.abs(player.tx-g.x)<1 && Math.abs(player.ty-g.y)<1){ g.done=true; showToast('Goal reached!'); renderGoalsList(); }});
+    ingredients.forEach(it=>{ if(it.picked) return; const dx=it.x-player.tx, dy=it.y-player.ty; if(dx*dx+dy*dy<=4 && seen[idx(it.x,it.y)]){ it.picked=true; applyIngredient(it.type); } });
+
+    updateCamera();
+  }
+
+  // ===== Buff HUD =====
+  const buffs={agar:0,lecithin:0,cacl2:0}; const BUFF_MAXS={agar:60,lecithin:60,cacl2:60};
+  function applyIngredient(type){ buffs[type]=Math.min(BUFF_MAXS[type], buffs[type]+25); showToast(`Picked ${type}!`); renderBuffHUD(); }
+  function renderBuffHUD(){ const hud=document.getElementById('buffHUD'); const any=buffs.agar>0||buffs.lecithin>0||buffs.cacl2>0; hud.style.display=any?'block':'none'; const set=(k,v)=>{ const pct=Math.round((v/BUFF_MAXS[k])*100); document.getElementById('hud_'+k).style.width=pct+'%'; document.getElementById('hud_'+k+'_t').textContent=v.toFixed(0)+'s'; }; set('agar',buffs.agar); set('lecithin',buffs.lecithin); set('cacl2',buffs.cacl2); }
+
+  // ===== Input =====
+  document.addEventListener('keydown', (e)=>{ const k=e.key.toLowerCase(); if(e.repeat) return; if(k==='w'){keys.add('w'); lastDir={dx:0,dy:-1};} if(k==='a'){keys.add('a'); lastDir={dx:-1,dy:0};} if(k==='s'){keys.add('s'); lastDir={dx:0,dy:1};} if(k==='d'){keys.add('d'); lastDir={dx:1,dy:0};}
+    if(k==='q'){ brush=Math.max(1,brush-1); updateOverlay(); } if(k==='e'){ brush=Math.min(12,brush+1); updateOverlay(); }
+    if(k==='1'){ currentTool='foam'; updateOverlay(); } if(k==='2'){ currentTool='gel'; updateOverlay(); } if(k==='3'){ currentTool='spheres'; updateOverlay(); } if(k==='t'){ currentTool='heat'; updateOverlay(); } if(k==='y'){ currentTool='cool'; updateOverlay(); } if(k==='u'){ currentTool='shear'; updateOverlay(); } if(k==='i'){ currentTool='ph'; updateOverlay(); }
+    if(k==='n'){ miniVisible=!miniVisible; mini.style.display=miniVisible?'block':'none'; showToast(`Minimap: ${miniVisible?'ON':'OFF'}`); }
+    if(k==='g'){ gridVisible=!gridVisible; document.getElementById('gridToggle').textContent=`Grid: ${gridVisible?'ON':'OFF'}`; showToast(`Grid: ${gridVisible?'ON':'OFF'}`); }
+    if(k==='p'){ psychedelic=!psychedelic; document.getElementById('psyToggle').textContent=`Psychedelia: ${psychedelic?'ON':'OFF'}`; showToast(`Psychedelia ${psychedelic?'ON':'OFF'}`); }
+    if(k==='r'){ reset(); }
+  });
+  document.addEventListener('keyup', (e)=>{ const k=e.key.toLowerCase(); keys.delete(k); });
+  canvas.addEventListener('mousemove', (e)=>{
+    const rect=canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const localX = (e.clientX-rect.left) * scaleX;
+    const localY = (e.clientY-rect.top) * scaleY;
+    const sx = localX / SCALE;
+    const sy = localY / SCALE;
+    mouse.x = Math.max(0, Math.min(WORLD_W-1, camX+sx));
+    mouse.y = Math.max(0, Math.min(WORLD_H-1, camY+sy));
+    if(mouse.down) applyToolAt(mouse.x, mouse.y);
+  });
+  canvas.addEventListener('mousedown', ()=>{ mouse.down=true; applyToolAt(mouse.x, mouse.y); });
+  window.addEventListener('mouseup', ()=>{ mouse.down=false; });
+  document.getElementById('gridToggle').addEventListener('click', ()=>{ gridVisible=!gridVisible; document.getElementById('gridToggle').textContent=`Grid: ${gridVisible?'ON':'OFF'}`; });
+  document.getElementById('miniToggle').addEventListener('click', ()=>{ miniVisible=!miniVisible; mini.style.display=miniVisible?'block':'none'; });
+  document.getElementById('psyToggle').addEventListener('click', ()=>{ psychedelic=!psychedelic; document.getElementById('psyToggle').textContent=`Psychedelia: ${psychedelic?'ON':'OFF'}`; });
+
+  // ===== Rendering =====
+  function drawGrid(){ if(!gridVisible) return; ctx.save(); ctx.globalAlpha=0.18; ctx.strokeStyle='rgba(200,220,255,0.12)'; ctx.lineWidth=1; for(let x=0;x<=VIEW_W;x++){ ctx.beginPath(); ctx.moveTo(x*SCALE,0); ctx.lineTo(x*SCALE,VIEW_H*SCALE); ctx.stroke(); } for(let y=0;y<=VIEW_H;y++){ ctx.beginPath(); ctx.moveTo(0,y*SCALE); ctx.lineTo(VIEW_W*SCALE,y*SCALE); ctx.stroke(); } ctx.restore(); }
+
+  // BOOSTED visibility + pulsing outlines for materials
+  function drawFields(){
+    const x0=camX, y0=camY;
+    const get=(arr,xx,yy)=> (xx>=0&&yy>=0&&xx<WORLD_W&&yy<WORLD_H)?arr[idx(xx,yy)]:0;
+    const outlineT = 0.08; // threshold for edge outlining
+    for(let y=camY;y<camY+VIEW_H;y++){
+      for(let x=camX;x<camX+VIEW_W;x++){
+        const i=idx(x,y);
+        const vx=(x-x0)*SCALE, vy=(y-y0)*SCALE;
+        const drawMat=(val, hueBase, arr, lgt=70, maxA=0.8, scale=0.8)=>{
+          if(val<=0) return;
+          const phase = x*0.45 + y*0.37;
+          const hue = psychedelic ? (hueBase + Math.sin(time*3 + phase*0.12)*140) : hueBase;
+          const pulse = 0.7 + 0.3*Math.sin(time*6 + phase*0.2);
+          const a = Math.min(maxA, val*scale) * pulse;
+          ctx.fillStyle=`hsla(${hue},100%,${lgt}%,${a})`;
+          ctx.fillRect(vx,vy,SCALE,SCALE);
+          // outline on boundary
+          const left  = get(arr,x-1,y);
+          const right = get(arr,x+1,y);
+          const up    = get(arr,x,y-1);
+          const down  = get(arr,x,y+1);
+          ctx.strokeStyle=`hsla(${hue},100%,85%,0.95)`;
+          ctx.lineWidth=2;
+          if(left<=outlineT){ ctx.beginPath(); ctx.moveTo(vx,vy); ctx.lineTo(vx,vy+SCALE); ctx.stroke(); }
+          if(right<=outlineT){ ctx.beginPath(); ctx.moveTo(vx+SCALE,vy); ctx.lineTo(vx+SCALE,vy+SCALE); ctx.stroke(); }
+          if(up<=outlineT){ ctx.beginPath(); ctx.moveTo(vx,vy); ctx.lineTo(vx+SCALE,vy); ctx.stroke(); }
+          if(down<=outlineT){ ctx.beginPath(); ctx.moveTo(vx,vy+SCALE); ctx.lineTo(vx+SCALE,vy+SCALE); ctx.stroke(); }
+        };
+        const f=foam[i], g=gel[i], p=precursor[i];
+        if(f>0){ drawMat(f, 195, foam, 72, 0.85, 1.0); }
+        if(g>0){ drawMat(g, 135, gel, 62, 0.8, 0.95); }
+        if(p>0){ drawMat(p,  85, precursor, 58, 0.75, 0.95); }
+      }
+    }
+  }
+
+  // Bright neon pearls for spheres (pulsing + outline ring)
+  function drawSpheres(){
+    const x0=camX, y0=camY;
+    ctx.save();
+    spheres.forEach(s=>{
+      const px=((s.x-x0)+0.5)*SCALE, py=((s.y-y0)+0.5)*SCALE;
+      const r=Math.max(2, SCALE*0.35);
+      const hue = psychedelic ? ((time*160)%360) : 185;
+      const pulse = 0.75 + 0.25*Math.sin(time*8 + (s.x*0.5 + s.y*0.33));
+      // additive glow
+      const grad=ctx.createRadialGradient(px,py,0,px,py,r*2.5*pulse);
+      grad.addColorStop(0,`hsla(${(hue+30)%360},100%,90%,0.95)`);
+      grad.addColorStop(0.5,`hsla(${hue},100%,65%,0.70)`);
+      grad.addColorStop(1,`hsla(${(hue+300)%360},100%,50%,0.0)`);
+      ctx.globalCompositeOperation='lighter';
+      ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(px,py,r*2.5*pulse,0,Math.PI*2); ctx.fill();
+      // solid core
+      ctx.globalCompositeOperation='source-over';
+      ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(px,py,Math.max(1.8,r*0.55),0,Math.PI*2); ctx.fill();
+      // pulsing outline ring
+      ctx.strokeStyle=`hsla(${(hue+200)%360},100%,85%,0.95)`; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(px,py,r*1.35*pulse,0,Math.PI*2); ctx.stroke();
+    });
+    ctx.restore();
+  }
+
+  function drawHazards(){ const x0=camX, y0=camY, x1=camX+VIEW_W, y1=camY+VIEW_H; hazards.forEach(h=>{ if(h.dead) return; if(h.x+h.radius<x0||h.x-h.radius>x1||h.y+h.radius<y0||h.y-h.radius>y1) return; ctx.save(); let fill;
+    if(psychedelic){ const base=(time*120)%360; if(h.type==='acid') fill=`hsla(${(base+190)%360},95%,65%,.65)`; else if(h.type==='heat') fill=`hsla(${(base+30)%360},95%,65%,.65)`; else fill=`hsla(${(base+280)%360},95%,75%,.65)`; }
+    else { fill = h.type==='acid' ? 'rgba(120,200,255,.65)' : h.type==='heat' ? 'rgba(255,120,100,.65)' : 'rgba(220,200,255,.65)'; }
+    ctx.fillStyle=fill; ctx.beginPath(); ctx.arc(((h.x-x0)+0.5)*SCALE, ((h.y-y0)+0.5)*SCALE, h.radius*SCALE, 0, Math.PI*2); ctx.fill(); ctx.restore(); }); }
+
+  function drawBiomeTint(){ const x0=camX, y0=camY; const w=VIEW_W, h=VIEW_H; ctx.save(); ctx.globalAlpha=psychedelic?0.05:0.08; for(let gy=0; gy<GRID_Y; gy++){ for(let gx=0; gx<GRID_X; gx++){ const bx=gx*MOD_W, by=gy*MOD_H; if(bx> x0+w || by> y0+h || bx+MOD_W < x0 || by+MOD_H < y0) continue; const b=BIOMES[ biomeGrid[gy*GRID_X+gx] ]; ctx.fillStyle=b.color; const rx=Math.max(bx,x0), ry=Math.max(by,y0); const rw=Math.min(bx+MOD_W,x0+w)-rx; const rh=Math.min(by+MOD_H,y0+h)-ry; ctx.fillRect((rx-x0)*SCALE, (ry-y0)*SCALE, rw*SCALE, rh*SCALE); } } ctx.restore(); }
+
+  function drawPsychedeliaOverlay(){ if(!psychedelic) return; const w=canvas.width, h=canvas.height; ctx.save(); ctx.globalCompositeOperation='lighter';
+    const g=ctx.createLinearGradient(0,0,w,h); g.addColorStop(0,`hsla(${(time*120)%360},100%,60%,0.12)`); g.addColorStop(1,`hsla(${(time*120+180)%360},100%,60%,0.12)`); ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+    for(let i=0;i<60;i++){ ctx.fillStyle=`hsla(${(i*37 + time*180)%360},100%,60%,0.06)`; const x=Math.sin(time*0.7+i)*0.5+0.5; const y=Math.cos(time*0.9+i*1.3)*0.5+0.5; const r=4+((i%7)+1); ctx.beginPath(); ctx.arc(x*w, y*h, r, 0, Math.PI*2); ctx.fill(); }
+    ctx.restore(); }
+
+  // Clear, bold player marker
+  function drawPlayer(){
+    const x0=camX, y0=camY;
+    const px = (player.rx - x0 + 0.5) * SCALE;
+    const py = (player.ry - y0 + 0.5) * SCALE;
+    const R  = SCALE*0.45;
+    const bob = Math.sin(time*8)*0.5;
+
+    // shadow
+    ctx.save();
+    ctx.globalAlpha=0.35; ctx.fillStyle='black';
+    ctx.beginPath(); ctx.ellipse(px+1,py+2,R*0.9,R*0.45,0,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+
+    // ring
+    ctx.save();
+    const hue = psychedelic ? ( (time*120)%360 ) : 160;
+    ctx.strokeStyle = `hsl(${hue},100%,70%)`;
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(px,py,R+1+bob*0.6,0,Math.PI*2); ctx.stroke();
+
+    // core
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(px,py,R*0.35,0,Math.PI*2); ctx.fill();
+
+    // facing wedge
+    let vx = player.faceX, vy = player.faceY;
+    if(vx===0 && vy===0){ vx = mouse.x - player.rx; vy = mouse.y - player.ry; }
+    const ang = Math.atan2(vy,vx);
+    const wR = R*0.85;
+    ctx.fillStyle = `hsl(${(hue+200)%360},100%,65%)`;
+    ctx.beginPath();
+    ctx.moveTo(px + Math.cos(ang)*wR, py + Math.sin(ang)*wR);
+    ctx.lineTo(px + Math.cos(ang+0.9)*R*0.5, py + Math.sin(ang+0.9)*R*0.5);
+    ctx.lineTo(px + Math.cos(ang-0.9)*R*0.5, py + Math.sin(ang-0.9)*R*0.5);
+    ctx.closePath(); ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawBrushRing(){ const gx=Math.round(mouse.x-camX), gy=Math.round(mouse.y-camY); const cx=(gx+0.5)*SCALE, cy=(gy+0.5)*SCALE; const color = currentTool==='heat'?'hsl(20,100%,60%)': currentTool==='cool'?'hsl(195,100%,65%)': currentTool==='shear'?'hsl(55,100%,70%)': currentTool==='ph'?'hsl(300,100%,65%)': currentTool==='foam'?'hsl(190,100%,70%)': currentTool==='gel'?'hsl(140,100%,60%)': currentTool==='spheres'?'#fff':'rgba(184,255,220,0.9)'; ctx.save(); ctx.strokeStyle=color; ctx.globalAlpha=0.95; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(cx,cy,(brush*SCALE)+2,0,Math.PI*2); ctx.stroke(); ctx.restore(); }
+
+  function drawSeenFog(){ const x0=camX,y0=camY; ctx.save(); ctx.fillStyle='rgba(0,0,0,0.72)'; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.globalCompositeOperation='destination-out'; for(let y=y0;y<y0+VIEW_H;y++) for(let x=x0;x<x0+VIEW_W;x++){ if(seen[idx(x,y)]) ctx.fillRect((x-x0)*SCALE,(y-y0)*SCALE,SCALE,SCALE); } ctx.restore(); }
+
+  function drawDraftArrows(step=8){ const x0=camX,y0=camY; ctx.save(); ctx.globalAlpha=0.45; for(let y=y0+step/2; y<y0+VIEW_H; y+=step){ for(let x=x0+step/2; x<x0+VIEW_W; x+=step){ const [vx,vy]=draftAt(x,y); const len=Math.min(6, Math.hypot(vx,vy)*10+2); const ang=Math.atan2(vy,vx); const cx=((x-x0)+0.5)*SCALE, cy=((y-y0)+0.5)*SCALE; ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+Math.cos(ang)*len, cy+Math.sin(ang)*len); ctx.strokeStyle='rgba(184,255,220,0.5)'; ctx.stroke(); } } ctx.restore(); }
+
+  function drawMini(){ if(!miniVisible) return; const sx = mini.width / WORLD_W, sy = mini.height / WORLD_H; mctx.fillStyle='#050708'; mctx.fillRect(0,0,mini.width,mini.height);
+    for(let gy=0; gy<GRID_Y; gy++){
+      for(let gx=0; gx<GRID_X; gx++){
+        const b=BIOMES[ biomeGrid[gy*GRID_X+gx] ]; mctx.fillStyle=b.color; mctx.globalAlpha=0.6;
+        mctx.fillRect(Math.floor(gx*MOD_W*sx), Math.floor(gy*MOD_H*sy), Math.ceil(MOD_W*sx), Math.ceil(MOD_H*sy));
+      }
+    }
+    mctx.globalAlpha=1;
+    mctx.fillStyle='#0f151a'; for(let y=0;y<WORLD_H;y+=2){ for(let x=0;x<WORLD_W;x+=2){ if(seen[idx(x,y)]) mctx.fillRect(Math.floor(x*sx), Math.floor(y*sy), Math.ceil(2*sx), Math.ceil(2*sy)); } }
+    hazards.forEach(h=>{ if(h.dead) return; mctx.fillStyle = psychedelic ? (h.type==='acid' ? '#7efcff' : h.type==='heat' ? '#ff7aff' : '#dccbff') : (h.type==='acid' ? '#7ec5ff' : '#ff8f7a'); mctx.fillRect(Math.floor(h.x*sx), Math.floor(h.y*sy), Math.max(1,Math.floor(2*sx)), Math.max(1,Math.floor(2*sy)); });
+    // spheres on minimap
+    mctx.fillStyle = psychedelic ? '#d7fff9' : '#c8fff2';
+    spheres.forEach(s=>{ mctx.fillRect(Math.floor(s.x*sx), Math.floor(s.y*sy), 2,2); });
+    mctx.save(); mctx.globalAlpha=0.7; mctx.strokeStyle='rgba(184,255,220,0.7)'; for(let y=8; y<mini.height; y+=12){ for(let x=8; x<mini.width; x+=12){ const wx=x/sx, wy=y/sy; const [vx,vy]=draftAt(wx,wy); const len=Math.min(2, Math.hypot(vx,vy)*3+0.6); const ang=Math.atan2(vy,vx); mctx.beginPath(); mctx.moveTo(x,y); mctx.lineTo(x+Math.cos(ang)*len, y+Math.sin(ang)*len); mctx.stroke(); } } mctx.restore();
+    mctx.fillStyle='#fff'; mctx.fillRect(Math.floor(player.tx*sx), Math.floor(player.ty*sy), 2,2);
+    mctx.strokeStyle='rgba(255,255,255,0.6)'; mctx.strokeRect(Math.floor(camX*sx), Math.floor(camY*sy), Math.floor(VIEW_W*sx), Math.floor(VIEW_H*sy));
+  }
+
+  // ===== Loop =====
+  function tick(){ const dt=0.016; time += dt; movePlayer(dt); updateHazards(dt); updateMaterials(dt); updateSpheres(dt); ['agar','lecithin','cacl2'].forEach(k=>{ if(buffs[k]>0) buffs[k]=Math.max(0,buffs[k]-dt); }); renderBuffHUD(); ctx.fillStyle='#0a0f12'; ctx.fillRect(0,0,canvas.width,canvas.height); drawBiomeTint(); drawGrid(); drawFields(); drawHazards(); drawSpheres(); drawDraftArrows(8); drawPlayer(); drawBrushRing(); drawPsychedeliaOverlay(); drawSeenFog(); drawMini(); requestAnimationFrame(tick); }
+
+  function reset(){ seen.fill(0); foam.fill(0); precursor.fill(0); gel.fill(0); spheres.length=0; player.tx=Math.floor(WORLD_W/2); player.ty=Math.floor(WORLD_H/2); player.rx=player.tx; player.ry=player.ty; player.moving=false; generateWorld(); updateOverlay(); renderBuffHUD(); camFx = Math.max(0, Math.min(WORLD_W - VIEW_W, player.rx - VIEW_W/2)); camFy = Math.max(0, Math.min(WORLD_H - VIEW_H, player.ry - VIEW_H/2)); camX=Math.round(camFx); camY=Math.round(camFy); }
+
+  // ===== Init =====
+  reset(); requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
