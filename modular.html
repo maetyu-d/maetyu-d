@@ -3,18 +3,17 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Mechanical Modular (Legacy 1.4.0)</title>
+<title>Mechanical Modular — File-safe (Web Audio, no worklets)</title>
 
-<!-- ✅ Matching legacy pair that works from file:// (no AudioWorklet) -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/addons/p5.sound.min.js"></script>
+<!-- p5.js ONLY for visuals; no p5.sound -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js"></script>
 
 <style>
   :root { --bg:#0e0f12; --panel:#141722; --ink:#dfe6f7; --muted:#9fb3d9; --accent:#7fb0ff; --good:#a8f0a2; --warn:#ffd37f; --hot:#ff9ea1;}
-  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,Segoe UI,Helvetica,Arial}
-  .wrap{display:flex;min-height:100vh;gap:16px;padding:16px;box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family: ui-sans-serif,system-ui,Segoe UI,Helvetica,Arial;}
+  .wrap{display:flex;min-height:100vh;gap:16px;padding:16px;box-sizing:border-box;}
   .ui{width:360px;background:var(--panel);border-radius:14px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25);display:flex;flex-direction:column;gap:14px}
-  h1{font-size:18px;margin:0 0 8px}
+  h1{font-size:18px;margin:0 0 8px;}
   h2{font-size:14px;margin:10px 0 4px;color:var(--muted)}
   .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .btn{background:#1d2333;color:var(--ink);border:1px solid #2b3650;border-radius:10px;padding:10px 12px;cursor:pointer}
@@ -42,27 +41,27 @@
     <div class="group">
       <h2>Cam Stack & Slip-Clutch</h2>
       <label for="clutch">Clutch Pressure (sync → drift)</label>
-      <input id="clutch" type="range" min="0" max="1" step="0.001" value="0.75"/>
+      <input id="clutch" type="range" min="0" max="1" step="0.001" value="0.75" />
       <div class="row">
         <div style="flex:1">
           <label for="camALobes">Cam A Lobes</label>
-          <input id="camALobes" type="range" min="1" max="8" step="1" value="4"/>
+          <input id="camALobes" type="range" min="1" max="8" step="1" value="4" />
         </div>
         <div style="flex:1">
           <label for="camBLobes">Cam B Lobes</label>
-          <input id="camBLobes" type="range" min="1" max="8" step="1" value="3"/>
+          <input id="camBLobes" type="range" min="1" max="8" step="1" value="3" />
         </div>
       </div>
       <label for="camCLobes">Cam C Lobes (polyrhythm)</label>
-      <input id="camCLobes" type="range" min="1" max="8" step="1" value="5"/>
+      <input id="camCLobes" type="range" min="1" max="8" step="1" value="5" />
       <div class="row">
         <div style="flex:1">
           <label for="ratioN">Cam C Gear Ratio Numerator</label>
-          <input id="ratioN" type="range" min="1" max="9" step="1" value="3"/>
+          <input id="ratioN" type="range" min="1" max="9" step="1" value="3" />
         </div>
         <div style="flex:1">
           <label for="ratioD">Cam C Gear Ratio Denominator</label>
-          <input id="ratioD" type="range" min="1" max="9" step="1" value="2"/>
+          <input id="ratioD" type="range" min="1" max="9" step="1" value="2" />
         </div>
       </div>
     </div>
@@ -70,9 +69,9 @@
     <div class="group">
       <h2>Pendulum LFO</h2>
       <label for="pendLen">Pendulum Length (relative)</label>
-      <input id="pendLen" type="range" min="0.2" max="1.2" step="0.01" value="0.55"/>
+      <input id="pendLen" type="range" min="0.2" max="1.2" step="0.01" value="0.55" />
       <label for="pendAmt">LFO Depth → VCA</label>
-      <input id="pendAmt" type="range" min="0" max="1" step="0.01" value="0.5"/>
+      <input id="pendAmt" type="range" min="0" max="1" step="0.01" value="0.5" />
     </div>
 
     <div class="group">
@@ -80,15 +79,15 @@
       <div class="row">
         <div style="flex:1">
           <label for="noisePress">Noise Wheel Pressure (brightness)</label>
-          <input id="noisePress" type="range" min="0" max="1" step="0.01" value="0.6"/>
+          <input id="noisePress" type="range" min="0" max="1" step="0.01" value="0.6" />
         </div>
         <div style="flex:1">
           <label for="stringTune">String Tune (Hz)</label>
-          <input id="stringTune" type="range" min="50" max="400" step="1" value="160"/>
+          <input id="stringTune" type="range" min="50" max="400" step="1" value="160" />
         </div>
       </div>
       <label for="shutterDepth">Shutter Depth (tremolo)</label>
-      <input id="shutterDepth" type="range" min="0" max="1" step="0.01" value="0.35"/>
+      <input id="shutterDepth" type="range" min="0" max="1" step="0.01" value="0.35" />
     </div>
 
     <div class="group kv">
@@ -98,12 +97,13 @@
     <div class="legend">Diagram at right shows a stylized mechanical layout.</div>
   </div>
 
-  <div id="sketch-holder" style="flex:1;min-width:600px;display:flex;align-items:center;justify-content:center;"></div>
+  <div id="sketch-holder" style="flex:1; min-width:600px; display:flex; align-items:center; justify-content:center;"></div>
 </div>
 
 <script>
-let masterGain, outFilter, noise, noiseGain, stringOsc, stringEnv, started=false;
-
+/* ===========
+   State / UI
+   =========== */
 const State = {
   camBaseHz: 2.0,
   camA:{ lobes:4, phase:0 },
@@ -118,39 +118,77 @@ const State = {
   shutterDepth:0.35
 };
 
-// Defensive check to help diagnose if sound lib failed to load
-function assertSoundAvailable(){
-  if (typeof p5 === 'undefined' || typeof p5.prototype.getAudioContext !== 'function') {
-    alert('p5.sound did not load. Make sure the p5.sound 1.4.0 script tag is present and not blocked.');
+let started=false;
+
+/* ==============
+   Web Audio Core
+   ============== */
+let actx, master, noiseNode, noiseGain, stringOsc, stringGain;
+
+function ensureCtx() {
+  if (!actx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    actx = new AC();
   }
+  return actx;
 }
 
-function setupAudio(){
-  assertSoundAvailable();
-
-  // Output chain
-  masterGain = new p5.Gain(); masterGain.connect();
-  outFilter  = new p5.Filter(); outFilter.setType('lowpass'); outFilter.freq(14000); outFilter.res(0.2);
-  masterGain.disconnect(); masterGain.connect(outFilter);
-
-  // Noise source
-  noise = new p5.Noise('white'); noise.start(); noise.amp(0);
-  noiseGain = new p5.Gain();
-  noise.disconnect(); noise.connect(noiseGain); noiseGain.connect(masterGain);
-
-  // String source
-  stringOsc = new p5.Oscillator('triangle'); stringOsc.freq(State.stringHz); stringOsc.start(); stringOsc.amp(0);
-  stringEnv = new p5.Envelope(0.005, 0.8, 0.15, 0.0);
-  // String goes straight to masterGain (pre-filter feel is subtle anyway)
-  stringOsc.disconnect(); stringOsc.connect(masterGain);
-
-  // Set overall level
-  masterGain.amp(0.9);
+function mkGain(v=1) {
+  const g = actx.createGain();
+  g.gain.setValueAtTime(v, actx.currentTime);
+  return g;
 }
 
-function audioOn(){ if(!started){ setupAudio(); started=true; } }
-function audioOff(){ if (masterGain) masterGain.amp(0, 0.2); started=false; }
+function mkNoiseBuffer(duration=2) {
+  const sr = actx.sampleRate;
+  const len = Math.floor(duration * sr);
+  const buf = actx.createBuffer(1, len, sr);
+  const ch = buf.getChannelData(0);
+  for (let i=0;i<len;i++) ch[i] = Math.random()*2-1;
+  return buf;
+}
 
+function setupAudio() {
+  ensureCtx();
+  master = mkGain(0.9);
+  master.connect(actx.destination);
+
+  // Noise: looped buffer source
+  noiseGain = mkGain(0);
+  noiseGain.connect(master);
+  noiseNode = actx.createBufferSource();
+  noiseNode.buffer = mkNoiseBuffer(2);
+  noiseNode.loop = true;
+  noiseNode.connect(noiseGain);
+  noiseNode.start();
+
+  // String: triangle oscillator with simple sustain + “excite” bursts
+  stringGain = mkGain(0);
+  stringGain.connect(master);
+  stringOsc = actx.createOscillator();
+  stringOsc.type = 'triangle';
+  stringOsc.frequency.setValueAtTime(State.stringHz, actx.currentTime);
+  stringOsc.connect(stringGain);
+  stringOsc.start();
+}
+
+function audioOn(){
+  const ctx = ensureCtx();
+  if (ctx.state !== 'running') ctx.resume();
+  if (!started) { setupAudio(); started = true; }
+}
+
+function audioOff(){
+  if (!actx) return;
+  const t = actx.currentTime;
+  master.gain.cancelScheduledValues(t);
+  master.gain.setTargetAtTime(0, t, 0.1);
+  started = false;
+}
+
+/* ===========
+   Mechanics
+   =========== */
 function pendulumHz(len){ const k=1.1; return k / Math.sqrt(Math.max(0.2, len)); }
 
 function stepMechanical(dt){
@@ -163,28 +201,40 @@ function stepMechanical(dt){
   State.camA.phase%=TWO_PI; State.camB.phase%=TWO_PI; State.camC.phase%=TWO_PI;
 
   const pHz=pendulumHz(State.pendLen);
-  const pend=(sin(millis()/1000*TWO_PI*pHz)+1)/2;
+  const pend=(Math.sin(performance.now()/1000 * TWO_PI * pHz)+1)/2;
 
-  function camGate(cam){ const lobes=max(1,cam.lobes|0); const x=(cam.phase*lobes)%TWO_PI; return pow(max(0,cos(x)),3.0); }
+  function camGate(cam){ const lobes=Math.max(1,cam.lobes|0); const x=(cam.phase*lobes)%TWO_PI; return Math.pow(Math.max(0,Math.cos(x)),3.0); }
   const gateA=camGate(State.camA), gateB=camGate(State.camB), gateC=camGate(State.camC);
 
   const shutter = 1.0 - State.shutterDepth * (0.4 + 0.6*gateC);
-  const vcaBase=0.85, vcaMod=1.0-State.pendAmt*pend, vcaLevel=constrain(vcaBase*vcaMod,0,1);
+  const vcaBase=0.85, vcaMod=1.0-State.pendAmt*pend, vcaLevel=Math.max(0, Math.min(1, vcaBase*vcaMod));
 
-  const noiseLevel = 0.3 * (0.4 + 0.6*gateA);
-  noiseGain.amp(noiseLevel * shutter * vcaLevel, 0.02);
+  // Noise level
+  const noiseLevel = 0.25 * (0.4 + 0.6*gateA);
+  if (noiseGain) noiseGain.gain.linearRampToValueAtTime(noiseLevel * shutter * vcaLevel, actx.currentTime + 0.02);
 
-  stringOsc.freq(State.stringHz);
-  if(!stepMechanical.lastB) stepMechanical.lastB=0;
+  // String “excitation” on cam B peaks
+  if (!stepMechanical.lastB) stepMechanical.lastB = 0;
   const prev=stepMechanical.lastB; stepMechanical.lastB=gateB;
-  if(prev<0.15 && gateB>=0.15){ stringEnv.setRange(0.8,0.0); stringEnv.play(stringOsc); }
-  const stringBed=0.15;
-  stringOsc.amp(stringBed * shutter * vcaLevel, 0.02);
+  if (prev < 0.15 && gateB >= 0.15) {
+    // quick bump on the string gain
+    const t = actx.currentTime;
+    stringGain.gain.cancelScheduledValues(t);
+    stringGain.gain.setValueAtTime(stringGain.gain.value, t);
+    stringGain.gain.linearRampToValueAtTime(0.5, t + 0.01);
+    stringGain.gain.linearRampToValueAtTime(0.0, t + 0.18);
+  }
+  // subtle sustain bed
+  const stringBed = 0.12 * shutter * vcaLevel;
+  if (stringGain) stringGain.gain.linearRampToValueAtTime(stringBed, actx.currentTime + 0.02);
 
-  masterGain.amp(0.9, 0.02);
+  // tuning
+  if (stringOsc) stringOsc.frequency.linearRampToValueAtTime(State.stringHz, actx.currentTime + 0.02);
 }
 
-/* UI */
+/* =====
+   UI
+   ===== */
 function bindUI(){
   const aBtn=document.getElementById('audioBtn');
   aBtn.onclick=()=>{ if(!started){ audioOn(); aBtn.textContent='Stop Audio'; } else { audioOff(); aBtn.textContent='Start Audio'; } };
@@ -195,7 +245,7 @@ function bindUI(){
   const sliders={
     clutch:v=>State.clutchPressure=+v, camALobes:v=>State.camA.lobes=(+v|0),
     camBLobes:v=>State.camB.lobes=(+v|0), camCLobes:v=>State.camC.lobes=(+v|0),
-    ratioN:v=>State.camC.ratioN=max(1,(+v|0)), ratioD:v=>State.camC.ratioD=max(1,(+v|0)),
+    ratioN:v=>State.camC.ratioN=Math.max(1,(+v|0)), ratioD:v=>State.camC.ratioD=Math.max(1,(+v|0)),
     pendLen:v=>State.pendLen=+v, pendAmt:v=>State.pendAmt=+v,
     noisePress:v=>State.noisePress=+v, stringTune:v=>State.stringHz=+v,
     shutterDepth:v=>State.shutterDepth=+v
@@ -209,12 +259,14 @@ function bindUI(){
 }
 
 /* Presets */
-function loadPatch1(){ State.clutchPressure=0.8; State.camA.lobes=2; State.camB.lobes=2; State.camC.lobes=2; State.camC.ratioN=1; State.camC.ratioD=1; State.pendLen=0.55; State.pendAmt=0.55; State.noisePress=0.6; State.stringHz=160; State.shutterDepth=0.25; syncUI(); }
-function loadPatch2(){ State.clutchPressure=0.85; State.camA.lobes=4; State.camB.lobes=3; State.camC.lobes=5; State.camC.ratioN=3; State.camC.ratioD=2; State.pendLen=0.5; State.pendAmt=0.25; State.noisePress=0.65; State.stringHz=180; State.shutterDepth=0.35; syncUI(); }
-function loadPatch3(){ State.clutchPressure=0.55; State.camA.lobes=3; State.camB.lobes=5; State.camC.lobes=4; State.camC.ratioN=5; State.camC.ratioD=4; State.pendLen=0.7; State.pendAmt=0.6; State.noisePress=0.55; State.stringHz=140; State.shutterDepth=0.45; syncUI(); }
+function loadPatch1(){ State.clutchPressure=0.8; State.camA.lobes=2; State.camB.lobes=2; State.camC.lobes=2; State.camC.ratioN=1; State.camC.ratioD=1; State.pendLen=0.55; State.pendAmt=0.55; State.stringHz=160; State.shutterDepth=0.25; syncUI(); }
+function loadPatch2(){ State.clutchPressure=0.85; State.camA.lobes=4; State.camB.lobes=3; State.camC.lobes=5; State.camC.ratioN=3; State.camC.ratioD=2; State.pendLen=0.5; State.pendAmt=0.25; State.stringHz=180; State.shutterDepth=0.35; syncUI(); }
+function loadPatch3(){ State.clutchPressure=0.55; State.camA.lobes=3; State.camB.lobes=5; State.camC.lobes=4; State.camC.ratioN=5; State.camC.ratioD=4; State.pendLen=0.7; State.pendAmt=0.6; State.stringHz=140; State.shutterDepth=0.45; syncUI(); }
 function syncUI(){ const ids=['clutch','camALobes','camBLobes','camCLobes','ratioN','ratioD','pendLen','pendAmt','noisePress','stringTune','shutterDepth']; const vals=[State.clutchPressure,State.camA.lobes,State.camB.lobes,State.camC.lobes,State.camC.ratioN,State.camC.ratioD,State.pendLen,State.pendAmt,State.noisePress,State.stringHz,State.shutterDepth]; ids.forEach((id,i)=>document.getElementById(id).value=vals[i]); }
 
-/* Visuals */
+/* =========
+   Visuals
+   ========= */
 function setup(){ const cnv=createCanvas(1000,700); cnv.parent('sketch-holder'); bindUI(); loadPatch2(); }
 function drawModule(x,y,w,h,label,col='#172033'){ noStroke(); fill(col); rect(x,y,w,h,12); fill('#dfe6f7'); textSize(14); textAlign(CENTER,CENTER); text(label, x+w/2, y+14); }
 function link(x1,y1,x2,y2,c){ stroke(c); strokeWeight(3); line(x1,y1,x2,y2); }
@@ -246,7 +298,7 @@ function draw(){
   const cB={x:M.cams.x+110,y:M.cams.y+55,r:24};
   const cC={x:M.cams.x+160,y:M.cams.y+55,r:24};
   circle(cA.x,cA.y,cA.r*2); circle(cB.x,cB.y,cB.r*2); circle(cC.x,cC.y,cC.r*2);
-  function camSpokes(cx,cy,r,lobes,phase,col){ stroke(col); strokeWeight(3); const L=max(1,lobes|0); for(let i=0;i<L;i++){ const a=phase+i*(TWO_PI/L); line(cx,cy,cx+r*cos(a),cy+r*sin(a)); } }
+  function camSpokes(cx,cy,r,lobes,phase,col){ stroke(col); strokeWeight(3); const L=Math.max(1,lobes|0); for(let i=0;i<L;i++){ const a=phase+i*(TWO_PI/L); line(cx,cy,cx+r*Math.cos(a),cy+r*Math.sin(a)); } }
   camSpokes(cA.x,cA.y,cA.r, State.camA.lobes, State.camA.phase, '#ffd37f');
   camSpokes(cB.x,cB.y,cB.r, State.camB.lobes, State.camB.phase, '#ffd37f');
   camSpokes(cC.x,cC.y,cC.r, State.camC.lobes, State.camC.phase, '#ffd37f');
@@ -255,7 +307,7 @@ function draw(){
   stroke('#a8f0a2'); strokeWeight(4);
   const px=M.pend.x+60, py=M.pend.y+12;
   line(px,py, px, py+70);
-  const pBobY = py+70 + 20*sin(frameCount*0.02/ max(0.3, Math.sqrt(State.pendLen)));
+  const pBobY = py+70 + 20*Math.sin(frameCount*0.02/ Math.max(0.3, Math.sqrt(State.pendLen)));
   fill('#a8f0a2'); circle(px, pBobY, 16);
 
   noStroke(); fill('#9fb3d9'); textAlign(LEFT, BASELINE); textSize(12);
@@ -265,9 +317,9 @@ function draw(){
   const dt=deltaTime/1000;
   if(started) stepMechanical(dt);
 }
-
 window.addEventListener('load', ()=>{ bindUI(); });
 </script>
 </body>
 </html>
+
 
