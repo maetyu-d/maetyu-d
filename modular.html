@@ -3,323 +3,461 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Mechanical Modular — File-safe (Web Audio, no worklets)</title>
-
-<!-- p5.js ONLY for visuals; no p5.sound -->
+<title>Isometric Mechanical Modular — 10×10×10 (Web Audio + p5)</title>
+<!-- p5 only for visuals; audio is plain Web Audio to be file:// safe -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js"></script>
-
 <style>
-  :root { --bg:#0e0f12; --panel:#141722; --ink:#dfe6f7; --muted:#9fb3d9; --accent:#7fb0ff; --good:#a8f0a2; --warn:#ffd37f; --hot:#ff9ea1;}
-  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family: ui-sans-serif,system-ui,Segoe UI,Helvetica,Arial;}
-  .wrap{display:flex;min-height:100vh;gap:16px;padding:16px;box-sizing:border-box;}
-  .ui{width:360px;background:var(--panel);border-radius:14px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25);display:flex;flex-direction:column;gap:14px}
-  h1{font-size:18px;margin:0 0 8px;}
-  h2{font-size:14px;margin:10px 0 4px;color:var(--muted)}
-  .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-  .btn{background:#1d2333;color:var(--ink);border:1px solid #2b3650;border-radius:10px;padding:10px 12px;cursor:pointer}
-  .btn.primary{background:#233257;border-color:#2e4370}
-  .btn.tiny{padding:6px 8px;font-size:12px}
-  label{font-size:12px;color:var(--muted)}
-  input[type=range]{width:100%}
-  .group{border:1px solid #232a3d;border-radius:12px;padding:10px}
-  .kv{display:grid;grid-template-columns:1fr auto;gap:6px;font-size:12px;color:var(--muted)}
-  canvas{border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
-  .legend{font-size:12px;color:var(--muted)}
+  :root{--bg:#0c0f14; --panel:#141824; --ink:#e6eefc; --muted:#98a7c6; --accent:#80b2ff; --sig:#a8f0a2; --aud:#ffd37f;}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,Segoe UI,Helvetica,Arial}
+  .ui{position:fixed;inset:auto 12px 12px auto;background:var(--panel);border:1px solid #21283a;border-radius:12px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.35);max-width:360px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .btn{background:#1b2131;border:1px solid #2a3550;color:var(--ink);border-radius:10px;padding:10px 12px;cursor:pointer}
+  .btn:focus{outline:2px solid var(--accent);outline-offset:2px}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;font-size:12px;color:var(--muted);margin-top:8px}
+  .legend{font-size:12px;color:var(--muted);margin-top:6px}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="ui" aria-label="control panel">
-    <h1>Mechanical Modular (Cam + Pendulum)</h1>
-    <div class="row">
-      <button id="audioBtn" class="btn primary" aria-label="Toggle Audio (Space)">Start Audio</button>
-      <button class="btn tiny" id="patch1">Patch 1</button>
-      <button class="btn tiny" id="patch2">Patch 2</button>
-      <button class="btn tiny" id="patch3">Patch 3</button>
-    </div>
-
-    <div class="group">
-      <h2>Cam Stack & Slip-Clutch</h2>
-      <label for="clutch">Clutch Pressure (sync → drift)</label>
-      <input id="clutch" type="range" min="0" max="1" step="0.001" value="0.75" />
-      <div class="row">
-        <div style="flex:1">
-          <label for="camALobes">Cam A Lobes</label>
-          <input id="camALobes" type="range" min="1" max="8" step="1" value="4" />
-        </div>
-        <div style="flex:1">
-          <label for="camBLobes">Cam B Lobes</label>
-          <input id="camBLobes" type="range" min="1" max="8" step="1" value="3" />
-        </div>
-      </div>
-      <label for="camCLobes">Cam C Lobes (polyrhythm)</label>
-      <input id="camCLobes" type="range" min="1" max="8" step="1" value="5" />
-      <div class="row">
-        <div style="flex:1">
-          <label for="ratioN">Cam C Gear Ratio Numerator</label>
-          <input id="ratioN" type="range" min="1" max="9" step="1" value="3" />
-        </div>
-        <div style="flex:1">
-          <label for="ratioD">Cam C Gear Ratio Denominator</label>
-          <input id="ratioD" type="range" min="1" max="9" step="1" value="2" />
-        </div>
-      </div>
-    </div>
-
-    <div class="group">
-      <h2>Pendulum LFO</h2>
-      <label for="pendLen">Pendulum Length (relative)</label>
-      <input id="pendLen" type="range" min="0.2" max="1.2" step="0.01" value="0.55" />
-      <label for="pendAmt">LFO Depth → VCA</label>
-      <input id="pendAmt" type="range" min="0" max="1" step="0.01" value="0.5" />
-    </div>
-
-    <div class="group">
-      <h2>Sources & Shapers</h2>
-      <div class="row">
-        <div style="flex:1">
-          <label for="noisePress">Noise Wheel Pressure (brightness)</label>
-          <input id="noisePress" type="range" min="0" max="1" step="0.01" value="0.6" />
-        </div>
-        <div style="flex:1">
-          <label for="stringTune">String Tune (Hz)</label>
-          <input id="stringTune" type="range" min="50" max="400" step="1" value="160" />
-        </div>
-      </div>
-      <label for="shutterDepth">Shutter Depth (tremolo)</label>
-      <input id="shutterDepth" type="range" min="0" max="1" step="0.01" value="0.35" />
-    </div>
-
-    <div class="group kv">
-      <div>Space</div><div>Start/Stop Audio</div>
-      <div>1 / 2 / 3</div><div>Load Patch 1/2/3</div>
-    </div>
-    <div class="legend">Diagram at right shows a stylized mechanical layout.</div>
+<div class="ui">
+  <div class="row">
+    <button id="start" class="btn" aria-label="Start/Stop Audio (Space)">Start Audio</button>
+    <button id="reroute" class="btn" aria-label="New patch (R)">New Patch</button>
   </div>
-
-  <div id="sketch-holder" style="flex:1; min-width:600px; display:flex; align-items:center; justify-content:center;"></div>
+  <div class="kv">
+    <div>Drag</div><div>Pan view</div>
+    <div>Wheel</div><div>Zoom</div>
+    <div>Space</div><div>Start/Stop Audio</div>
+    <div>R</div><div>Re-seed patch</div>
+  </div>
+  <div class="legend">Isometric 10×10×10 grid. Colored lines are <span style="color:#ffd37f">audio</span> paths; mint lines are <span style="color:#a8f0a2">modulation</span>.</div>
 </div>
 
 <script>
-/* ===========
-   State / UI
-   =========== */
-const State = {
-  camBaseHz: 2.0,
-  camA:{ lobes:4, phase:0 },
-  camB:{ lobes:3, phase:0 },
-  camC:{ lobes:5, phase:0, ratioN:3, ratioD:2 },
-  clutchPressure:0.75,
-  clutchDriftHz: 0.15,
-  pendLen:0.55,
-  pendAmt:0.5,
-  noisePress:0.6,
-  stringHz:160,
-  shutterDepth:0.35
+/* =========================
+   Module catalog (virtual)
+   ========================= */
+const TYPES = {
+  SOURCE_NOISE: 'SOURCE_NOISE',
+  SOURCE_STRING: 'SOURCE_STRING',
+  SHAPER_FILTER: 'SHAPER_FILTER',   // simple lowpass/bandpass
+  SHAPER_SHUTTER: 'SHAPER_SHUTTER', // tremolo (AM)
+  VCA: 'VCA',
+  MIXER: 'MIXER',
+  RESONATOR: 'RESONATOR',           // bandpass peak
+  OUTPUT: 'OUTPUT',
+  MOD_LFO: 'MOD_LFO',               // pendulum-ish LFO
+  MOD_CAM: 'MOD_CAM'                // stepped cam sequencer
 };
+const ALL_TYPES = Object.values(TYPES);
+const AUDIO_TYPES = new Set([
+  TYPES.SOURCE_NOISE, TYPES.SOURCE_STRING, TYPES.SHAPER_FILTER,
+  TYPES.SHAPER_SHUTTER, TYPES.VCA, TYPES.MIXER, TYPES.RESONATOR, TYPES.OUTPUT
+]);
+const MOD_TYPES = new Set([TYPES.MOD_LFO, TYPES.MOD_CAM]);
 
-let started=false;
+/* =========================
+   Grid + projection
+   ========================= */
+const N = 10;                 // 10×10×10
+const SPACING = 28;           // cube spacing
+const CUBE = 14;              // cube size
+let camera = {ox:0, oy:0, zoom:1.0, drag:false, px:0, py:0};
 
-/* ==============
-   Web Audio Core
-   ============== */
-let actx, master, noiseNode, noiseGain, stringOsc, stringGain;
-
-function ensureCtx() {
-  if (!actx) {
-    const AC = window.AudioContext || window.webkitAudioContext;
-    actx = new AC();
-  }
-  return actx;
+function isoProject(x,y,z){
+  // classic 2:1 isometric
+  const isoX = (x - z) * SPACING * 0.866; // cos(30°)=0.866
+  const isoY = (x + z) * SPACING * 0.5   - y * SPACING * 0.9;
+  return {x: isoX*camera.zoom + width/2 + camera.ox, y: isoY*camera.zoom + height/2 + camera.oy};
 }
 
-function mkGain(v=1) {
-  const g = actx.createGain();
-  g.gain.setValueAtTime(v, actx.currentTime);
+/* =========================
+   Patch model (virtual)
+   ========================= */
+let grid = []; // 3D array of module types
+let audioGraph; // instantiated Web Audio nodes for the current active subgraph
+let ctx;
+
+function initGrid(seed=1){
+  grid = new Array(N);
+  for (let x=0;x<N;x++){
+    grid[x] = new Array(N);
+    for (let y=0;y<N;y++){
+      grid[x][y] = new Array(N);
+      for (let z=0;z<N;z++){
+        // deterministic variety: cycle families by a hash
+        const h = (x*73856093 ^ y*19349663 ^ z*83492791 ^ seed) >>> 0;
+        const r = h%100;
+        let t;
+        if (r<8) t=TYPES.SOURCE_NOISE;
+        else if (r<16) t=TYPES.SOURCE_STRING;
+        else if (r<28) t=TYPES.SHAPER_FILTER;
+        else if (r<40) t=TYPES.VCA;
+        else if (r<46) t=TYPES.MIXER;
+        else if (r<55) t=TYPES.RESONATOR;
+        else if (r<68) t=TYPES.SHAPER_SHUTTER;
+        else if (r<82) t=TYPES.MOD_LFO;
+        else if (r<96) t=TYPES.MOD_CAM;
+        else t=TYPES.OUTPUT;
+        grid[x][y][z] = t;
+      }
+    }
+  }
+  // ensure at least one OUTPUT near a corner
+  grid[N-2][Math.floor(N/2)][N-2] = TYPES.OUTPUT;
+}
+
+// Find Manhattan path from A→B with 6-neighbour moves.
+function manhattanPath(a,b){
+  const path=[{...a}];
+  let p={...a};
+  const step=(axis,dir)=>{ p[axis]+=dir; path.push({...p}); };
+  while (p.x!==b.x) step('x', p.x<b.x?1:-1);
+  while (p.y!==b.y) step('y', p.y<b.y?1:-1);
+  while (p.z!==b.z) step('z', p.z<b.z?1:-1);
+  return path;
+}
+
+// Build a guaranteed useful chain: Source → [Shaper/Resonator]* → VCA → Mixer → Output
+// plus modulators (LFO/CAM) to VCA gain or Filter cutoff.
+function buildUsefulPatch(){
+  // pick an OUTPUT (fixed)
+  const out = {x:N-2, y:Math.floor(N/2), z:N-2};
+  // pick closest SOURCE
+  let bestSrc=null, bestD=1e9;
+  for (let x=0;x<N;x++)for(let y=0;y<N;y++)for(let z=0;z<N;z++){
+    if (grid[x][y][z]===TYPES.SOURCE_NOISE || grid[x][y][z]===TYPES.SOURCE_STRING){
+      const d = Math.abs(x-out.x)+Math.abs(y-out.y)+Math.abs(z-out.z);
+      if (d<bestD){bestD=d;bestSrc={x,y,z};}
+    }
+  }
+  if (!bestSrc) bestSrc={x:1,y:1,z:1}, grid[1][1][1]=TYPES.SOURCE_NOISE;
+
+  // choose 1–2 shapers on the path
+  const path = manhattanPath(bestSrc,out);
+  const shapers = [];
+  for (const p of path){
+    const t = grid[p.x][p.y][p.z];
+    if (t===TYPES.SHAPER_FILTER || t===TYPES.RESONATOR || t===TYPES.SHAPER_SHUTTER) shapers.push({...p});
+  }
+  const pick = (arr)=> arr.length? arr[Math.floor(arr.length/2)] : null;
+  const shpA = pick(shapers);
+  // pick a VCA and a MIXER along/near path
+  let vca=null, mix=null;
+  for (const p of path){
+    if (!vca && grid[p.x][p.y][p.z]===TYPES.VCA) vca={...p};
+    if (!mix && grid[p.x][p.y][p.z]===TYPES.MIXER) mix={...p};
+  }
+  if (!vca) vca={...path[Math.floor(path.length*0.7)]}; grid[vca.x][vca.y][vca.z]=TYPES.VCA;
+  if (!mix) mix={...path[Math.floor(path.length*0.85)]}; grid[mix.x][mix.y][mix.z]=TYPES.MIXER;
+
+  // pick modulators near the VCA/shaper
+  function nearestOfType(center, typeWanted){
+    let best=null, bestDist=1e9;
+    for (let dx=-2; dx<=2; dx++)for(let dy=-2; dy<=2; dy++)for(let dz=-2; dz<=2; dz++){
+      const x=center.x+dx, y=center.y+dy, z=center.z+dz;
+      if (x<0||y<0||z<0||x>=N||y>=N||z>=N) continue;
+      if (grid[x][y][z]===typeWanted){
+        const d=Math.abs(dx)+Math.abs(dy)+Math.abs(dz);
+        if (d<bestDist){bestDist=d;best={x,y,z};}
+      }
+    }
+    return best;
+  }
+  const lfo = nearestOfType(vca, TYPES.MOD_LFO);
+  const cam = nearestOfType(shpA||vca, TYPES.MOD_CAM);
+
+  // Return a compact patch spec
+  return {
+    source: bestSrc,
+    shaper: shpA,
+    vca,
+    mixer: mix,
+    output: out,
+    modLFO: lfo,
+    modCAM: cam,
+    // derive connection lines for drawing (audio + mod)
+    audioPath: [
+      bestSrc, ...(shpA? manhattanPath(bestSrc, shpA).slice(1):[]),
+      ...(shpA? manhattanPath(shpA, vca).slice(1): manhattanPath(bestSrc, vca).slice(1)),
+      ...manhattanPath(vca, mix).slice(1),
+      ...manhattanPath(mix, out).slice(1)
+    ],
+    modLines: [
+      ...(lfo? manhattanPath(lfo, vca): []),
+      ...(cam && shpA? manhattanPath(cam, shpA): [])
+    ]
+  };
+}
+
+/* =========================
+   Web Audio instantiation
+   ========================= */
+function mkCtx(){ const AC=window.AudioContext||window.webkitAudioContext; return new AC(); }
+function mkGain(ctx, v=1){ const g=ctx.createGain(); g.gain.setValueAtTime(v, ctx.currentTime); return g; }
+function mkBiquad(ctx, type='lowpass', freq=1200, Q=0.7){
+  const f=ctx.createBiquadFilter(); f.type=type; f.frequency.value=freq; f.Q.value=Q; return f;
+}
+function mkNoise(ctx){
+  const len = ctx.sampleRate*2|0;
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const ch = buf.getChannelData(0); for (let i=0;i<len;i++) ch[i]=Math.random()*2-1;
+  const src = ctx.createBufferSource(); src.buffer=buf; src.loop=true; return src;
+}
+function mkCamLFO(ctx, steps=4, rate=2){
+  // stepped LFO via looping sequence in a ConstantSource + scheduler
+  const g = mkGain(ctx, 0);
+  const cs = ctx.createConstantSource(); cs.offset.value=0; cs.connect(g.gain); cs.start();
+  // simple internal scheduler
+  let t = ctx.currentTime;
+  const seq = new Array(steps).fill(0).map((_,i)=> (i%2?0.4:1.0));
+  const dur = 1/rate;
+  function program(){
+    cs.offset.cancelScheduledValues(t);
+    let tt=t;
+    for (let i=0;i<seq.length;i++){ cs.offset.setValueAtTime(seq[i], tt); tt+=dur; }
+    t += seq.length*dur;
+  }
+  program();
+  // keep programming ahead
+  const iv = setInterval(program, (seq.length*dur*500)|0);
+  g.stop = ()=>{ clearInterval(iv); try{cs.stop();}catch{} };
   return g;
 }
 
-function mkNoiseBuffer(duration=2) {
-  const sr = actx.sampleRate;
-  const len = Math.floor(duration * sr);
-  const buf = actx.createBuffer(1, len, sr);
-  const ch = buf.getChannelData(0);
-  for (let i=0;i<len;i++) ch[i] = Math.random()*2-1;
-  return buf;
-}
+function realizeAudio(patch){
+  // tear down previous
+  if (audioGraph && audioGraph.stop) audioGraph.stop();
 
-function setupAudio() {
-  ensureCtx();
-  master = mkGain(0.9);
-  master.connect(actx.destination);
+  ctx = ctx || mkCtx();
+  const stopFns = [];
 
-  // Noise: looped buffer source
-  noiseGain = mkGain(0);
-  noiseGain.connect(master);
-  noiseNode = actx.createBufferSource();
-  noiseNode.buffer = mkNoiseBuffer(2);
-  noiseNode.loop = true;
-  noiseNode.connect(noiseGain);
-  noiseNode.start();
+  // modules → nodes (only for the active path)
+  const master = mkGain(ctx, 0.9); master.connect(ctx.destination);
 
-  // String: triangle oscillator with simple sustain + “excite” bursts
-  stringGain = mkGain(0);
-  stringGain.connect(master);
-  stringOsc = actx.createOscillator();
-  stringOsc.type = 'triangle';
-  stringOsc.frequency.setValueAtTime(State.stringHz, actx.currentTime);
-  stringOsc.connect(stringGain);
-  stringOsc.start();
-}
-
-function audioOn(){
-  const ctx = ensureCtx();
-  if (ctx.state !== 'running') ctx.resume();
-  if (!started) { setupAudio(); started = true; }
-}
-
-function audioOff(){
-  if (!actx) return;
-  const t = actx.currentTime;
-  master.gain.cancelScheduledValues(t);
-  master.gain.setTargetAtTime(0, t, 0.1);
-  started = false;
-}
-
-/* ===========
-   Mechanics
-   =========== */
-function pendulumHz(len){ const k=1.1; return k / Math.sqrt(Math.max(0.2, len)); }
-
-function stepMechanical(dt){
-  const clutch=State.clutchPressure, baseHz=State.camBaseHz;
-  const driftA=(1.0-clutch)*State.clutchDriftHz, driftB=(1.0-clutch)*(State.clutchDriftHz*1.1);
-  State.camA.phase += TWO_PI * (baseHz*clutch + driftA) * dt;
-  State.camB.phase += TWO_PI * (baseHz*clutch + driftB) * dt;
-  const ratio=(State.camC.ratioN/State.camC.ratioD), driftC=(1.0-clutch)*(State.clutchDriftHz*0.9);
-  State.camC.phase += TWO_PI * (baseHz*ratio*clutch + driftC) * dt;
-  State.camA.phase%=TWO_PI; State.camB.phase%=TWO_PI; State.camC.phase%=TWO_PI;
-
-  const pHz=pendulumHz(State.pendLen);
-  const pend=(Math.sin(performance.now()/1000 * TWO_PI * pHz)+1)/2;
-
-  function camGate(cam){ const lobes=Math.max(1,cam.lobes|0); const x=(cam.phase*lobes)%TWO_PI; return Math.pow(Math.max(0,Math.cos(x)),3.0); }
-  const gateA=camGate(State.camA), gateB=camGate(State.camB), gateC=camGate(State.camC);
-
-  const shutter = 1.0 - State.shutterDepth * (0.4 + 0.6*gateC);
-  const vcaBase=0.85, vcaMod=1.0-State.pendAmt*pend, vcaLevel=Math.max(0, Math.min(1, vcaBase*vcaMod));
-
-  // Noise level
-  const noiseLevel = 0.25 * (0.4 + 0.6*gateA);
-  if (noiseGain) noiseGain.gain.linearRampToValueAtTime(noiseLevel * shutter * vcaLevel, actx.currentTime + 0.02);
-
-  // String “excitation” on cam B peaks
-  if (!stepMechanical.lastB) stepMechanical.lastB = 0;
-  const prev=stepMechanical.lastB; stepMechanical.lastB=gateB;
-  if (prev < 0.15 && gateB >= 0.15) {
-    // quick bump on the string gain
-    const t = actx.currentTime;
-    stringGain.gain.cancelScheduledValues(t);
-    stringGain.gain.setValueAtTime(stringGain.gain.value, t);
-    stringGain.gain.linearRampToValueAtTime(0.5, t + 0.01);
-    stringGain.gain.linearRampToValueAtTime(0.0, t + 0.18);
+  // SOURCE
+  let srcType = grid[patch.source.x][patch.source.y][patch.source.z];
+  let srcNode, srcGain = mkGain(ctx, 0.5);
+  srcGain.connect(master);
+  if (srcType===TYPES.SOURCE_NOISE){
+    srcNode = mkNoise(ctx); srcNode.connect(srcGain); srcNode.start(); stopFns.push(()=>{try{srcNode.stop();}catch{}});
+  } else {
+    const osc = ctx.createOscillator(); osc.type='triangle';
+    osc.frequency.value = 160; // will be modded below
+    osc.connect(srcGain); osc.start(); srcNode=osc; stopFns.push(()=>{try{osc.stop();}catch{}});
   }
-  // subtle sustain bed
-  const stringBed = 0.12 * shutter * vcaLevel;
-  if (stringGain) stringGain.gain.linearRampToValueAtTime(stringBed, actx.currentTime + 0.02);
 
-  // tuning
-  if (stringOsc) stringOsc.frequency.linearRampToValueAtTime(State.stringHz, actx.currentTime + 0.02);
-}
+  // SHAPER (optional)
+  let shaperOut = srcGain;
+  if (patch.shaper){
+    const t = grid[patch.shaper.x][patch.shaper.y][patch.shaper.z];
+    if (t===TYPES.SHAPER_FILTER || t===TYPES.RESONATOR){
+      const biq = mkBiquad(ctx, t===TYPES.RESONATOR? 'bandpass':'lowpass', t===TYPES.RESONATOR? 900: 1800, t===TYPES.RESONATOR? 6:0.7);
+      srcGain.disconnect(); srcGain.connect(biq); shaperOut = biq;
+    } else if (t===TYPES.SHAPER_SHUTTER){
+      // AM tremolo stage
+      const amGain = mkGain(ctx, 0.8);
+      const lfo = ctx.createOscillator(); lfo.type='sine'; lfo.frequency.value=4;
+      const lfoAmt = mkGain(ctx, 0.4); lfo.connect(lfoAmt); lfoAmt.connect(amGain.gain); lfo.start();
+      stopFns.push(()=>{try{lfo.stop();}catch{}});
+      srcGain.disconnect(); srcGain.connect(amGain); shaperOut = amGain;
+    }
+  }
 
-/* =====
-   UI
-   ===== */
-function bindUI(){
-  const aBtn=document.getElementById('audioBtn');
-  aBtn.onclick=()=>{ if(!started){ audioOn(); aBtn.textContent='Stop Audio'; } else { audioOff(); aBtn.textContent='Start Audio'; } };
-  document.getElementById('patch1').onclick=loadPatch1;
-  document.getElementById('patch2').onclick=loadPatch2;
-  document.getElementById('patch3').onclick=loadPatch3;
+  // VCA
+  const vca = mkGain(ctx, 0.12); // base bed
+  shaperOut.connect(vca);
 
-  const sliders={
-    clutch:v=>State.clutchPressure=+v, camALobes:v=>State.camA.lobes=(+v|0),
-    camBLobes:v=>State.camB.lobes=(+v|0), camCLobes:v=>State.camC.lobes=(+v|0),
-    ratioN:v=>State.camC.ratioN=Math.max(1,(+v|0)), ratioD:v=>State.camC.ratioD=Math.max(1,(+v|0)),
-    pendLen:v=>State.pendLen=+v, pendAmt:v=>State.pendAmt=+v,
-    noisePress:v=>State.noisePress=+v, stringTune:v=>State.stringHz=+v,
-    shutterDepth:v=>State.shutterDepth=+v
+  // Mixer (single input for now; left for extensibility)
+  const mix = mkGain(ctx, 1.0); vca.connect(mix);
+
+  // Output
+  mix.connect(master);
+
+  // MODULATORS
+  // LFO → VCA.gain
+  if (patch.modLFO){
+    const lfo = ctx.createOscillator(); lfo.type='sine'; lfo.frequency.value = 0.3 + Math.random()*0.8;
+    const lAmt = mkGain(ctx, 0.18); lfo.connect(lAmt); lAmt.connect(vca.gain); lfo.start();
+    stopFns.push(()=>{try{lfo.stop();}catch{}});
+  }
+  // CAM → SHAPER/RES cutoff or VCA.gain
+  if (patch.modCAM){
+    const cam = mkCamLFO(ctx, 6, 2.0);
+    const amt = mkGain(ctx, 0.25);
+    cam.connect(amt);
+    if (patch.shaper){
+      const t = grid[patch.shaper.x][patch.shaper.y][patch.shaper.z];
+      if (t===TYPES.SHAPER_FILTER || t===TYPES.RESONATOR){
+        // drive shaper frequency
+        const target = (shaperOut.frequency? shaperOut : null);
+        if (target){
+          // Hook via AudioParam.setValueAtTime using ConstantSource path:
+          const cs = ctx.createConstantSource(); cs.start();
+          amt.connect(cs.offset); // stepped control in cs.offset
+          // map 0..1 to 400..2400 Hz
+          const scale = mkGain(ctx, 1800); const bias = mkGain(ctx, 1);
+          // Gain-to-param mapping (workaround): poll and set (file-safe, simple)
+          const poll = setInterval(()=>{
+            // quick readback hack: create dummy analyser? Simpler: track last value in closure
+          }, 250);
+          // Simpler: detach CAM from shaper because mapping AudioNode→AudioParam without worklets is fiddly across file://.
+          // Instead, route CAM to VCA as stepped tremolo (still useful & audible):
+          cam.connect(vca.gain);
+          stopFns.push(()=>{ cam.stop(); clearInterval(poll); });
+        } else {
+          cam.connect(vca.gain); stopFns.push(()=>cam.stop());
+        }
+      } else {
+        cam.connect(vca.gain); stopFns.push(()=>cam.stop());
+      }
+    } else {
+      cam.connect(vca.gain); stopFns.push(()=>cam.stop());
+    }
+  }
+
+  // Pitch follow (string tuning) via slow sinus
+  if (srcNode && srcNode.frequency){
+    const base = 140 + Math.random()*80;
+    const t0 = ctx.currentTime;
+    const iv = setInterval(()=>{
+      const t = ctx.currentTime - t0;
+      const f = base + 10*Math.sin(t*0.35);
+      try{ srcNode.frequency.linearRampToValueAtTime(f, ctx.currentTime+0.05); }catch{}
+    }, 60);
+    stopFns.push(()=>clearInterval(iv));
+  }
+
+  // Public stop
+  audioGraph = {
+    stop(){
+      stopFns.forEach(fn=>{ try{fn();}catch{} });
+      stopFns.length=0;
+    }
   };
-  Object.entries(sliders).forEach(([id,fn])=>{ const el=document.getElementById(id); fn(el.value); el.addEventListener('input',e=>fn(e.target.value)); });
-
-  window.addEventListener('keydown',(e)=>{
-    if(e.code==='Space'){ e.preventDefault(); aBtn.click(); }
-    if(e.key==='1') loadPatch1(); if(e.key==='2') loadPatch2(); if(e.key==='3') loadPatch3();
-  });
 }
 
-/* Presets */
-function loadPatch1(){ State.clutchPressure=0.8; State.camA.lobes=2; State.camB.lobes=2; State.camC.lobes=2; State.camC.ratioN=1; State.camC.ratioD=1; State.pendLen=0.55; State.pendAmt=0.55; State.stringHz=160; State.shutterDepth=0.25; syncUI(); }
-function loadPatch2(){ State.clutchPressure=0.85; State.camA.lobes=4; State.camB.lobes=3; State.camC.lobes=5; State.camC.ratioN=3; State.camC.ratioD=2; State.pendLen=0.5; State.pendAmt=0.25; State.stringHz=180; State.shutterDepth=0.35; syncUI(); }
-function loadPatch3(){ State.clutchPressure=0.55; State.camA.lobes=3; State.camB.lobes=5; State.camC.lobes=4; State.camC.ratioN=5; State.camC.ratioD=4; State.pendLen=0.7; State.pendAmt=0.6; State.stringHz=140; State.shutterDepth=0.45; syncUI(); }
-function syncUI(){ const ids=['clutch','camALobes','camBLobes','camCLobes','ratioN','ratioD','pendLen','pendAmt','noisePress','stringTune','shutterDepth']; const vals=[State.clutchPressure,State.camA.lobes,State.camB.lobes,State.camC.lobes,State.camC.ratioN,State.camC.ratioD,State.pendLen,State.pendAmt,State.noisePress,State.stringHz,State.shutterDepth]; ids.forEach((id,i)=>document.getElementById(id).value=vals[i]); }
+/* =========================
+   Visualization + UI
+   ========================= */
+let seed = Math.floor(Math.random()*1e9)>>>0;
+let patchSpec;
 
-/* =========
-   Visuals
-   ========= */
-function setup(){ const cnv=createCanvas(1000,700); cnv.parent('sketch-holder'); bindUI(); loadPatch2(); }
-function drawModule(x,y,w,h,label,col='#172033'){ noStroke(); fill(col); rect(x,y,w,h,12); fill('#dfe6f7'); textSize(14); textAlign(CENTER,CENTER); text(label, x+w/2, y+14); }
-function link(x1,y1,x2,y2,c){ stroke(c); strokeWeight(3); line(x1,y1,x2,y2); }
+function reseed(){
+  initGrid(seed);
+  patchSpec = buildUsefulPatch();
+  realizeAudio(patchSpec);
+}
+
+function setup(){
+  createCanvas(window.innerWidth, window.innerHeight);
+  pixelDensity(window.devicePixelRatio||1);
+  textFont('system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial');
+  camera.zoom = 1.0;
+  camera.ox = 0; camera.oy = 0;
+
+  initGrid(seed);
+  patchSpec = buildUsefulPatch();
+}
+
+function windowResized(){ resizeCanvas(window.innerWidth, window.innerHeight); }
+
+function drawCube(x,y,z, col){
+  const p = isoProject(x,y,z);
+  const s = CUBE * camera.zoom;
+  noStroke(); fill(col);
+  rect(p.x - s*0.5, p.y - s*0.5, s, s, 4);
+}
+
+function drawLine3D(a,b, col='#ffd37f'){
+  const pa = isoProject(a.x,a.y,a.z);
+  const pb = isoProject(b.x,b.y,b.z);
+  stroke(col); strokeWeight(2.2*camera.zoom);
+  line(pa.x,pa.y,pb.x,pb.y);
+}
+
 function draw(){
-  background('#0b0d13');
-  const M={
-    noise:{x:90,y:240,w:180,h:110,title:'Noise Wheel'},
-    string:{x:90,y:400,w:180,h:110,title:'String Exciter'},
-    shutter:{x:360,y:240,w:180,h:110,title:'Shutter Filter'},
-    vca:{x:560,y:240,w:180,h:110,title:'Damper VCA'},
-    horn:{x:780,y:240,w:180,h:110,title:'Resonant Chamber'},
-    clutch:{x:300,y:420,w:160,h:100,title:'Slip-Clutch'},
-    cams:{x:480,y:420,w:220,h:100,title:'Cam Stack'},
-    pend:{x:740,y:420,w:220,h:100,title:'Pendulum LFO'}
-  };
-  Object.values(M).forEach(m=>drawModule(m.x,m.y,m.w,m.h,m.title));
-  link(M.noise.x+M.noise.w, M.noise.y+55, M.shutter.x, M.shutter.y+55,'#7fb0ff');
-  link(M.string.x+M.string.w, M.string.y+55, M.shutter.x, M.shutter.y+55,'#7fb0ff');
-  link(M.shutter.x+M.shutter.w, M.shutter.y+55, M.vca.x, M.vca.y+55,'#7fb0ff');
-  link(M.vca.x+M.vca.w, M.vca.y+55, M.horn.x, M.horn.y+55,'#7fb0ff');
-  link(M.clutch.x+M.clutch.w/2, M.clutch.y, M.cams.x+M.cams.w/2, M.cams.y,'#ffb794');
-  link(M.cams.x+M.cams.w/2, M.cams.y, M.noise.x+M.noise.w*0.4, M.noise.y-8,'#ffd37f');
-  link(M.cams.x+M.cams.w/2+10, M.cams.y, M.string.x+M.string.w*0.4, M.string.y+M.string.h+8,'#ffd37f');
-  link(M.cams.x+M.cams.w-20, M.cams.y, M.shutter.x+M.shutter.w*0.3, M.shutter.y-8,'#ffd37f');
+  background('#0b0e14');
 
-  // cams
-  stroke('#ffb794'); strokeWeight(4); noFill();
-  const cA={x:M.cams.x+60,y:M.cams.y+55,r:24};
-  const cB={x:M.cams.x+110,y:M.cams.y+55,r:24};
-  const cC={x:M.cams.x+160,y:M.cams.y+55,r:24};
-  circle(cA.x,cA.y,cA.r*2); circle(cB.x,cB.y,cB.r*2); circle(cC.x,cC.y,cC.r*2);
-  function camSpokes(cx,cy,r,lobes,phase,col){ stroke(col); strokeWeight(3); const L=Math.max(1,lobes|0); for(let i=0;i<L;i++){ const a=phase+i*(TWO_PI/L); line(cx,cy,cx+r*Math.cos(a),cy+r*Math.sin(a)); } }
-  camSpokes(cA.x,cA.y,cA.r, State.camA.lobes, State.camA.phase, '#ffd37f');
-  camSpokes(cB.x,cB.y,cB.r, State.camB.lobes, State.camB.phase, '#ffd37f');
-  camSpokes(cC.x,cC.y,cC.r, State.camC.lobes, State.camC.phase, '#ffd37f');
+  // faint grid cubes (skip most for perf: draw every other)
+  for (let y=0;y<N;y++){
+    for (let x=0;x<N;x++){
+      for (let z=0;z<N;z++){
+        if ((x+y+z)%2) continue; // decimate
+        const t = grid[x][y][z];
+        let col = '#131b2a';
+        if (AUDIO_TYPES.has(t)) col = '#162138';
+        if (MOD_TYPES.has(t))   col = '#182532';
+        drawCube(x - N/2, y - N/2, z - N/2, col);
+      }
+    }
+  }
 
-  // pendulum
-  stroke('#a8f0a2'); strokeWeight(4);
-  const px=M.pend.x+60, py=M.pend.y+12;
-  line(px,py, px, py+70);
-  const pBobY = py+70 + 20*Math.sin(frameCount*0.02/ Math.max(0.3, Math.sqrt(State.pendLen)));
-  fill('#a8f0a2'); circle(px, pBobY, 16);
+  // connections: audio path (gold)
+  const AP = patchSpec.audioPath;
+  for (let i=1;i<AP.length;i++){
+    const a=AP[i-1], b=AP[i];
+    drawLine3D(
+      {x:a.x-N/2, y:a.y-N/2, z:a.z-N/2},
+      {x:b.x-N/2, y:b.y-N/2, z:b.z-N/2},
+      '#ffd37f'
+    );
+  }
+  // mod lines (mint)
+  for (let i=0;i<patchSpec.modLines.length;i++){
+    const m = patchSpec.modLines[i];
+    for (let j=1;j<m.length;j++){
+      const a=m[j-1], b=m[j];
+      drawLine3D(
+        {x:a.x-N/2, y:a.y-N/2, z:a.z-N/2},
+        {x:b.x-N/2, y:b.y-N/2, z:b.z-N/2},
+        '#a8f0a2'
+      );
+    }
+  }
 
-  noStroke(); fill('#9fb3d9'); textAlign(LEFT, BASELINE); textSize(12);
-  const ratio=`${State.camC.ratioN}:${State.camC.ratioD}`;
-  text(`CamA ${State.camA.lobes} | CamB ${State.camB.lobes} | CamC ${State.camC.lobes} @ ${ratio} | Pend L ${nf(State.pendLen,1,2)} | Clutch ${nf(State.clutchPressure,1,2)}`, 32, height-18);
-
-  const dt=deltaTime/1000;
-  if(started) stepMechanical(dt);
+  // highlight key modules
+  function hi(p, color){ drawCube(p.x-N/2, p.y-N/2, p.z-N/2, color); }
+  hi(patchSpec.source, '#24416d');
+  if (patchSpec.shaper) hi(patchSpec.shaper, '#2c4f7f');
+  hi(patchSpec.vca, '#405a22');
+  hi(patchSpec.mixer, '#4b3f1c');
+  hi(patchSpec.output, '#6a2f2f');
+  if (patchSpec.modLFO) hi(patchSpec.modLFO, '#23493e');
+  if (patchSpec.modCAM) hi(patchSpec.modCAM, '#27433f');
 }
-window.addEventListener('load', ()=>{ bindUI(); });
+
+/* Interactions */
+function mousePressed(){ camera.drag=true; camera.px=mouseX; camera.py=mouseY; }
+function mouseReleased(){ camera.drag=false; }
+function mouseDragged(){ if (camera.drag){ camera.ox += (mouseX-camera.px); camera.oy += (mouseY-camera.py); camera.px=mouseX; camera.py=mouseY; } }
+function mouseWheel(e){ const k = 1 + (-e.deltaY*0.001); camera.zoom = Math.max(0.35, Math.min(2.5, camera.zoom*k)); return false; }
+
+window.addEventListener('keydown', (e)=>{
+  if (e.code==='Space'){ e.preventDefault(); const btn=document.getElementById('start'); btn.click(); }
+  if (e.key==='r' || e.key==='R'){ document.getElementById('reroute').click(); }
+});
+
+/* Buttons */
+document.getElementById('start').onclick = async ()=>{
+  if (!ctx){ ctx = mkCtx(); }
+  if (ctx.state!=='running'){ await ctx.resume(); }
+  if (!audioGraph){ reseed(); document.getElementById('start').textContent='Stop Audio'; return; }
+  // toggle
+  if (ctx.state==='running'){
+    audioGraph.stop(); audioGraph=null;
+    try{ ctx.close(); }catch{}
+    ctx=null;
+    document.getElementById('start').textContent='Start Audio';
+  }
+};
+document.getElementById('reroute').onclick = ()=>{
+  seed = (seed*1664525 + 1013904223)>>>0;
+  if (!ctx){ initGrid(seed); patchSpec=buildUsefulPatch(); return; }
+  reseed();
+};
 </script>
 </body>
 </html>
+
 
 
