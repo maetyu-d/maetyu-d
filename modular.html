@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Isometric Mechanical Modular — Big Patch + FX + Music</title>
+<title>Isometric Mechanical Modular — Prob + Wow/Flutter + Topology Pitches</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js"></script>
 <style>
   :root{--bg:#0c0f14; --panel:#141824; --ink:#e6eefc; --muted:#98a7c6; --accent:#80b2ff;}
   html,body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,Segoe UI,Helvetica,Arial}
-  .ui{position:fixed;inset:auto 12px 12px auto;background:var(--panel);border:1px solid #21283a;border-radius:12px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.35);max-width:680px}
-  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
+  .ui{position:fixed;inset:auto 12px 12px auto;background:var(--panel);border:1px solid #21283a;border-radius:12px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.35);max-width:760px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
   .btn{background:#1b2131;border:1px solid #2a3550;color:var(--ink);border-radius:10px;padding:10px 12px;cursor:pointer}
   .btn:focus{outline:2px solid var(--accent);outline-offset:2px}
   .label{font-size:12px;color:var(--muted);min-width:110px}
@@ -42,21 +42,24 @@
     <div class="slider"><span class="label">Delay mix</span><input id="delayMix" type="range" min="0" max="1" step="0.01" value="0.25"><span id="delayMixV" class="tiny">0.25</span></div>
     <div class="slider"><span class="label">Drive</span><input id="drive" type="range" min="0" max="1" step="0.01" value="0.15"><span id="driveV" class="tiny">0.15</span></div>
     <div class="slider"><span class="label">ER mix</span><input id="erMix" type="range" min="0" max="1" step="0.01" value="0.18"><span id="erMixV" class="tiny">0.18</span></div>
-    <span class="tiny">Scale: <select id="scaleSel">
-      <option value="0,2,3,5,7,10">Minor pent</option>
-      <option value="0,2,4,5,7,9,11">Major</option>
-      <option value="0,3,5,6,7,10">Blues</option>
-      <option value="0,1,3,5,7,8,10">Phrygian-ish</option>
-      <option value="0,2,4,7,9">Major pent</option>
-    </select></span>
+    <div class="slider"><span class="label">Hit Prob</span><input id="hitProb" type="range" min="0" max="1" step="0.01" value="0.75"><span id="hitProbV" class="tiny">0.75</span></div>
+  </div>
+
+  <div class="row">
+    <div class="slider"><span class="label">Wow (¢)</span><input id="wowCents" type="range" min="0" max="40" step="1" value="10"><span id="wowCentsV" class="tiny">10</span></div>
+    <div class="slider"><span class="label">Flutter (¢)</span><input id="flutCents" type="range" min="0" max="20" step="1" value="4"><span id="flutCentsV" class="tiny">4</span></div>
+    <div class="slider"><span class="label">Flutter rate</span><input id="flutRate" type="range" min="2" max="12" step="0.1" value="6"><span id="flutRateV" class="tiny">6.0</span></div>
   </div>
 
   <div class="sep"></div>
-  <div class="tiny">Gold = audio, Mint = modulation. Chains are colorized; stereo pans alternate; pitch comes from the cam sequencer (quantized).</div>
+  <div class="tiny">
+    Gold = audio, Mint = modulation. Chains are colorized; <b>Hit Prob</b> gates cam events; <b>Wow/Flutter</b> add mechanical pitch drift.  
+    Pitches are derived from each chain’s path length & turn complexity (topology → music).
+  </div>
 </div>
 
 <script>
-/* ===== Module types & visuals ===== */
+/* ===== Types & visuals ===== */
 const TYPES={SOURCE_NOISE:'SOURCE_NOISE',SOURCE_STRING:'SOURCE_STRING',SHAPER_FILTER:'SHAPER_FILTER',SHAPER_SHUTTER:'SHAPER_SHUTTER',RESONATOR:'RESONATOR',VCA:'VCA',MIXER:'MIXER',OUTPUT:'OUTPUT',MOD_LFO:'MOD_LFO',MOD_CAM:'MOD_CAM'};
 const AUDIO_TYPES=new Set([TYPES.SOURCE_NOISE,TYPES.SOURCE_STRING,TYPES.SHAPER_FILTER,TYPES.SHAPER_SHUTTER,TYPES.RESONATOR,TYPES.VCA,TYPES.MIXER,TYPES.OUTPUT]);
 const MOD_TYPES=new Set([TYPES.MOD_LFO,TYPES.MOD_CAM]);
@@ -66,14 +69,18 @@ const N=10, SPACING=28, CUBE=14;
 let camera={ox:0,oy:0,zoom:1.15,drag:false,px:0,py:0};
 function isoProject(x,y,z){const ix=(x-z)*SPACING*0.866,iy=(x+z)*SPACING*0.5-y*SPACING*0.9;return {x:ix*camera.zoom+width/2+camera.ox,y:iy*camera.zoom+height/2+camera.oy};}
 
-/* ===== World / grid ===== */
+/* ===== World state ===== */
 let grid=[], seed=(Math.random()*1e9>>>0), longPath=[];
 let ctx, audioGraph=null, activePatch=null, K=3;
 
 const UI={ghost:true,chainsOnly:false,colorChains:true};
-const Params={masterVol:0.9,pitchedVol:0.35,noiseVol:0.45,lfoDepth:0.18,camDepth:0.22,delayMix:0.25,drive:0.15,erMix:0.18,scale:[0,2,3,5,7,10]};
-function setScaleFromString(s){ Params.scale = s.split(',').map(x=>+x); }
+const Params={
+  masterVol:0.9,pitchedVol:0.35,noiseVol:0.45,lfoDepth:0.18,camDepth:0.22,
+  delayMix:0.25,drive:0.15,erMix:0.18,hitProb:0.75,
+  wowCents:10,flutCents:4,flutRate:6
+};
 
+/* ===== Grid & snake ===== */
 function initGrid(seed=1){
   grid = Array.from({length:N},(_,x)=>Array.from({length:N},(_,y)=>Array.from({length:N},(_,z)=>{
     const h=(x*73856093 ^ y*19349663 ^ z*83492791 ^ seed)>>>0, r=h%100;
@@ -89,8 +96,6 @@ function initGrid(seed=1){
     return TYPES.MOD_CAM;
   })));
 }
-
-/* Snake path through all cells */
 function buildSnakePath(){
   const path=[];
   for(let y=0;y<N;y++){
@@ -113,12 +118,33 @@ function pathBetween(a,b){
   return path;
 }
 
-/* Build K long chains with roles + modulators */
+/* count turns in a segment (complexity) */
+function countTurns(seg){
+  let turns=0;
+  for(let i=2;i<seg.length;i++){
+    const a=seg[i-2], b=seg[i-1], c=seg[i];
+    const dx1=b.x-a.x, dy1=b.y-a.y, dz1=b.z-a.z;
+    const dx2=c.x-b.x, dy2=c.y-b.y, dz2=c.z-b.z;
+    if (dx1!==dx2 || dy1!==dy2 || dz1!==dz2) turns++;
+  }
+  return turns;
+}
+
+/* ===== Patch builder with topology → music mapping ===== */
+const SCALES = [
+  {name:'Minor pent', ints:[0,3,5,7,10]},
+  {name:'Major',      ints:[0,2,4,5,7,9,11]},
+  {name:'Blues',      ints:[0,3,5,6,7,10]},
+  {name:'Phryg-ish',  ints:[0,1,3,5,7,8,10]},
+  {name:'Major pent', ints:[0,2,4,7,9]},
+  {name:'Dorian',     ints:[0,2,3,5,7,9,10]}
+];
+
 function buildBigPatch(Kchains=3){
   const L=longPath.length, segLen=Math.floor(L/(Kchains+0.5)), patches=[];
   for(let k=0;k<Kchains;k++){
     const start=Math.floor((k+0.25)*segLen*0.8), end=Math.min(L-1,start+segLen-1), seg=longPath.slice(start,end+1);
-    const idxS=0, idxF=Math.floor(seg.length*0.2), idxR=Math.floor(seg.length*0.35), idxT=Math.floor(seg.length*0.5), idxV=Math.floor(seg.length*0.7), idxM=Math.floor(seg.length*0.85), idxO=seg.length-1;
+    const idxS=0, idxF=Math.floor(seg.length*0.20), idxR=Math.floor(seg.length*0.35), idxT=Math.floor(seg.length*0.50), idxV=Math.floor(seg.length*0.70), idxM=Math.floor(seg.length*0.85), idxO=seg.length-1;
     const S=seg[idxS], F=seg[idxF], R=seg[idxR], T=seg[idxT], V=seg[idxV], M=seg[idxM], O=seg[idxO];
     grid[S.x][S.y][S.z] = (k%2? TYPES.SOURCE_STRING : TYPES.SOURCE_NOISE);
     grid[F.x][F.y][F.z] = TYPES.SHAPER_FILTER;
@@ -132,7 +158,21 @@ function buildBigPatch(Kchains=3){
     const LFO=nearMod(V,TYPES.MOD_LFO)||seg[Math.max(1,Math.floor(seg.length*0.6))]; grid[LFO.x][LFO.y][LFO.z]=TYPES.MOD_LFO;
     const CAM=nearMod(F,TYPES.MOD_CAM)||seg[Math.max(1,Math.floor(seg.length*0.4))]; grid[CAM.x][CAM.y][CAM.z]=TYPES.MOD_CAM;
 
-    patches.push({color:CHAIN_COLORS[k%CHAIN_COLORS.length],source:S,shapers:[F,R,T],vca:V,mixer:M,output:O,modLFO:LFO,modCAM:CAM,audioPath:seg.slice(),modLines:[pathBetween(LFO,V),pathBetween(CAM,F)]});
+    // topology → music mapping
+    const length = seg.length;               // ~ big
+    const turns  = countTurns(seg);          // complexity
+    const scale  = SCALES[(turns % SCALES.length)]; // pick scale by complexity
+    // map length to base register: 36..76 (C2..E5)
+    const rootMidi = Math.floor(36 + (length/(N*N*1.2)) * 40); // longer → higher
+    // range (octaves) derived from complexity
+    const octaveSpan = 1 + Math.min(3, Math.floor(turns/30));  // more turns → wider range
+
+    patches.push({
+      color:CHAIN_COLORS[k%CHAIN_COLORS.length],
+      source:S, shapers:[F,R,T], vca:V, mixer:M, output:O, modLFO:LFO, modCAM:CAM,
+      audioPath:seg.slice(), modLines:[pathBetween(LFO,V), pathBetween(CAM,F)],
+      topo:{length,turns,scale,rootMidi,octaveSpan}
+    });
   }
   return patches;
 }
@@ -143,65 +183,24 @@ function mkGain(c,v=1){const g=c.createGain();g.gain.value=v;return g;}
 function mkBiquad(c,type='lowpass',f=1200,Q=0.7){const b=c.createBiquadFilter();b.type=type;b.frequency.value=f;b.Q.value=Q;return b;}
 function mkNoise(c){const len=c.sampleRate*2|0,buf=c.createBuffer(1,len,c.sampleRate),ch=buf.getChannelData(0);for(let i=0;i<len;i++)ch[i]=Math.random()*2-1;const s=c.createBufferSource();s.buffer=buf;s.loop=true;return s;}
 function mkPanner(c,pan=0){const p=c.createStereoPanner();p.pan.value=pan;return p;}
-function mkDelayBus(c){
-  // ping-pong-ish: L/R delays with slight offset, with feedback & tone
-  const inG=mkGain(c,1), outG=mkGain(c,1);
-  const dlL=c.createDelay(2.0), dlR=c.createDelay(2.0);
-  dlL.delayTime.value=0.27; dlR.delayTime.value=0.34;
-  const fbL=mkGain(c,0.35), fbR=mkGain(c,0.32);
-  const toneL=mkBiquad(c,'lowpass',3500,0.7), toneR=mkBiquad(c,'lowpass',3200,0.7);
-  inG.connect(dlL); inG.connect(dlR);
-  dlL.connect(toneL); toneL.connect(fbL); fbL.connect(dlR); // cross
-  dlR.connect(toneR); toneR.connect(fbR); fbR.connect(dlL);
-  // wet out
-  const wet=mkGain(c,1); toneL.connect(wet); toneR.connect(wet);
-  wet.connect(outG);
-  return {in:inG, out:outG, setMix:(mix, master)=>{ // mix into master outside
-    outG.gain.value = mix;
-  }};
-}
-function mkEarlyReflections(c){
-  // three short taps for space
-  const input=mkGain(c,1), out=mkGain(c,1);
-  const taps=[0.011,0.019,0.031], gains=[0.25,0.18,0.12];
-  taps.forEach((t,i)=>{const d=c.createDelay(0.1); d.delayTime.value=t; const g=mkGain(c,gains[i]); input.connect(d); d.connect(g); g.connect(out);});
-  return {in:input,out:out,setMix:(mix)=>{out.gain.value=mix;}};
-}
-function mkWaveshaper(c,amount=0.2){
-  const sh=c.createWaveShaper();
-  const k=amount*100+1;
-  const n=1024;
-  const curve=new Float32Array(n);
-  for(let i=0;i<n;i++){const x=i*2/n-1; curve[i]=(1+k)*x/(1+k*Math.abs(x));}
-  sh.curve=curve; sh.oversample='2x';
-  return sh;
-}
-function mkCamSequencer(c,steps=6,rate=2){
-  // stepped control 0..1 via ConstantSource
-  const cs=c.createConstantSource(); cs.offset.value=0; cs.start();
-  let t=c.currentTime, dur=1/rate;
-  const seq=new Array(steps).fill(0).map((_,i)=> (i%2?0.35:1.0));
-  function program(){ cs.offset.cancelScheduledValues(t); let tt=t; for(const v of seq){ cs.offset.setValueAtTime(v, tt); tt+=dur; } t+=seq.length*dur; }
-  program(); const iv=setInterval(program, Math.max(50,(seq.length*dur*500)|0));
-  cs._stop=()=>{ clearInterval(iv); try{cs.stop();}catch{} };
-  return cs;
-}
-function scaleFreq(baseHz, semitone){ return baseHz * Math.pow(2, semitone/12); }
-function quantizeSemitone(semi, scale){
-  // wrap to scale
-  const o = Math.floor(semi/12), n = ((semi%12)+12)%12;
-  // pick nearest lower in scale, simple
-  let best = scale[0];
-  for (let i=0;i<scale.length;i++){ if (scale[i] <= n) best = scale[i]; }
-  return o*12 + best;
+function mkDelayBus(c){const inG=mkGain(c,1),outG=mkGain(c,1);const dlL=c.createDelay(2.0),dlR=c.createDelay(2.0);dlL.delayTime.value=0.27;dlR.delayTime.value=0.34;const fbL=mkGain(c,0.35),fbR=mkGain(c,0.32);const toneL=mkBiquad(c,'lowpass',3500,0.7),toneR=mkBiquad(c,'lowpass',3200,0.7);inG.connect(dlL);inG.connect(dlR);dlL.connect(toneL);toneL.connect(fbL);fbL.connect(dlR);dlR.connect(toneR);toneR.connect(fbR);fbR.connect(dlL);const wet=mkGain(c,1);toneL.connect(wet);toneR.connect(wet);wet.connect(outG);return {in:inG,out:outG,setMix:(mix)=>{outG.gain.value=mix;}};}
+function mkEarlyReflections(c){const input=mkGain(c,1),out=mkGain(c,1);[0.011,0.019,0.031].forEach((t,i)=>{const d=c.createDelay(0.1);d.delayTime.value=t;const g=mkGain(c,[0.25,0.18,0.12][i]);input.connect(d);d.connect(g);g.connect(out);});return {in:input,out:out,setMix:(mix)=>{out.gain.value=mix;}};}
+function mkWaveshaper(c,amount=0.2){const sh=c.createWaveShaper();const k=amount*100+1,n=1024,curve=new Float32Array(n);for(let i=0;i<n;i++){const x=i*2/n-1;curve[i]=(1+k)*x/(1+k*Math.abs(x));}sh.curve=curve;sh.oversample='2x';return sh;}
+function scaleFreq(baseHz, semi){ return baseHz * Math.pow(2, semi/12); }
+function midiToFreq(m){ return 440 * Math.pow(2, (m-69)/12); }
+
+/* random-walk lowpass for wow (returns function(time)->cents) */
+function makeWowGenerator(seed=1, step=0.4, smooth=0.93){
+  let s = (seed%100)/100 - 0.5; // state
+  return ()=>{ s = smooth*s + (1-smooth)*((Math.random()-0.5)*2*step); return s*100; /* approx spread */ };
 }
 
-/* ===== Build audio per chain ===== */
+/* ===== Build audio with probability + wow/flutter ===== */
 function realizeAudio(patches){
   if (audioGraph && audioGraph.stop) audioGraph.stop();
   ctx = ctx || mkCtx();
 
-  // Master & FX buses
+  // Master & FX
   const master=mkGain(ctx, Params.masterVol);
   const dryBus=mkGain(ctx, 1.0);
   const preFx=mkGain(ctx, 1.0);
@@ -210,125 +209,117 @@ function realizeAudio(patches){
   const er=mkEarlyReflections(ctx);
 
   dryBus.connect(master);
-  preFx.connect(shaper); shaper.connect(master); // drive into master
+  preFx.connect(shaper); shaper.connect(master);
   preFx.connect(delay.in); delay.out.connect(master);
   preFx.connect(er.in);   er.out.connect(master);
-
   master.connect(ctx.destination);
 
   const chains=[], stops=[];
   patches.forEach((P,i)=>{
     const sType = grid[P.source.x][P.source.y][P.source.z];
     const pan = mkPanner(ctx, (i%2===0)? -0.35 : 0.35);
-    // instrument per chain
     const isNoise = (sType===TYPES.SOURCE_NOISE);
+
+    // Source
     let srcNode, srcGain=mkGain(ctx, isNoise? Params.noiseVol : Params.pitchedVol);
+    if (isNoise){ const nz=mkNoise(ctx); nz.connect(srcGain); nz.start(); srcNode=nz; stops.push(()=>{try{nz.stop();}catch{}}); }
+    else { const osc=ctx.createOscillator(); osc.type=(i%3===0?'triangle':(i%3===1?'sine':'sawtooth')); osc.frequency.value=180; osc.connect(srcGain); osc.start(); srcNode=osc; stops.push(()=>{try{osc.stop();}catch{}}); }
 
-    if (isNoise){
-      // noise percussion with envelope on hits
-      const nz=mkNoise(ctx); nz.connect(srcGain); nz.start(); srcNode=nz; stops.push(()=>{try{nz.stop();}catch{}});
-
-    } else {
-      // stringy/mallet hybrid
-      const osc=ctx.createOscillator(); osc.type = (i%3===0?'triangle': (i%3===1?'sine':'sawtooth'));
-      osc.frequency.value = 160 + 15*i;
-      osc.connect(srcGain);
-      osc.start(); srcNode=osc; stops.push(()=>{try{osc.stop();}catch{}});
-    }
-
-    // shaper chain: filter -> resonator -> shutter AM (some branches)
+    // Shapers: LP -> BP -> shutter(AM)
     let chain=srcGain;
-    const lp=mkBiquad(ctx,'lowpass', 1600 - i*180, 0.8);
-    chain.connect(lp); chain=lp;
+    const lp=mkBiquad(ctx,'lowpass', 1600 - i*180, 0.8); chain.connect(lp); chain=lp;
+    const bp=mkBiquad(ctx,'bandpass', 900 + i*140, 5.5); chain.connect(bp); chain=bp;
 
-    const bp=mkBiquad(ctx,'bandpass', 900 + i*140, 5.5);
-    chain.connect(bp); chain=bp;
-
-    // Shutter tremolo with LFO
     const shutter=mkGain(ctx, 0.85);
     const lfo=ctx.createOscillator(); lfo.type='sine'; lfo.frequency.value = 2.5 + i*0.4;
-    const lfoAmt=mkGain(ctx, Params.lfoDepth);
-    lfo.connect(lfoAmt); lfoAmt.connect(shutter.gain); lfo.start();
-    stops.push(()=>{try{lfo.stop();}catch{}});
-
+    const lfoAmt=mkGain(ctx, Params.lfoDepth); lfo.connect(lfoAmt); lfoAmt.connect(shutter.gain); lfo.start(); stops.push(()=>{try{lfo.stop();}catch{}});
     chain.connect(shutter); chain=shutter;
 
-    // VCA (main amp)
+    // VCA → pan → buses
     const vca=mkGain(ctx, 0.10 + 0.05*i);
-    chain.connect(vca);
+    chain.connect(vca); vca.connect(pan);
+    pan.connect(dryBus); pan.connect(preFx);
 
-    // Mixer: send to dry and fx
-    vca.connect(pan);
-    pan.connect(dryBus);
-    pan.connect(preFx);
-
-    // LFO also moves the filter (subtle)
-    lfoAmt.connect(lp.frequency);
-    // slight detune motion if pitched
+    // Wow/flutter for pitched
+    let wowGen=null, flutOsc=null, flutAmt=null;
     if (srcNode.frequency){
-      const base=160 + 18*i;
-      const wander=()=>{ const t=ctx.currentTime; const f=base + 10*Math.sin(t*0.3 + i); try{ srcNode.frequency.linearRampToValueAtTime(f, t+0.05);}catch{} };
-      const iv=setInterval(wander, 60); stops.push(()=>clearInterval(iv));
+      wowGen = makeWowGenerator( (seed+i*97)>>>0, 0.6, 0.95 ); // slow drift source
+      flutOsc=ctx.createOscillator(); flutOsc.type='sine'; flutOsc.frequency.value = Params.flutRate;
+      flutAmt=mkGain(ctx, Params.flutCents/100); // cents → semitone fraction
+      flutOsc.connect(flutAmt);
+      // apply pitch mod by periodically recomputing freq target (see below)
+      flutOsc.start(); stops.push(()=>{try{flutOsc.stop();}catch{}});
     }
 
-    // CAM sequencer drives either pitch (if pitched) or noise envelope density
-    const cam=mkCamSequencer(ctx, 7+i, 1.6+i*0.25);
-    const camAmt=mkGain(ctx, Params.camDepth);
-    cam.connect(camAmt);
+    // CAM & probability
+    let step=0;
+    const seqLen=8+i;
+    const baseRoot = P.topo.rootMidi;                      // from topology
+    const ints     = P.topo.scale.ints;                    // chosen scale
+    const octSpan  = P.topo.octaveSpan;                    // range
+    function pickNote(step){
+      // deterministic pseudo-rand per step for variety but stable over time
+      const r = (Math.sin((i+1)*31.7*step)+1)/2;
+      const degree = ints[Math.floor(r*ints.length)] || 0;
+      const octave = Math.floor(r*octSpan);
+      return baseRoot + degree + 12*octave;
+    }
 
-    if (srcNode.frequency){
-      // Quantized pitch from cam: map 0..1 → semitone set around root
-      let step=0;
-      const root=48 + (i%3)*5; // different registers
-      const seqLen=8+i;
-      const iv=setInterval(()=>{
-        step=(step+1)%seqLen;
-        // sample cam value via quick scheduling trick using ConstantSource → Gain to master?
-        // Simpler: pseudo-rand but locked to chain index & step (still musical)
-        const r=(Math.sin((i+1)*31.7*step)+1)/2;
-        const n = Params.scale[Math.floor(r*Params.scale.length)] || 0;
-        const semi = root + n + 12*Math.floor(step/seqLen*2);
-        const q = quantizeSemitone(semi, Params.scale);
-        const f = scaleFreq(440, q-57); // map 57≈A3
-        try{ srcNode.frequency.setTargetAtTime(f, ctx.currentTime, 0.03);}catch{}
-        // little amplitude pluck
-        const t=ctx.currentTime;
+    const camTick = setInterval(()=>{
+      step=(step+1)%seqLen;
+      if (Math.random() > Params.hitProb) return; // probability gate
+
+      const t=ctx.currentTime;
+
+      if (srcNode.frequency){
+        // choose note by topology mapping
+        const midi = pickNote(step);
+        const baseF = midiToFreq(midi);
+
+        // compute wow (slow random walk in cents) + flutter (fast cents)
+        const wowC = Params.wowCents * (wowGen? wowGen()/100 : 0);           // cents
+        // get instantaneous flutter phase value (sample sine)
+        const flut = flutOsc ? Math.sin(2*Math.PI*flutOsc.frequency.value*t) : 0;
+        const flutC = Params.flutCents * flut;                                // cents
+        const totalSemis = (wowC + flutC) / 100;                              // cents→semitones
+
+        const f = baseF * Math.pow(2, totalSemis/12);
+        try{ srcNode.frequency.setTargetAtTime(f, t, 0.03);}catch{}
+
+        // pluck envelope
         vca.gain.cancelScheduledValues(t);
-        vca.gain.setTargetAtTime(0.28, t, 0.01);
+        vca.gain.setTargetAtTime(0.30, t, 0.01);
         vca.gain.setTargetAtTime(0.10 + 0.05*i, t+0.18, 0.12);
-      }, Math.max(120, 350 - i*20));
-      stops.push(()=>clearInterval(iv));
-    } else {
-      // Noise: cam pulses the VCA for percussion hits
-      const iv=setInterval(()=>{
-        const t=ctx.currentTime;
+      } else {
+        // noise hit
         vca.gain.cancelScheduledValues(t);
         vca.gain.setValueAtTime(vca.gain.value, t);
         vca.gain.linearRampToValueAtTime(0.45, t+0.01);
         vca.gain.linearRampToValueAtTime(0.10 + 0.05*i, t+0.12);
-        // tiny bandpass sweep for smack
+        // smack color
         bp.frequency.setTargetAtTime(1200+Math.random()*800, t, 0.02);
-      }, Math.max(90, 260 - i*25));
-      stops.push(()=>clearInterval(iv));
-    }
+      }
+    }, Math.max(100, 300 - i*20));
+    stops.push(()=>clearInterval(camTick));
 
-    chains.push({srcGain, vca, lp, bp, lfoAmt, camAmt, pan, isNoise});
+    chains.push({srcNode, srcGain, vca, lp, bp, lfoAmt, pan, isNoise,
+      // store per-chain pitch mod handles
+      flutOsc, flutAmt
+    });
   });
 
-  // store & updaters
   audioGraph={
     master, dryBus, preFx, shaper, delay, er, chains,
     stop(){ try{master.disconnect();}catch{} }
   };
-  applyParams(); // apply current knobs
+  applyParams();
 }
 
-/* Live parameter updates */
+/* ===== Live param updates ===== */
 function applyParams(){
   if (!audioGraph || !ctx) return;
   const now=ctx.currentTime;
   audioGraph.master.gain.setTargetAtTime(Params.masterVol, now, 0.05);
-  // FX knobs
   audioGraph.shaper.curve = mkWaveshaper(ctx, Params.drive).curve;
   audioGraph.delay.setMix(Params.delayMix);
   audioGraph.er.setMix(Params.erMix);
@@ -337,7 +328,9 @@ function applyParams(){
     const base = ch.isNoise ? Params.noiseVol : Params.pitchedVol;
     ch.srcGain.gain.setTargetAtTime(base, now, 0.05);
     if (ch.lfoAmt) ch.lfoAmt.gain.setTargetAtTime(Params.lfoDepth, now, 0.05);
-    if (ch.camAmt) ch.camAmt.gain.setTargetAtTime(Params.camDepth, now, 0.05);
+    // flutter controls (if pitched)
+    if (ch.flutOsc){ try{ ch.flutOsc.frequency.setTargetAtTime(Params.flutRate, now, 0.1); }catch{} }
+    if (ch.flutAmt){ try{ ch.flutAmt.gain.setTargetAtTime(Params.flutCents/100, now, 0.1); }catch{} }
   });
 }
 
@@ -347,16 +340,10 @@ function drawLine3D(a,b,col,alpha=1){const pa=isoProject(a.x,a.y,a.z),pb=isoProj
 
 /* ===== Flow ===== */
 function reseed(){
-  initGrid(seed);
-  longPath=buildSnakePath();
-  activePatch=buildBigPatch(K);
+  initGrid(seed); longPath=buildSnakePath(); activePatch=buildBigPatch(K);
   if (ctx){ realizeAudio(activePatch); }
 }
-
-function setup(){
-  createCanvas(window.innerWidth, window.innerHeight); pixelDensity(window.devicePixelRatio||1);
-  initGrid(seed); longPath=buildSnakePath(); activePatch=buildBigPatch(K);
-}
+function setup(){ createCanvas(window.innerWidth, window.innerHeight); pixelDensity(window.devicePixelRatio||1); initGrid(seed); longPath=buildSnakePath(); activePatch=buildBigPatch(K); }
 function windowResized(){ resizeCanvas(window.innerWidth, window.innerHeight); }
 
 function draw(){
@@ -373,7 +360,6 @@ function draw(){
       }
     }
   }
-  // chains
   activePatch.forEach((P,idx)=>{
     const col=UI.colorChains? P.color : '#ffd37f';
     const AP=P.audioPath;
@@ -387,7 +373,7 @@ function draw(){
         drawLine3D({x:a.x-N/2,y:a.y-N/2,z:a.z-N/2},{x:b.x-N/2,y:b.y-N/2,z:b.z-N/2},'#a8f0a2',0.9);
       }
     });
-    // highlight modules
+    // endpoints
     drawCube(P.source.x-N/2,P.source.y-N/2,P.source.z-N/2,col,0.9);
     P.shapers.forEach(s=>drawCube(s.x-N/2,s.y-N/2,s.z-N/2,col,0.8));
     drawCube(P.vca.x-N/2,P.vca.y-N/2,P.vca.z-N/2,col,0.95);
@@ -403,8 +389,8 @@ function mouseDragged(){if(camera.drag){camera.ox+=(mouseX-camera.px);camera.oy+
 function mouseWheel(e){const k=1+(-e.deltaY*0.001);camera.zoom=Math.max(0.35,Math.min(2.5,camera.zoom*k));return false;}
 window.addEventListener('keydown',(e)=>{if(e.code==='Space'){e.preventDefault();document.getElementById('start').click();} if(e.key==='r'||e.key==='R'){document.getElementById('reroute').click();}});
 
-/* ===== UI bindings ===== */
-function bindSlider(id,prop,outId){const el=document.getElementById(id),out=document.getElementById(outId),fmt=v=>(+v).toFixed(2);out.textContent=fmt(el.value);el.addEventListener('input',()=>{Params[prop]=+el.value;out.textContent=fmt(el.value);applyParams();});}
+/* ===== UI binds ===== */
+function bindSlider(id,prop,outId,fmt=(v)=>(+v).toFixed(2)){const el=document.getElementById(id),out=document.getElementById(outId);out.textContent=fmt(el.value);el.addEventListener('input',()=>{Params[prop]=+(el.value);out.textContent=fmt(el.value);applyParams();});}
 bindSlider('masterVol','masterVol','masterVolV');
 bindSlider('pitchedVol','pitchedVol','pitchedVolV');
 bindSlider('noiseVol','noiseVol','noiseVolV');
@@ -413,7 +399,10 @@ bindSlider('camDepth','camDepth','camDepthV');
 bindSlider('delayMix','delayMix','delayMixV');
 bindSlider('drive','drive','driveV');
 bindSlider('erMix','erMix','erMixV');
-document.getElementById('scaleSel').addEventListener('change',e=>{setScaleFromString(e.target.value);});
+bindSlider('hitProb','hitProb','hitProbV');
+bindSlider('wowCents','wowCents','wowCentsV',(v)=>Math.round(v));
+bindSlider('flutCents','flutCents','flutCentsV',(v)=>Math.round(v));
+bindSlider('flutRate','flutRate','flutRateV',(v)=>(+v).toFixed(1));
 
 document.getElementById('ghost').addEventListener('change',e=>UI.ghost=e.target.checked);
 document.getElementById('chainsOnly').addEventListener('change',e=>UI.chainsOnly=e.target.checked);
@@ -423,8 +412,7 @@ document.getElementById('start').onclick = async ()=>{
   if (!ctx){ ctx = mkCtx(); }
   if (ctx.state!=='running'){ await ctx.resume(); }
   if (!audioGraph){ realizeAudio(activePatch); document.getElementById('start').textContent='Stop Audio'; return; }
-  // toggle off
-  if (audioGraph){ audioGraph.stop(); audioGraph=null; try{ctx.close();}catch{} ctx=null; document.getElementById('start').textContent='Start Audio'; }
+  audioGraph.stop(); audioGraph=null; try{ctx.close();}catch{} ctx=null; document.getElementById('start').textContent='Start Audio';
 };
 document.getElementById('reroute').onclick = ()=>{
   seed = (seed*1664525 + 1013904223)>>>0;
@@ -438,6 +426,7 @@ document.getElementById('kchains').addEventListener('input', e=>{
 </script>
 </body>
 </html>
+
 
 
 
