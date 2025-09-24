@@ -3,21 +3,20 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Isometric Mechanical Modular — Big Patch + Controls</title>
+<title>Isometric Mechanical Modular — Big Patch + FX + Music</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js"></script>
 <style>
-  :root{--bg:#0c0f14; --panel:#141824; --ink:#e6eefc; --muted:#98a7c6; --accent:#80b2ff; --sig:#a8f0a2; --aud:#ffd37f;}
+  :root{--bg:#0c0f14; --panel:#141824; --ink:#e6eefc; --muted:#98a7c6; --accent:#80b2ff;}
   html,body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,Segoe UI,Helvetica,Arial}
-  .ui{position:fixed;inset:auto 12px 12px auto;background:var(--panel);border:1px solid #21283a;border-radius:12px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.35);max-width:520px}
+  .ui{position:fixed;inset:auto 12px 12px auto;background:var(--panel);border:1px solid #21283a;border-radius:12px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.35);max-width:680px}
   .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
   .btn{background:#1b2131;border:1px solid #2a3550;color:var(--ink);border-radius:10px;padding:10px 12px;cursor:pointer}
   .btn:focus{outline:2px solid var(--accent);outline-offset:2px}
-  .kv{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;font-size:12px;color:var(--muted);margin-top:8px}
-  .legend{font-size:12px;color:var(--muted);margin-top:6px}
   .label{font-size:12px;color:var(--muted);min-width:110px}
-  .slider{display:flex;align-items:center;gap:8px;width:100%}
+  .slider{display:flex;align-items:center;gap:8px}
   input[type=range]{width:180px}
   .sep{height:1px;background:#232b3f;margin:10px 0}
+  .tiny{font-size:12px;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -26,71 +25,55 @@
     <button id="start" class="btn" aria-label="Start/Stop Audio (Space)">Start Audio</button>
     <button id="reroute" class="btn" aria-label="New patch (R)">New Patch</button>
     <label class="label">K chains <input id="kchains" type="range" min="1" max="6" step="1" value="3"></label>
-  </div>
-
-  <div class="row">
-    <label><input type="checkbox" id="ghost" checked> Ghost background</label>
-    <label><input type="checkbox" id="chainsOnly"> Show chains only</label>
+    <label><input type="checkbox" id="ghost" checked> Ghost bg</label>
+    <label><input type="checkbox" id="chainsOnly"> Chains only</label>
     <label><input type="checkbox" id="colorChains" checked> Color chains</label>
   </div>
 
-  <div class="sep"></div>
-
-  <div class="row slider"><span class="label">Master</span><input id="masterVol" type="range" min="0" max="1" step="0.01" value="0.9"><span id="masterVolV" class="label">0.90</span></div>
-  <div class="row slider"><span class="label">Pitched (string)</span><input id="pitchedVol" type="range" min="0" max="1" step="0.01" value="0.35"><span id="pitchedVolV" class="label">0.35</span></div>
-  <div class="row slider"><span class="label">Noise</span><input id="noiseVol" type="range" min="0" max="1" step="0.01" value="0.45"><span id="noiseVolV" class="label">0.45</span></div>
-  <div class="row slider"><span class="label">LFO depth</span><input id="lfoDepth" type="range" min="0" max="0.6" step="0.01" value="0.18"><span id="lfoDepthV" class="label">0.18</span></div>
-  <div class="row slider"><span class="label">Cam depth</span><input id="camDepth" type="range" min="0" max="0.6" step="0.01" value="0.22"><span id="camDepthV" class="label">0.22</span></div>
-
-  <div class="kv">
-    <div>Drag</div><div>Pan view</div>
-    <div>Wheel</div><div>Zoom</div>
-    <div>Space</div><div>Start/Stop Audio</div>
-    <div>R</div><div>Re-seed patch</div>
+  <div class="row">
+    <div class="slider"><span class="label">Master</span><input id="masterVol" type="range" min="0" max="1" step="0.01" value="0.9"><span id="masterVolV" class="tiny">0.90</span></div>
+    <div class="slider"><span class="label">Pitched</span><input id="pitchedVol" type="range" min="0" max="1" step="0.01" value="0.35"><span id="pitchedVolV" class="tiny">0.35</span></div>
+    <div class="slider"><span class="label">Noise</span><input id="noiseVol" type="range" min="0" max="1" step="0.01" value="0.45"><span id="noiseVolV" class="tiny">0.45</span></div>
+    <div class="slider"><span class="label">LFO depth</span><input id="lfoDepth" type="range" min="0" max="0.6" step="0.01" value="0.18"><span id="lfoDepthV" class="tiny">0.18</span></div>
+    <div class="slider"><span class="label">Cam depth</span><input id="camDepth" type="range" min="0" max="0.6" step="0.01" value="0.22"><span id="camDepthV" class="tiny">0.22</span></div>
   </div>
-  <div class="legend">Gold lines = audio. Mint lines = modulation. Colors differentiate chains.</div>
+
+  <div class="row">
+    <div class="slider"><span class="label">Delay mix</span><input id="delayMix" type="range" min="0" max="1" step="0.01" value="0.25"><span id="delayMixV" class="tiny">0.25</span></div>
+    <div class="slider"><span class="label">Drive</span><input id="drive" type="range" min="0" max="1" step="0.01" value="0.15"><span id="driveV" class="tiny">0.15</span></div>
+    <div class="slider"><span class="label">ER mix</span><input id="erMix" type="range" min="0" max="1" step="0.01" value="0.18"><span id="erMixV" class="tiny">0.18</span></div>
+    <span class="tiny">Scale: <select id="scaleSel">
+      <option value="0,2,3,5,7,10">Minor pent</option>
+      <option value="0,2,4,5,7,9,11">Major</option>
+      <option value="0,3,5,6,7,10">Blues</option>
+      <option value="0,1,3,5,7,8,10">Phrygian-ish</option>
+      <option value="0,2,4,7,9">Major pent</option>
+    </select></span>
+  </div>
+
+  <div class="sep"></div>
+  <div class="tiny">Gold = audio, Mint = modulation. Chains are colorized; stereo pans alternate; pitch comes from the cam sequencer (quantized).</div>
 </div>
 
 <script>
-/* ===== Module types ===== */
-const TYPES = {
-  SOURCE_NOISE:'SOURCE_NOISE', SOURCE_STRING:'SOURCE_STRING',
-  SHAPER_FILTER:'SHAPER_FILTER', SHAPER_SHUTTER:'SHAPER_SHUTTER', RESONATOR:'RESONATOR',
-  VCA:'VCA', MIXER:'MIXER', OUTPUT:'OUTPUT',
-  MOD_LFO:'MOD_LFO', MOD_CAM:'MOD_CAM'
-};
-const AUDIO_TYPES = new Set([TYPES.SOURCE_NOISE,TYPES.SOURCE_STRING,TYPES.SHAPER_FILTER,TYPES.SHAPER_SHUTTER,TYPES.RESONATOR,TYPES.VCA,TYPES.MIXER,TYPES.OUTPUT]);
-const MOD_TYPES = new Set([TYPES.MOD_LFO,TYPES.MOD_CAM]);
+/* ===== Module types & visuals ===== */
+const TYPES={SOURCE_NOISE:'SOURCE_NOISE',SOURCE_STRING:'SOURCE_STRING',SHAPER_FILTER:'SHAPER_FILTER',SHAPER_SHUTTER:'SHAPER_SHUTTER',RESONATOR:'RESONATOR',VCA:'VCA',MIXER:'MIXER',OUTPUT:'OUTPUT',MOD_LFO:'MOD_LFO',MOD_CAM:'MOD_CAM'};
+const AUDIO_TYPES=new Set([TYPES.SOURCE_NOISE,TYPES.SOURCE_STRING,TYPES.SHAPER_FILTER,TYPES.SHAPER_SHUTTER,TYPES.RESONATOR,TYPES.VCA,TYPES.MIXER,TYPES.OUTPUT]);
+const MOD_TYPES=new Set([TYPES.MOD_LFO,TYPES.MOD_CAM]);
+const CHAIN_COLORS=['#ffd37f','#80b2ff','#a8f0a2','#ff9ea1','#d3a2ff','#8ef3ff'];
 
-/* ===== Grid + camera ===== */
 const N=10, SPACING=28, CUBE=14;
 let camera={ox:0,oy:0,zoom:1.15,drag:false,px:0,py:0};
-function isoProject(x,y,z){ const ix=(x-z)*SPACING*0.866, iy=(x+z)*SPACING*0.5 - y*SPACING*0.9; return {x:ix*camera.zoom+width/2+camera.ox, y:iy*camera.zoom+height/2+camera.oy}; }
+function isoProject(x,y,z){const ix=(x-z)*SPACING*0.866,iy=(x+z)*SPACING*0.5-y*SPACING*0.9;return {x:ix*camera.zoom+width/2+camera.ox,y:iy*camera.zoom+height/2+camera.oy};}
 
-/* ===== World state ===== */
+/* ===== World / grid ===== */
 let grid=[], seed=(Math.random()*1e9>>>0), longPath=[];
 let ctx, audioGraph=null, activePatch=null, K=3;
 
-/* UI flags / params */
-const UI = {
-  ghost:true,
-  chainsOnly:false,
-  colorChains:true
-};
-const Params = {
-  masterVol:0.9,
-  pitchedVol:0.35,
-  noiseVol:0.45,
-  lfoDepth:0.18,
-  camDepth:0.22
-};
+const UI={ghost:true,chainsOnly:false,colorChains:true};
+const Params={masterVol:0.9,pitchedVol:0.35,noiseVol:0.45,lfoDepth:0.18,camDepth:0.22,delayMix:0.25,drive:0.15,erMix:0.18,scale:[0,2,3,5,7,10]};
+function setScaleFromString(s){ Params.scale = s.split(',').map(x=>+x); }
 
-/* ===== Chain colors ===== */
-const CHAIN_COLORS = [
-  '#ffd37f', '#80b2ff', '#a8f0a2', '#ff9ea1', '#d3a2ff', '#8ef3ff'
-];
-
-/* ===== Grid gen ===== */
 function initGrid(seed=1){
   grid = Array.from({length:N},(_,x)=>Array.from({length:N},(_,y)=>Array.from({length:N},(_,z)=>{
     const h=(x*73856093 ^ y*19349663 ^ z*83492791 ^ seed)>>>0, r=h%100;
@@ -107,7 +90,7 @@ function initGrid(seed=1){
   })));
 }
 
-/* Space-filling “snake” path through all cells */
+/* Snake path through all cells */
 function buildSnakePath(){
   const path=[];
   for(let y=0;y<N;y++){
@@ -117,12 +100,10 @@ function buildSnakePath(){
       if((yEven&&zEven)||(!yEven&&!zEven)){ for(let x=0;x<N;x++) path.push({x,y,z}); }
       else { for(let x=N-1;x>=0;x--) path.push({x,y,z}); }
     }
-    if (y<N-1){ path.push({x:path[path.length-1].x, y:y+1, z:path[path.length-1].z}); }
+    if (y<N-1){ path.push({x:path[path.length-1].x,y:y+1,z:path[path.length-1].z}); }
   }
   return path;
 }
-
-/* Manhattan route (for mod connections) */
 function pathBetween(a,b){
   const path=[{...a}], p={...a};
   const step=(axis,dir)=>{ p[axis]+=dir; path.push({...p}); };
@@ -132,26 +113,13 @@ function pathBetween(a,b){
   return path;
 }
 
-/* Build K long chains along the snake + modulators */
+/* Build K long chains with roles + modulators */
 function buildBigPatch(Kchains=3){
-  const L = longPath.length;
-  const segLen = Math.floor(L/(Kchains+0.5));
-  const patches = [];
+  const L=longPath.length, segLen=Math.floor(L/(Kchains+0.5)), patches=[];
   for(let k=0;k<Kchains;k++){
-    const start = Math.floor((k+0.25)*segLen*0.8);
-    const end   = Math.min(L-1, start + segLen - 1);
-    const seg   = longPath.slice(start, end+1);
-
-    const idxS = 0;
-    const idxF = Math.floor(seg.length*0.20);
-    const idxR = Math.floor(seg.length*0.35);
-    const idxT = Math.floor(seg.length*0.50);
-    const idxV = Math.floor(seg.length*0.70);
-    const idxM = Math.floor(seg.length*0.85);
-    const idxO = seg.length-1;
-
-    const S = seg[idxS], F = seg[idxF], R = seg[idxR], T = seg[idxT], V = seg[idxV], M = seg[idxM], O = seg[idxO];
-
+    const start=Math.floor((k+0.25)*segLen*0.8), end=Math.min(L-1,start+segLen-1), seg=longPath.slice(start,end+1);
+    const idxS=0, idxF=Math.floor(seg.length*0.2), idxR=Math.floor(seg.length*0.35), idxT=Math.floor(seg.length*0.5), idxV=Math.floor(seg.length*0.7), idxM=Math.floor(seg.length*0.85), idxO=seg.length-1;
+    const S=seg[idxS], F=seg[idxF], R=seg[idxR], T=seg[idxT], V=seg[idxV], M=seg[idxM], O=seg[idxO];
     grid[S.x][S.y][S.z] = (k%2? TYPES.SOURCE_STRING : TYPES.SOURCE_NOISE);
     grid[F.x][F.y][F.z] = TYPES.SHAPER_FILTER;
     grid[R.x][R.y][R.z] = TYPES.RESONATOR;
@@ -160,260 +128,301 @@ function buildBigPatch(Kchains=3){
     grid[M.x][M.y][M.z] = TYPES.MIXER;
     grid[O.x][O.y][O.z] = TYPES.OUTPUT;
 
-    const nearMod = (p,type,rad=2)=>{
-      let best=null,bestD=1e9;
-      for(let dx=-rad;dx<=rad;dx++)for(let dy=-rad;dy<=rad;dy++)for(let dz=-rad;dz<=rad;dz++){
-        const x=p.x+dx,y=p.y+dy,z=p.z+dz; if(x<0||y<0||z<0||x>=N||y>=N||z>=N) continue;
-        if (grid[x][y][z]===type){ const d=Math.abs(dx)+Math.abs(dy)+Math.abs(dz); if(d<bestD){bestD=d;best={x,y,z};} }
-      }
-      return best;
-    };
-    const LFO = nearMod(V, TYPES.MOD_LFO) || seg[Math.max(1, Math.floor(seg.length*0.6))];
-    grid[LFO.x][LFO.y][LFO.z] = TYPES.MOD_LFO;
-    const CAM = nearMod(F, TYPES.MOD_CAM) || seg[Math.max(1, Math.floor(seg.length*0.4))];
-    grid[CAM.x][CAM.y][CAM.z] = TYPES.MOD_CAM;
+    const nearMod=(p,type,rad=2)=>{let best=null,bestD=1e9;for(let dx=-rad;dx<=rad;dx++)for(let dy=-rad;dy<=rad;dy++)for(let dz=-rad;dz<=rad;dz++){const x=p.x+dx,y=p.y+dy,z=p.z+dz;if(x<0||y<0||z<0||x>=N||y>=N||z>=N) continue; if(grid[x][y][z]===type){const d=Math.abs(dx)+Math.abs(dy)+Math.abs(dz); if(d<bestD){bestD=d;best={x,y,z};}}}return best;};
+    const LFO=nearMod(V,TYPES.MOD_LFO)||seg[Math.max(1,Math.floor(seg.length*0.6))]; grid[LFO.x][LFO.y][LFO.z]=TYPES.MOD_LFO;
+    const CAM=nearMod(F,TYPES.MOD_CAM)||seg[Math.max(1,Math.floor(seg.length*0.4))]; grid[CAM.x][CAM.y][CAM.z]=TYPES.MOD_CAM;
 
-    patches.push({
-      color: CHAIN_COLORS[k % CHAIN_COLORS.length],
-      source:S, shapers:[F,R,T], vca:V, mixer:M, output:O,
-      modLFO:LFO, modCAM:CAM,
-      audioPath: seg.slice(),
-      modLines: [ pathBetween(LFO,V), pathBetween(CAM,F) ]
-    });
+    patches.push({color:CHAIN_COLORS[k%CHAIN_COLORS.length],source:S,shapers:[F,R,T],vca:V,mixer:M,output:O,modLFO:LFO,modCAM:CAM,audioPath:seg.slice(),modLines:[pathBetween(LFO,V),pathBetween(CAM,F)]});
   }
   return patches;
 }
 
-/* ===== Web Audio (file-safe) ===== */
-function mkCtx(){ const AC=window.AudioContext||window.webkitAudioContext; return new AC(); }
-function mkGain(ctx,v=1){ const g=ctx.createGain(); g.gain.value=v; return g; }
-function mkBiquad(ctx,type='lowpass',f=1200,Q=0.7){ const b=ctx.createBiquadFilter(); b.type=type; b.frequency.value=f; b.Q.value=Q; return b; }
-function mkNoise(ctx){ const len=ctx.sampleRate*2|0, buf=ctx.createBuffer(1,len,ctx.sampleRate), ch=buf.getChannelData(0); for(let i=0;i<len;i++) ch[i]=Math.random()*2-1; const src=ctx.createBufferSource(); src.buffer=buf; src.loop=true; return src; }
-function mkCamSequencer(ctx,steps=6,rate=2,depth=0.25){
-  const g=mkGain(ctx,0);
-  const cs=ctx.createConstantSource(); cs.offset.value=0; cs.connect(g.gain); cs.start();
-  let t=ctx.currentTime; const dur=1/rate; const seq=Array.from({length:steps},(_,i)=> i%2? 0.4:1.0);
-  function program(){ cs.offset.cancelScheduledValues(t); let tt=t; for(const v of seq){ cs.offset.setValueAtTime(v*depth, tt); tt+=dur; } t+=seq.length*dur; }
-  program(); const iv=setInterval(program, Math.max(50, (seq.length*dur*500)|0));
-  g.stop=()=>{ clearInterval(iv); try{cs.stop();}catch{} };
-  return g;
+/* ===== Web Audio helpers ===== */
+function mkCtx(){const AC=window.AudioContext||window.webkitAudioContext;return new AC();}
+function mkGain(c,v=1){const g=c.createGain();g.gain.value=v;return g;}
+function mkBiquad(c,type='lowpass',f=1200,Q=0.7){const b=c.createBiquadFilter();b.type=type;b.frequency.value=f;b.Q.value=Q;return b;}
+function mkNoise(c){const len=c.sampleRate*2|0,buf=c.createBuffer(1,len,c.sampleRate),ch=buf.getChannelData(0);for(let i=0;i<len;i++)ch[i]=Math.random()*2-1;const s=c.createBufferSource();s.buffer=buf;s.loop=true;return s;}
+function mkPanner(c,pan=0){const p=c.createStereoPanner();p.pan.value=pan;return p;}
+function mkDelayBus(c){
+  // ping-pong-ish: L/R delays with slight offset, with feedback & tone
+  const inG=mkGain(c,1), outG=mkGain(c,1);
+  const dlL=c.createDelay(2.0), dlR=c.createDelay(2.0);
+  dlL.delayTime.value=0.27; dlR.delayTime.value=0.34;
+  const fbL=mkGain(c,0.35), fbR=mkGain(c,0.32);
+  const toneL=mkBiquad(c,'lowpass',3500,0.7), toneR=mkBiquad(c,'lowpass',3200,0.7);
+  inG.connect(dlL); inG.connect(dlR);
+  dlL.connect(toneL); toneL.connect(fbL); fbL.connect(dlR); // cross
+  dlR.connect(toneR); toneR.connect(fbR); fbR.connect(dlL);
+  // wet out
+  const wet=mkGain(c,1); toneL.connect(wet); toneR.connect(wet);
+  wet.connect(outG);
+  return {in:inG, out:outG, setMix:(mix, master)=>{ // mix into master outside
+    outG.gain.value = mix;
+  }};
+}
+function mkEarlyReflections(c){
+  // three short taps for space
+  const input=mkGain(c,1), out=mkGain(c,1);
+  const taps=[0.011,0.019,0.031], gains=[0.25,0.18,0.12];
+  taps.forEach((t,i)=>{const d=c.createDelay(0.1); d.delayTime.value=t; const g=mkGain(c,gains[i]); input.connect(d); d.connect(g); g.connect(out);});
+  return {in:input,out:out,setMix:(mix)=>{out.gain.value=mix;}};
+}
+function mkWaveshaper(c,amount=0.2){
+  const sh=c.createWaveShaper();
+  const k=amount*100+1;
+  const n=1024;
+  const curve=new Float32Array(n);
+  for(let i=0;i<n;i++){const x=i*2/n-1; curve[i]=(1+k)*x/(1+k*Math.abs(x));}
+  sh.curve=curve; sh.oversample='2x';
+  return sh;
+}
+function mkCamSequencer(c,steps=6,rate=2){
+  // stepped control 0..1 via ConstantSource
+  const cs=c.createConstantSource(); cs.offset.value=0; cs.start();
+  let t=c.currentTime, dur=1/rate;
+  const seq=new Array(steps).fill(0).map((_,i)=> (i%2?0.35:1.0));
+  function program(){ cs.offset.cancelScheduledValues(t); let tt=t; for(const v of seq){ cs.offset.setValueAtTime(v, tt); tt+=dur; } t+=seq.length*dur; }
+  program(); const iv=setInterval(program, Math.max(50,(seq.length*dur*500)|0));
+  cs._stop=()=>{ clearInterval(iv); try{cs.stop();}catch{} };
+  return cs;
+}
+function scaleFreq(baseHz, semitone){ return baseHz * Math.pow(2, semitone/12); }
+function quantizeSemitone(semi, scale){
+  // wrap to scale
+  const o = Math.floor(semi/12), n = ((semi%12)+12)%12;
+  // pick nearest lower in scale, simple
+  let best = scale[0];
+  for (let i=0;i<scale.length;i++){ if (scale[i] <= n) best = scale[i]; }
+  return o*12 + best;
 }
 
-/* Build audio from multiple long chains (store knobs to update live) */
+/* ===== Build audio per chain ===== */
 function realizeAudio(patches){
   if (audioGraph && audioGraph.stop) audioGraph.stop();
   ctx = ctx || mkCtx();
 
-  const master = mkGain(ctx, Params.masterVol); master.connect(ctx.destination);
-  const chains = [];
-  const stops=[];
+  // Master & FX buses
+  const master=mkGain(ctx, Params.masterVol);
+  const dryBus=mkGain(ctx, 1.0);
+  const preFx=mkGain(ctx, 1.0);
+  const shaper=mkWaveshaper(ctx, Params.drive);
+  const delay=mkDelayBus(ctx);
+  const er=mkEarlyReflections(ctx);
 
-  patches.forEach((P, i)=>{
+  dryBus.connect(master);
+  preFx.connect(shaper); shaper.connect(master); // drive into master
+  preFx.connect(delay.in); delay.out.connect(master);
+  preFx.connect(er.in);   er.out.connect(master);
+
+  master.connect(ctx.destination);
+
+  const chains=[], stops=[];
+  patches.forEach((P,i)=>{
     const sType = grid[P.source.x][P.source.y][P.source.z];
-    let srcNode, srcOutGain;
-    if (sType===TYPES.SOURCE_NOISE){
-      srcNode = mkNoise(ctx);
-      srcOutGain = mkGain(ctx, Params.noiseVol);
-      srcNode.connect(srcOutGain);
-      srcNode.start(); stops.push(()=>{try{srcNode.stop();}catch{}});
+    const pan = mkPanner(ctx, (i%2===0)? -0.35 : 0.35);
+    // instrument per chain
+    const isNoise = (sType===TYPES.SOURCE_NOISE);
+    let srcNode, srcGain=mkGain(ctx, isNoise? Params.noiseVol : Params.pitchedVol);
+
+    if (isNoise){
+      // noise percussion with envelope on hits
+      const nz=mkNoise(ctx); nz.connect(srcGain); nz.start(); srcNode=nz; stops.push(()=>{try{nz.stop();}catch{}});
+
     } else {
-      const osc = ctx.createOscillator();
-      osc.type='triangle';
-      osc.frequency.value = 160 + i*15;
-      srcNode = osc;
-      srcOutGain = mkGain(ctx, Params.pitchedVol);
-      osc.connect(srcOutGain);
-      osc.start(); stops.push(()=>{try{osc.stop();}catch{}});
+      // stringy/mallet hybrid
+      const osc=ctx.createOscillator(); osc.type = (i%3===0?'triangle': (i%3===1?'sine':'sawtooth'));
+      osc.frequency.value = 160 + 15*i;
+      osc.connect(srcGain);
+      osc.start(); srcNode=osc; stops.push(()=>{try{osc.stop();}catch{}});
     }
 
-    // Shapers chain
-    let chain = srcOutGain;
-    const shaperKnobs = { shutterAmt: null }; // for UI
-    P.shapers.forEach((node,j)=>{
-      const t = grid[node.x][node.y][node.z];
-      if (t===TYPES.SHAPER_FILTER){
-        const b=mkBiquad(ctx,'lowpass', 1800 - i*200, 0.7);
-        chain.connect(b); chain=b;
-      } else if (t===TYPES.RESONATOR){
-        const b=mkBiquad(ctx,'bandpass', 900 + i*120, 6);
-        chain.connect(b); chain=b;
-      } else if (t===TYPES.SHAPER_SHUTTER){
-        const g=mkGain(ctx, 0.8);
-        const lfo=ctx.createOscillator(); lfo.type='sine'; lfo.frequency.value=3 + i*0.5;
-        const amt=mkGain(ctx, Params.lfoDepth); lfo.connect(amt); amt.connect(g.gain); lfo.start();
-        shaperKnobs.shutterAmt = amt;
-        stops.push(()=>{try{lfo.stop();}catch{}});
-        chain.connect(g); chain=g;
-      }
-    });
+    // shaper chain: filter -> resonator -> shutter AM (some branches)
+    let chain=srcGain;
+    const lp=mkBiquad(ctx,'lowpass', 1600 - i*180, 0.8);
+    chain.connect(lp); chain=lp;
 
-    const vca=mkGain(ctx, 0.10 + 0.04*i);
+    const bp=mkBiquad(ctx,'bandpass', 900 + i*140, 5.5);
+    chain.connect(bp); chain=bp;
+
+    // Shutter tremolo with LFO
+    const shutter=mkGain(ctx, 0.85);
+    const lfo=ctx.createOscillator(); lfo.type='sine'; lfo.frequency.value = 2.5 + i*0.4;
+    const lfoAmt=mkGain(ctx, Params.lfoDepth);
+    lfo.connect(lfoAmt); lfoAmt.connect(shutter.gain); lfo.start();
+    stops.push(()=>{try{lfo.stop();}catch{}});
+
+    chain.connect(shutter); chain=shutter;
+
+    // VCA (main amp)
+    const vca=mkGain(ctx, 0.10 + 0.05*i);
     chain.connect(vca);
-    const mix=mkGain(ctx, 1.0); vca.connect(mix); mix.connect(master);
 
-    // LFO depth knob
-    let lfoOsc=null, lfoAmt=null;
-    if (P.modLFO){
-      lfoOsc=ctx.createOscillator(); lfoOsc.type='sine'; lfoOsc.frequency.value = 0.25 + 0.15*i;
-      lfoAmt=mkGain(ctx, Params.lfoDepth); lfoOsc.connect(lfoAmt); lfoAmt.connect(vca.gain); lfoOsc.start();
-      stops.push(()=>{try{lfoOsc.stop();}catch{}});
+    // Mixer: send to dry and fx
+    vca.connect(pan);
+    pan.connect(dryBus);
+    pan.connect(preFx);
+
+    // LFO also moves the filter (subtle)
+    lfoAmt.connect(lp.frequency);
+    // slight detune motion if pitched
+    if (srcNode.frequency){
+      const base=160 + 18*i;
+      const wander=()=>{ const t=ctx.currentTime; const f=base + 10*Math.sin(t*0.3 + i); try{ srcNode.frequency.linearRampToValueAtTime(f, t+0.05);}catch{} };
+      const iv=setInterval(wander, 60); stops.push(()=>clearInterval(iv));
     }
 
-    // CAM (stepped tremolo) depth knob
-    let cam = null, camAmt = null;
-    if (P.modCAM){
-      cam = mkCamSequencer(ctx, 6+i, 1.5+i*0.25, 1.0); // depth scaled by camAmt gain below
-      camAmt = mkGain(ctx, Params.camDepth);
-      cam.connect(camAmt); camAmt.connect(vca.gain);
-      stops.push(()=>cam.stop());
-    }
+    // CAM sequencer drives either pitch (if pitched) or noise envelope density
+    const cam=mkCamSequencer(ctx, 7+i, 1.6+i*0.25);
+    const camAmt=mkGain(ctx, Params.camDepth);
+    cam.connect(camAmt);
 
-    // Pitch wander for string sources
-    if (srcNode && srcNode.frequency){
-      const base=160 + 20*i, t0=ctx.currentTime;
+    if (srcNode.frequency){
+      // Quantized pitch from cam: map 0..1 → semitone set around root
+      let step=0;
+      const root=48 + (i%3)*5; // different registers
+      const seqLen=8+i;
       const iv=setInterval(()=>{
-        const t=ctx.currentTime - t0, f = base + 12*Math.sin(t*0.25 + i);
-        try{ srcNode.frequency.linearRampToValueAtTime(f, ctx.currentTime+0.05);}catch{}
-      }, 60);
+        step=(step+1)%seqLen;
+        // sample cam value via quick scheduling trick using ConstantSource → Gain to master?
+        // Simpler: pseudo-rand but locked to chain index & step (still musical)
+        const r=(Math.sin((i+1)*31.7*step)+1)/2;
+        const n = Params.scale[Math.floor(r*Params.scale.length)] || 0;
+        const semi = root + n + 12*Math.floor(step/seqLen*2);
+        const q = quantizeSemitone(semi, Params.scale);
+        const f = scaleFreq(440, q-57); // map 57≈A3
+        try{ srcNode.frequency.setTargetAtTime(f, ctx.currentTime, 0.03);}catch{}
+        // little amplitude pluck
+        const t=ctx.currentTime;
+        vca.gain.cancelScheduledValues(t);
+        vca.gain.setTargetAtTime(0.28, t, 0.01);
+        vca.gain.setTargetAtTime(0.10 + 0.05*i, t+0.18, 0.12);
+      }, Math.max(120, 350 - i*20));
+      stops.push(()=>clearInterval(iv));
+    } else {
+      // Noise: cam pulses the VCA for percussion hits
+      const iv=setInterval(()=>{
+        const t=ctx.currentTime;
+        vca.gain.cancelScheduledValues(t);
+        vca.gain.setValueAtTime(vca.gain.value, t);
+        vca.gain.linearRampToValueAtTime(0.45, t+0.01);
+        vca.gain.linearRampToValueAtTime(0.10 + 0.05*i, t+0.12);
+        // tiny bandpass sweep for smack
+        bp.frequency.setTargetAtTime(1200+Math.random()*800, t, 0.02);
+      }, Math.max(90, 260 - i*25));
       stops.push(()=>clearInterval(iv));
     }
 
-    chains.push({
-      type: sType,
-      srcOutGain,
-      vca,
-      mix,
-      lfoAmt,
-      camAmt,
-      shaperKnobs
-    });
+    chains.push({srcGain, vca, lp, bp, lfoAmt, camAmt, pan, isNoise});
   });
 
-  audioGraph = {
-    master,
-    chains,
-    stop(){ stops.forEach(fn=>{try{fn();}catch{}}); }
+  // store & updaters
+  audioGraph={
+    master, dryBus, preFx, shaper, delay, er, chains,
+    stop(){ try{master.disconnect();}catch{} }
   };
+  applyParams(); // apply current knobs
 }
 
 /* Live parameter updates */
 function applyParams(){
-  if (!audioGraph) return;
-  // Master
-  try{ audioGraph.master.gain.setTargetAtTime(Params.masterVol, ctx.currentTime, 0.05); }catch{}
-  // Per-chain
+  if (!audioGraph || !ctx) return;
+  const now=ctx.currentTime;
+  audioGraph.master.gain.setTargetAtTime(Params.masterVol, now, 0.05);
+  // FX knobs
+  audioGraph.shaper.curve = mkWaveshaper(ctx, Params.drive).curve;
+  audioGraph.delay.setMix(Params.delayMix);
+  audioGraph.er.setMix(Params.erMix);
+
   audioGraph.chains.forEach(ch=>{
-    const isNoise = (ch.type===TYPES.SOURCE_NOISE);
-    const base = isNoise ? Params.noiseVol : Params.pitchedVol;
-    try{ ch.srcOutGain.gain.setTargetAtTime(base, ctx.currentTime, 0.05); }catch{}
-    if (ch.lfoAmt){ try{ ch.lfoAmt.gain.setTargetAtTime(Params.lfoDepth, ctx.currentTime, 0.05); }catch{} }
-    if (ch.camAmt){ try{ ch.camAmt.gain.setTargetAtTime(Params.camDepth, ctx.currentTime, 0.05); }catch{} }
-    if (ch.shaperKnobs && ch.shaperKnobs.shutterAmt){
-      try{ ch.shaperKnobs.shutterAmt.gain.setTargetAtTime(Params.lfoDepth, ctx.currentTime, 0.05); }catch{}
-    }
+    const base = ch.isNoise ? Params.noiseVol : Params.pitchedVol;
+    ch.srcGain.gain.setTargetAtTime(base, now, 0.05);
+    if (ch.lfoAmt) ch.lfoAmt.gain.setTargetAtTime(Params.lfoDepth, now, 0.05);
+    if (ch.camAmt) ch.camAmt.gain.setTargetAtTime(Params.camDepth, now, 0.05);
   });
 }
 
 /* ===== Visualization ===== */
-function drawCube(x,y,z,col, alpha=1){
-  const p=isoProject(x,y,z), s=CUBE*camera.zoom;
-  const c = color(col); c.setAlpha(255*alpha);
-  noStroke(); fill(c); rect(p.x-s*0.5,p.y-s*0.5,s,s,4);
-}
-function drawLine3D(a,b,col, alpha=1){
-  const pa=isoProject(a.x,a.y,a.z), pb=isoProject(b.x,b.y,b.z);
-  const c = color(col); c.setAlpha(255*alpha);
-  stroke(c); strokeWeight(2.2*camera.zoom); line(pa.x,pa.y,pb.x,pb.y);
-}
+function drawCube(x,y,z,col,alpha=1){const p=isoProject(x,y,z),s=CUBE*camera.zoom;const c=color(col);c.setAlpha(255*alpha);noStroke();fill(c);rect(p.x-s*0.5,p.y-s*0.5,s,s,4);}
+function drawLine3D(a,b,col,alpha=1){const pa=isoProject(a.x,a.y,a.z),pb=isoProject(b.x,b.y,b.z);const c=color(col);c.setAlpha(255*alpha);stroke(c);strokeWeight(2.2*camera.zoom);line(pa.x,pa.y,pb.x,pb.y);}
 
-/* ===== App flow ===== */
+/* ===== Flow ===== */
 function reseed(){
   initGrid(seed);
-  longPath = buildSnakePath();
-  const patches = buildBigPatch(K);
-  activePatch = patches;
-  if (ctx) { realizeAudio(patches); applyParams(); }
+  longPath=buildSnakePath();
+  activePatch=buildBigPatch(K);
+  if (ctx){ realizeAudio(activePatch); }
 }
 
 function setup(){
   createCanvas(window.innerWidth, window.innerHeight); pixelDensity(window.devicePixelRatio||1);
-  initGrid(seed);
-  longPath = buildSnakePath();
-  activePatch = buildBigPatch(K);
+  initGrid(seed); longPath=buildSnakePath(); activePatch=buildBigPatch(K);
 }
-
 function windowResized(){ resizeCanvas(window.innerWidth, window.innerHeight); }
 
 function draw(){
   background('#0b0e14');
-
-  // Background cubes
   if (!UI.chainsOnly){
     for (let y=0;y<N;y++){
       for (let x=0;x<N;x++){
         for (let z=0;z<N;z++){
           if ((x+y+z)%2) continue;
           const t=grid[x][y][z];
-          let c='#131b2a';
-          if (AUDIO_TYPES.has(t)) c='#162138';
-          else if (MOD_TYPES.has(t)) c='#182532';
-          const alpha = UI.ghost ? 0.25 : 0.55;
-          drawCube(x-N/2,y-N/2,z-N/2,c,alpha);
+          let c='#131b2a'; if (AUDIO_TYPES.has(t)) c='#162138'; else if (MOD_TYPES.has(t)) c='#182532';
+          drawCube(x-N/2,y-N/2,z-N/2,c, UI.ghost?0.25:0.55);
         }
       }
     }
   }
-
-  // Chains
-  activePatch.forEach((P, idx)=>{
-    const col = UI.colorChains ? P.color : '#ffd37f';
-    // audio path
+  // chains
+  activePatch.forEach((P,idx)=>{
+    const col=UI.colorChains? P.color : '#ffd37f';
     const AP=P.audioPath;
     for(let i=1;i<AP.length;i++){
       const a=AP[i-1], b=AP[i];
-      drawLine3D(
-        {x:a.x-N/2,y:a.y-N/2,z:a.z-N/2},
-        {x:b.x-N/2,y:b.y-N/2,z:b.z-N/2},
-        col, 1.0
-      );
+      drawLine3D({x:a.x-N/2,y:a.y-N/2,z:a.z-N/2},{x:b.x-N/2,y:b.y-N/2,z:b.z-N/2},col,1.0);
     }
-    // mod lines (mint)
     P.modLines.forEach(path=>{
       for(let i=1;i<path.length;i++){
         const a=path[i-1], b=path[i];
-        drawLine3D(
-          {x:a.x-N/2,y:a.y-N/2,z:a.z-N/2},
-          {x:b.x-N/2,y:b.y-N/2,z:b.z-N/2},
-          '#a8f0a2', 0.9
-        );
+        drawLine3D({x:a.x-N/2,y:a.y-N/2,z:a.z-N/2},{x:b.x-N/2,y:b.y-N/2,z:b.z-N/2},'#a8f0a2',0.9);
       }
     });
-
-    // highlight blocks
-    drawCube(P.source.x-N/2,P.source.y-N/2,P.source.z-N/2, col, 0.85);
-    P.shapers.forEach(s=>drawCube(s.x-N/2,s.y-N/2,s.z-N/2, col, 0.75));
-    drawCube(P.vca.x-N/2,P.vca.y-N/2,P.vca.z-N/2, col, 0.9);
-    drawCube(P.mixer.x-N/2,P.mixer.y-N/2,P.mixer.z-N/2, col, 0.9);
-    drawCube(P.output.x-N/2,P.output.y-N/2,P.output.z-N/2, col, 1.0);
+    // highlight modules
+    drawCube(P.source.x-N/2,P.source.y-N/2,P.source.z-N/2,col,0.9);
+    P.shapers.forEach(s=>drawCube(s.x-N/2,s.y-N/2,s.z-N/2,col,0.8));
+    drawCube(P.vca.x-N/2,P.vca.y-N/2,P.vca.z-N/2,col,0.95);
+    drawCube(P.mixer.x-N/2,P.mixer.y-N/2,P.mixer.z-N/2,col,0.95);
+    drawCube(P.output.x-N/2,P.output.y-N/2,P.output.z-N/2,col,1.0);
   });
 }
 
 /* ===== Interactions ===== */
-function mousePressed(){ camera.drag=true; camera.px=mouseX; camera.py=mouseY; }
-function mouseReleased(){ camera.drag=false; }
-function mouseDragged(){ if(camera.drag){ camera.ox += (mouseX-camera.px); camera.oy += (mouseY-camera.py); camera.px=mouseX; camera.py=mouseY; } }
-function mouseWheel(e){ const k=1 + (-e.deltaY*0.001); camera.zoom=Math.max(0.35,Math.min(2.5,camera.zoom*k)); return false; }
+function mousePressed(){camera.drag=true;camera.px=mouseX;camera.py=mouseY;}
+function mouseReleased(){camera.drag=false;}
+function mouseDragged(){if(camera.drag){camera.ox+=(mouseX-camera.px);camera.oy+=(mouseY-camera.py);camera.px=mouseX;camera.py=mouseY;}}
+function mouseWheel(e){const k=1+(-e.deltaY*0.001);camera.zoom=Math.max(0.35,Math.min(2.5,camera.zoom*k));return false;}
+window.addEventListener('keydown',(e)=>{if(e.code==='Space'){e.preventDefault();document.getElementById('start').click();} if(e.key==='r'||e.key==='R'){document.getElementById('reroute').click();}});
 
-window.addEventListener('keydown', (e)=>{
-  if (e.code==='Space'){ e.preventDefault(); document.getElementById('start').click(); }
-  if (e.key==='r' || e.key==='R'){ document.getElementById('reroute').click(); }
-});
+/* ===== UI bindings ===== */
+function bindSlider(id,prop,outId){const el=document.getElementById(id),out=document.getElementById(outId),fmt=v=>(+v).toFixed(2);out.textContent=fmt(el.value);el.addEventListener('input',()=>{Params[prop]=+el.value;out.textContent=fmt(el.value);applyParams();});}
+bindSlider('masterVol','masterVol','masterVolV');
+bindSlider('pitchedVol','pitchedVol','pitchedVolV');
+bindSlider('noiseVol','noiseVol','noiseVolV');
+bindSlider('lfoDepth','lfoDepth','lfoDepthV');
+bindSlider('camDepth','camDepth','camDepthV');
+bindSlider('delayMix','delayMix','delayMixV');
+bindSlider('drive','drive','driveV');
+bindSlider('erMix','erMix','erMixV');
+document.getElementById('scaleSel').addEventListener('change',e=>{setScaleFromString(e.target.value);});
 
-/* ===== Buttons & sliders ===== */
+document.getElementById('ghost').addEventListener('change',e=>UI.ghost=e.target.checked);
+document.getElementById('chainsOnly').addEventListener('change',e=>UI.chainsOnly=e.target.checked);
+document.getElementById('colorChains').addEventListener('change',e=>UI.colorChains=e.target.checked);
+
 document.getElementById('start').onclick = async ()=>{
   if (!ctx){ ctx = mkCtx(); }
   if (ctx.state!=='running'){ await ctx.resume(); }
-  if (!audioGraph){ realizeAudio(activePatch); applyParams(); document.getElementById('start').textContent='Stop Audio'; return; }
+  if (!audioGraph){ realizeAudio(activePatch); document.getElementById('start').textContent='Stop Audio'; return; }
   // toggle off
   if (audioGraph){ audioGraph.stop(); audioGraph=null; try{ctx.close();}catch{} ctx=null; document.getElementById('start').textContent='Start Audio'; }
 };
@@ -426,28 +435,6 @@ document.getElementById('kchains').addEventListener('input', e=>{
   K = +e.target.value;
   reseed();
 });
-
-// toggles
-document.getElementById('ghost').addEventListener('change', e=>{ UI.ghost = e.target.checked; });
-document.getElementById('chainsOnly').addEventListener('change', e=>{ UI.chainsOnly = e.target.checked; });
-document.getElementById('colorChains').addEventListener('change', e=>{ UI.colorChains = e.target.checked; });
-
-// slider helpers
-function bindSlider(id, prop, outId){
-  const el=document.getElementById(id), out=document.getElementById(outId);
-  const fmt=v=>(+v).toFixed(2);
-  out.textContent=fmt(el.value);
-  el.addEventListener('input', ()=>{
-    Params[prop]=+el.value;
-    out.textContent=fmt(el.value);
-    applyParams();
-  });
-}
-bindSlider('masterVol','masterVol','masterVolV');
-bindSlider('pitchedVol','pitchedVol','pitchedVolV');
-bindSlider('noiseVol','noiseVol','noiseVolV');
-bindSlider('lfoDepth','lfoDepth','lfoDepthV');
-bindSlider('camDepth','camDepth','camDepthV');
 </script>
 </body>
 </html>
