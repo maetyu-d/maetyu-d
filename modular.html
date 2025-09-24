@@ -3,17 +3,11 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Isometric Mechanical Modular — Tempo Tools (Debug)</title>
-<script>
-/* If CDN fails to load, we still draw nothing but keep audio alive. */
-window.__P5_LOADED__ = false;
-</script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js"
-        onload="window.__P5_LOADED__=true"
-        onerror="console.warn('p5 failed to load; visuals disabled but audio can still run')"></script>
+<title>Isometric Mechanical Modular — Tempo Tools (No p5)</title>
 <style>
   :root{--bg:#0c0f14; --panel:#141824; --ink:#e6eefc; --muted:#98a7c6; --accent:#80b2ff;}
-  html,body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,Segoe UI,Helvetica,Arial}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,Segoe UI,Helvetica,Arial}
+  #view{position:fixed;inset:0}
   .ui{position:fixed;inset:auto 12px 12px auto;background:var(--panel);border:1px solid #21283a;border-radius:12px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.35);max-width:840px}
   .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
   .btn{background:#1b2131;border:1px solid #2a3550;color:var(--ink);border-radius:10px;padding:10px 12px;cursor:pointer}
@@ -23,10 +17,11 @@ window.__P5_LOADED__ = false;
   input[type=range]{width:180px}
   .sep{height:1px;background:#232b3f;margin:10px 0}
   .tiny{font-size:12px;color:var(--muted)}
-  .warn{color:#ffbca0}
 </style>
 </head>
 <body>
+<canvas id="view"></canvas>
+
 <div class="ui">
   <div class="row">
     <button id="start" class="btn" aria-label="Start/Stop Audio (Space)">Start Audio</button>
@@ -74,31 +69,54 @@ window.__P5_LOADED__ = false;
     <div class="slider"><span class="label">Wobble rate (Hz)</span><input id="wobbleRate" type="range" min="0.03" max="0.8" step="0.01" value="0.18"><span id="wobbleRateV" class="tiny">0.18</span></div>
     <div class="slider"><span class="label">Env tightness</span><input id="envTight" type="range" min="0.5" max="1.5" step="0.01" value="1.0"><span id="envTightV" class="tiny">1.00</span></div>
   </div>
-
-  <div class="sep"></div>
-  <div class="tiny">
-    <span class="warn">If it “doesn’t run”</span>: click <b>Start Audio</b> once (user gesture unlocks audio), then check the browser console for any red error — this build logs helpful hints.
-  </div>
 </div>
 
 <script>
-/* --------------- SAFETY WRAPPERS --------------- */
-function safe(fn, label){ try{ return fn(); } catch(e){ console.error(label, e); return null; } }
-function warnOnce(msg){ if(!warnOnce._set) warnOnce._set=new Set(); if(!warnOnce._set.has(msg)){ warnOnce._set.add(msg); console.warn(msg); }}
+/* ========================== VISUALS (Canvas) ========================== */
+const canvas = document.getElementById('view');
+const ctx2d = canvas.getContext('2d');
+function resize(){ canvas.width = innerWidth; canvas.height = innerHeight; }
+addEventListener('resize', resize); resize();
 
-/* --------------- TYPES / VISUALS --------------- */
+/* Camera & iso projection */
+const N=10, SPACING=28, CUBE=14;
+let camera={ox:0,oy:0,zoom:1.15,drag:false,px:0,py:0};
+function isoProject(x,y,z){
+  const ix=(x-z)*SPACING*0.866, iy=(x+z)*SPACING*0.5 - y*SPACING*0.9;
+  return {x:ix*camera.zoom+canvas.width/2+camera.ox, y:iy*camera.zoom+canvas.height/2+camera.oy};
+}
+canvas.addEventListener('mousedown', e=>{ camera.drag=true; camera.px=e.clientX; camera.py=e.clientY; });
+addEventListener('mouseup', ()=>{ camera.drag=false; });
+addEventListener('mousemove', e=>{ if(camera.drag){ camera.ox += (e.clientX-camera.px); camera.oy += (e.clientY-camera.py); camera.px=e.clientX; camera.py=e.clientY; } });
+canvas.addEventListener('wheel', e=>{ const k=1 + (-e.deltaY*0.001); camera.zoom=Math.max(0.35,Math.min(2.5,camera.zoom*k)); e.preventDefault(); }, {passive:false});
+
+/* Primitives */
+function fillRectRounded(x,y,w,h,r, rgba){ ctx2d.fillStyle = rgba; const rr=Math.min(r, w/2, h/2); ctx2d.beginPath();
+  ctx2d.moveTo(x+rr,y); ctx2d.arcTo(x+w,y,x+w,y+h,rr); ctx2d.arcTo(x+w,y+h,x,y+h,rr); ctx2d.arcTo(x,y+h,x,y,rr); ctx2d.arcTo(x,y,x+w,y,rr); ctx2d.closePath(); ctx2d.fill(); }
+function drawCube(x,y,z,col,alpha=1){
+  const p = isoProject(x,y,z), s=CUBE*camera.zoom;
+  const rgba = hexA(col, alpha);
+  fillRectRounded(p.x-s*0.5, p.y-s*0.5, s, s, 4, rgba);
+}
+function drawLine3D(a,b,col, alpha=1){
+  const pa=isoProject(a.x,a.y,a.z), pb=isoProject(b.x,b.y,b.z);
+  ctx2d.strokeStyle = hexA(col, alpha);
+  ctx2d.lineWidth = 2.2*camera.zoom;
+  ctx2d.beginPath(); ctx2d.moveTo(pa.x,pa.y); ctx2d.lineTo(pb.x,pb.y); ctx2d.stroke();
+}
+function hexA(hex, a){
+  const c = hex.startsWith('#')? hex.slice(1):hex; const n = parseInt(c,16);
+  const r=(n>>16)&255,g=(n>>8)&255,b=n&255; return `rgba(${r},${g},${b},${Math.max(0,Math.min(1,a))})`;
+}
+
+/* ========================== WORLD / PATCH ========================== */
 const TYPES={SOURCE_NOISE:'SOURCE_NOISE',SOURCE_STRING:'SOURCE_STRING',SHAPER_FILTER:'SHAPER_FILTER',SHAPER_SHUTTER:'SHAPER_SHUTTER',RESONATOR:'RESONATOR',VCA:'VCA',MIXER:'MIXER',OUTPUT:'OUTPUT',MOD_LFO:'MOD_LFO',MOD_CAM:'MOD_CAM'};
 const AUDIO_TYPES=new Set([TYPES.SOURCE_NOISE,TYPES.SOURCE_STRING,TYPES.SHAPER_FILTER,TYPES.SHAPER_SHUTTER,TYPES.RESONATOR,TYPES.VCA,TYPES.MIXER,TYPES.OUTPUT]);
 const MOD_TYPES=new Set([TYPES.MOD_LFO,TYPES.MOD_CAM]);
 const CHAIN_COLORS=['#ffd37f','#80b2ff','#a8f0a2','#ff9ea1','#d3a2ff','#8ef3ff'];
 
-const N=10, SPACING=28, CUBE=14;
-let camera={ox:0,oy:0,zoom:1.15,drag:false,px:0,py:0};
-function isoProject(x,y,z){const ix=(x-z)*SPACING*0.866,iy=(x+z)*SPACING*0.5-y*SPACING*0.9;return {x:ix*camera.zoom+innerWidth/2+camera.ox,y:iy*camera.zoom+innerHeight/2+camera.oy};}
-
-/* --------------- WORLD STATE --------------- */
 let grid=[], seed=(Math.random()*1e9>>>0), longPath=[];
-let ctx=null, audioGraph=null, activePatch=null, K=3;
+let audioCtx=null, audioGraph=null, activePatch=null, K=3;
 
 const UI={ghost:true,chainsOnly:false,colorChains:true};
 const Params={
@@ -109,7 +127,6 @@ const Params={
   wobbleDepth:0.25,wobbleRate:0.18,envTight:1.0
 };
 
-/* --------------- GRID & SNAKE --------------- */
 function initGrid(seed=1){
   grid = Array.from({length:N},(_,x)=>Array.from({length:N},(_,y)=>Array.from({length:N},(_,z)=>{
     const h=(x*73856093 ^ y*19349663 ^ z*83492791 ^ seed)>>>0, r=h%100;
@@ -156,8 +173,6 @@ function countTurns(seg){
   }
   return turns;
 }
-
-/* --------------- PATCH BUILDER --------------- */
 const SCALES=[
   {name:'Minor pent', ints:[0,3,5,7,10]},
   {name:'Major',      ints:[0,2,4,5,7,9,11]},
@@ -203,187 +218,125 @@ function buildBigPatch(Kchains=3){
   return patches;
 }
 
-/* --------------- AUDIO HELPERS --------------- */
-function mkCtx(){
-  const AC=window.AudioContext||window.webkitAudioContext;
-  if (!AC){ warnOnce('No AudioContext in this browser'); return null; }
-  return safe(()=>new AC(), 'AudioContext');
-}
-function mkGain(c,v=1){const g=c.createGain();g.gain.value=v;return g;}
-function mkBiquad(c,type='lowpass',f=1200,Q=0.7){const b=c.createBiquadFilter();b.type=type;b.frequency.value=f;b.Q.value=Q;return b;}
-function mkNoise(c){const len=c.sampleRate*2|0,buf=c.createBuffer(1,len,c.sampleRate),ch=buf.getChannelData(0);for(let i=0;i<len;i++)ch[i]=Math.random()*2-1;const s=c.createBufferSource();s.buffer=buf;s.loop=true;return s;}
-function mkPanner(c,pan=0){ if (!c.createStereoPanner){ warnOnce('StereoPanner not supported; collapsing to mono'); return {pan:{set value(v){}}, connect:n=>n}; } const p=c.createStereoPanner();p.pan.value=pan;return p;}
-function mkDelayBus(c){
-  const inG=mkGain(c,1),outG=mkGain(c,1);
-  const dlL=c.createDelay(2.0),dlR=c.createDelay(2.0);
-  dlL.delayTime.value=0.27; dlR.delayTime.value=0.34;
+/* ========================== AUDIO ========================== */
+function mkCtx(){ const AC=window.AudioContext||window.webkitAudioContext; return AC? new AC(): null; }
+function mkGain(c,v=1){const g=c.createGain(); g.gain.value=v; return g;}
+function mkBiquad(c,type='lowpass',f=1200,Q=0.7){const b=c.createBiquadFilter(); b.type=type; b.frequency.value=f; b.Q.value=Q; return b;}
+function mkNoise(c){ const len=c.sampleRate*2|0, buf=c.createBuffer(1,len,c.sampleRate), ch=buf.getChannelData(0); for(let i=0;i<len;i++) ch[i]=Math.random()*2-1; const s=c.createBufferSource(); s.buffer=buf; s.loop=true; return s; }
+function mkPanner(c,pan=0){ if(!c.createStereoPanner){ return { connect:n=>n, pan:{ set value(v){} } }; } const p=c.createStereoPanner(); p.pan.value=pan; return p; }
+function mkDelayBus(c){ const inG=mkGain(c,1), outG=mkGain(c,1);
+  const dlL=c.createDelay(2.0), dlR=c.createDelay(2.0); dlL.delayTime.value=0.27; dlR.delayTime.value=0.34;
   const fbL=mkGain(c,0.35), fbR=mkGain(c,0.32);
   const toneL=mkBiquad(c,'lowpass',3500,0.7), toneR=mkBiquad(c,'lowpass',3200,0.7);
-  inG.connect(dlL); inG.connect(dlR);
-  dlL.connect(toneL); toneL.connect(fbL); fbL.connect(dlR);
-  dlR.connect(toneR); toneR.connect(fbR); fbR.connect(dlL);
+  inG.connect(dlL); inG.connect(dlR); dlL.connect(toneL); toneL.connect(fbL); fbL.connect(dlR); dlR.connect(toneR); toneR.connect(fbR); fbR.connect(dlL);
   const wet=mkGain(c,1); toneL.connect(wet); toneR.connect(wet); wet.connect(outG);
-  return {in:inG,out:outG,setMix:(mix)=>{outG.gain.value=mix;}};
+  return {in:inG, out:outG, setMix:(m)=>{ outG.gain.value=m; }};
 }
-function mkEarlyReflections(c){
-  const input=mkGain(c,1), out=mkGain(c,1);
-  [0.011,0.019,0.031].forEach((t,i)=>{const d=c.createDelay(0.1); d.delayTime.value=t; const g=mkGain(c,[0.25,0.18,0.12][i]); input.connect(d); d.connect(g); g.connect(out);});
-  return {in:input,out:out,setMix:(mix)=>{out.gain.value=mix;}};
+function mkEarlyReflections(c){ const input=mkGain(c,1), out=mkGain(c,1);
+  [0.011,0.019,0.031].forEach((t,i)=>{ const d=c.createDelay(0.1); d.delayTime.value=t; const g=mkGain(c,[0.25,0.18,0.12][i]); input.connect(d); d.connect(g); g.connect(out); });
+  return {in:input, out:out, setMix:(m)=>{ out.gain.value=m; }};
 }
-function mkWaveshaper(c,amount=0.2){
-  const sh=c.createWaveShaper();
-  const k=amount*100+1,n=1024,curve=new Float32Array(n);
-  for(let i=0;i<n;i++){const x=i*2/n-1;curve[i]=(1+k)*x/(1+k*Math.abs(x));}
-  sh.curve=curve; sh.oversample='2x'; return sh;
+function mkWaveshaper(c,amount=0.2){ const sh=c.createWaveShaper(), k=amount*100+1, n=1024, curve=new Float32Array(n);
+  for(let i=0;i<n;i++){ const x=i*2/n-1; curve[i]=(1+k)*x/(1+k*Math.abs(x)); } sh.curve=curve; sh.oversample='2x'; return sh;
 }
-function midiToFreq(m){ return 440 * Math.pow(2, (m-69)/12); }
-function makeWowGenerator(seed=1, step=0.6, smooth=0.96){
-  let s = (seed%100)/100 - 0.5;
-  return ()=>{ s = smooth*s + (1-smooth)*((Math.random()-0.5)*2*step); return s; };
-}
+function midiToFreq(m){ return 440*Math.pow(2,(m-69)/12); }
+function makeWowGenerator(seed=1, step=0.6, smooth=0.96){ let s=(seed%100)/100-0.5; return ()=>{ s=smooth*s+(1-smooth)*((Math.random()-0.5)*2*step); return s; }; }
 
-/* --------------- AUDIO REALIZATION --------------- */
 function realizeAudio(patches){
-  if (audioGraph && audioGraph.stop) { audioGraph.stop(); audioGraph=null; }
-  ctx = ctx || mkCtx(); if (!ctx){ console.error('AudioContext creation failed'); return; }
+  if (audioGraph && audioGraph.stop){ audioGraph.stop(); audioGraph=null; }
+  audioCtx = audioCtx || mkCtx(); if(!audioCtx){ alert('Web Audio not supported.'); return; }
 
-  // user gesture guard will be handled by Start button; still log state:
-  if (ctx.state!=='running') console.log('AudioContext state:', ctx.state, '(will resume on Start button)');
-
-  // Master & FX
-  const master=mkGain(ctx, Params.masterVol);
-  const dryBus=mkGain(ctx, 1.0);
-  const preFx=mkGain(ctx, 1.0);
-  const shaper=mkWaveshaper(ctx, Params.drive);
-  const delay=mkDelayBus(ctx);
-  const er=mkEarlyReflections(ctx);
+  const master=mkGain(audioCtx, Params.masterVol);
+  const dryBus=mkGain(audioCtx, 1.0);
+  const preFx=mkGain(audioCtx, 1.0);
+  const shaper=mkWaveshaper(audioCtx, Params.drive);
+  const delay=mkDelayBus(audioCtx);
+  const er=mkEarlyReflections(audioCtx);
 
   dryBus.connect(master);
   preFx.connect(shaper); shaper.connect(master);
   preFx.connect(delay.in); delay.out.connect(master);
   preFx.connect(er.in);   er.out.connect(master);
-  master.connect(ctx.destination);
+  master.connect(audioCtx.destination);
 
-  const chains=[]; const stops=[];
-
+  const chains=[], stops=[];
   patches.forEach((P,i)=>{
     const sType = grid[P.source.x][P.source.y][P.source.z];
-    const pan = mkPanner(ctx, (i%2===0)? -0.35 : 0.35);
+    const pan = mkPanner(audioCtx, (i%2===0)? -0.35 : 0.35);
     const isNoise = (sType===TYPES.SOURCE_NOISE);
 
-    // Sources
-    let srcNode=null, srcGain=mkGain(ctx, isNoise? Params.noiseVol : Params.pitchedVol);
-    if (isNoise){
-      srcNode = mkNoise(ctx); srcNode.connect(srcGain);
-      safe(()=>srcNode.start(), 'noise.start');
-    } else {
-      srcNode = ctx.createOscillator(); srcNode.type=(i%3===0?'triangle':(i%3===1?'sine':'sawtooth')); srcNode.frequency.value=180;
-      srcNode.connect(srcGain); safe(()=>srcNode.start(), 'osc.start');
-    }
+    // Source
+    let srcNode, srcGain=mkGain(audioCtx, isNoise? Params.noiseVol : Params.pitchedVol);
+    if (isNoise){ const nz=mkNoise(audioCtx); nz.connect(srcGain); nz.start(); srcNode=nz; stops.push(()=>{try{nz.stop();}catch{}}); }
+    else { const osc=audioCtx.createOscillator(); osc.type=(i%3===0?'triangle':(i%3===1?'sine':'sawtooth')); osc.frequency.value=180; osc.connect(srcGain); osc.start(); srcNode=osc; stops.push(()=>{try{osc.stop();}catch{}}); }
 
-    // Shapers: LP -> BP -> shutter(AM)
+    // Shapers
     let chain=srcGain;
-    const lp=mkBiquad(ctx,'lowpass', 1600 - i*180, 0.8); chain.connect(lp); chain=lp;
-    const bp=mkBiquad(ctx,'bandpass', 900 + i*140, 5.5); chain.connect(bp); chain=bp;
-
-    const shutter=mkGain(ctx, 0.85);
-    const lfo=ctx.createOscillator(); lfo.type='sine'; lfo.frequency.value = 2.5 + i*0.4;
-    const lfoAmt=mkGain(ctx, Params.lfoDepth); lfo.connect(lfoAmt); lfoAmt.connect(shutter.gain);
-    safe(()=>lfo.start(),'lfo.start');
+    const lp=mkBiquad(audioCtx,'lowpass', 1600 - i*180, 0.8); chain.connect(lp); chain=lp;
+    const bp=mkBiquad(audioCtx,'bandpass', 900 + i*140, 5.5); chain.connect(bp); chain=bp;
+    const shutter=mkGain(audioCtx, 0.85);
+    const lfo=audioCtx.createOscillator(); lfo.type='sine'; lfo.frequency.value = 2.5 + i*0.4;
+    const lfoAmt=mkGain(audioCtx, Params.lfoDepth); lfo.connect(lfoAmt); lfoAmt.connect(shutter.gain); lfo.start();
     chain.connect(shutter); chain=shutter;
 
-    // VCA → pan → buses
-    const vca=mkGain(ctx, 0.10 + 0.05*i);
+    // VCA / routing
+    const vca=mkGain(audioCtx, 0.10 + 0.05*i);
     chain.connect(vca); vca.connect(pan);
     if (pan.connect){ pan.connect(dryBus); pan.connect(preFx); } else { vca.connect(dryBus); vca.connect(preFx); }
 
-    // Wow & Flutter for pitched
-    let wowGen=null, flutOsc=null;
-    if (srcNode && 'frequency' in srcNode){
-      wowGen = makeWowGenerator((seed+i*97)>>>0, 0.6, 0.96);
-      flutOsc=ctx.createOscillator(); flutOsc.type='sine'; flutOsc.frequency.value = Params.flutRate; safe(()=>flutOsc.start(),'flut.start');
-    }
+    // Wow/Flutter
+    let wowGen=null; if (srcNode.frequency){ wowGen = makeWowGenerator((seed+i*97)>>>0, 0.6, 0.96); }
 
-    /* Tempo loop with gear/swing/jitter/ratchet/wobble/env-tight */
-    let step=0, swingPhase=0, cancel=false;
-    const seqLen=8+i;
-
-    // Topology speed: long = slower, more turns = faster
+    // Tempo loop (gear/swing/jitter/ratchet/wobble/env)
+    let step=0, swingPhase=0, cancel=false; const seqLen=8+i;
     const topoSpeed = 0.8 + Math.min(0.6, P.topo.turns/50);
     const lengthBrake = 1.0 + Math.min(0.7, P.topo.length/300);
     const baseMsTopo = Math.max(90, (260 - i*18)) * (lengthBrake / topoSpeed);
-
-    // Gear spread
-    const gearPos = ((i % 5) - 2) / 2;
-    const gear = Math.max(0.35, 1 + gearPos * Params.gearSpread);
+    const gearPos = ((i % 5) - 2) / 2; const gear = Math.max(0.35, 1 + gearPos * Params.gearSpread);
 
     const ints = P.topo.scale.ints, root = P.topo.rootMidi, octSpan = P.topo.octaveSpan;
-    function pickNote(step){
-      const r = (Math.sin((i+1)*31.7*step)+1)/2;
-      const deg = ints[Math.floor(r*ints.length)] || 0;
-      const oct = Math.floor(r*octSpan);
-      return root + deg + 12*oct;
-    }
+    function pickNote(step){ const r=(Math.sin((i+1)*31.7*step)+1)/2; const deg=ints[Math.floor(r*ints.length)]||0; const oct=Math.floor(r*octSpan); return root+deg+12*oct; }
 
     function doHit(light=false){
-      const t=ctx.currentTime;
-      if (srcNode && 'frequency' in srcNode){
-        const midi = pickNote(step);
-        const baseF = midiToFreq(midi);
+      const t=audioCtx.currentTime;
+      if (srcNode.frequency){
+        const midi = pickNote(step), baseF = midiToFreq(midi);
         const wowC = Params.wowCents * (wowGen? wowGen(): 0);
-        const flut = flutOsc ? Math.sin(2*Math.PI*Params.flutRate*t) : 0;
-        const flutC = Params.flutCents * flut;
+        const flut = Math.sin(2*Math.PI*Params.flutRate*t), flutC = Params.flutCents * flut;
         const f = baseF * Math.pow(2, (wowC+flutC)/1200);
-        try{ srcNode.frequency.setTargetAtTime(f, t, 0.03);}catch(e){console.warn('freq set failed', e);}
-
-        const tight = Math.max(0.25, Math.min(2.0, Params.envTight));
-        const atkT = 0.01/tight;
-        const decDelay = (light? 0.10 : 0.18)/tight;
-        const decT = (light? 0.09 : 0.12)/tight;
+        try{ srcNode.frequency.setTargetAtTime(f, t, 0.03);}catch{}
+        const tight=Math.max(0.25,Math.min(2.0,Params.envTight));
+        const atkT=0.01/tight, decDelay=(light?0.10:0.18)/tight, decT=(light?0.09:0.12)/tight;
         vca.gain.cancelScheduledValues(t);
         vca.gain.setTargetAtTime(light?0.22:0.32, t, atkT);
-        vca.gain.setTargetAtTime(0.10 + 0.05*i, t+decDelay, decT);
+        vca.gain.setTargetAtTime(0.10+0.05*i, t+decDelay, decT);
       } else {
-        const tight = Math.max(0.25, Math.min(2.0, Params.envTight));
-        const atkT = 0.01/tight;
-        const decDelay = (light? 0.08 : 0.12)/tight;
+        const tight=Math.max(0.25,Math.min(2.0,Params.envTight));
+        const atkT=0.01/tight, decDelay=(light?0.08:0.12)/tight;
         vca.gain.cancelScheduledValues(t);
         vca.gain.setValueAtTime(vca.gain.value, t);
         vca.gain.linearRampToValueAtTime(light?0.35:0.48, t+atkT);
-        vca.gain.linearRampToValueAtTime(0.10 + 0.05*i, t+decDelay);
+        vca.gain.linearRampToValueAtTime(0.10+0.05*i, t+decDelay);
         bp.frequency.setTargetAtTime(1200+Math.random()*800, t, 0.02);
       }
     }
-
     function swingFactor(){ return Math.max(0.2, (swingPhase++ % 2 === 0) ? (1 + Params.swingAmt) : (1 - Params.swingAmt)); }
     function jitter(ms){ const j=(Math.random()*2-1)*Params.jitterPct*ms; return Math.max(25, ms+j); }
     function wobble(t){ return 1.0 + Params.wobbleDepth * Math.sin(2*Math.PI*Params.wobbleRate*t); }
-
     (function loop(){
       if (cancel) return;
       step=(step+1)%seqLen;
-
       const willHit = (Math.random() <= Params.hitProb);
       const doRatchet = willHit && (Math.random() < Params.ratchetProb);
-      if (doRatchet){
-        const n = (Math.random()<0.5?2:3);
-        const gap = 42;
-        for (let r=0;r<n;r++) setTimeout(()=>doHit(r>0), r*gap);
-      } else if (willHit){ doHit(false); }
-
-      const tNow = performance.now()/1000;
-      let ms = baseMsTopo / (gear * wobble(tNow));
-      ms *= swingFactor();
-      ms = jitter(ms);
-
+      if (doRatchet){ const n=(Math.random()<0.5?2:3), gap=42; for(let r=0;r<n;r++) setTimeout(()=>doHit(r>0), r*gap); }
+      else if (willHit){ doHit(false); }
+      let ms = baseMsTopo / (gear * wobble(performance.now()/1000)); ms *= swingFactor(); ms = jitter(ms);
       setTimeout(loop, ms);
     })();
 
-    // stop handles
-    stops.push(()=>{ try{cancel=true;}catch{} });
-    if (lfo)   stops.push(()=>{ try{lfo.stop();}catch{} });
-    if (flutOsc) stops.push(()=>{ try{flutOsc.stop();}catch{} });
-    if (srcNode && srcNode.stop) stops.push(()=>{ try{srcNode.stop();}catch{} });
+    stops.push(()=>{ cancel=true; });
+    stops.push(()=>{ try{lfo.stop();}catch{} });
+    if (srcNode.stop) stops.push(()=>{ try{srcNode.stop();}catch{} });
 
     chains.push({srcNode, srcGain, vca, lp, bp, pan, isNoise});
   });
@@ -393,15 +346,14 @@ function realizeAudio(patches){
     stop(){ try{master.disconnect();}catch{} }
   };
   applyParams();
-  console.log('Audio graph initialized:', {chains: audioGraph.chains.length});
 }
 
-/* --------------- PARAM UPDATES --------------- */
+/* Param updates */
 function applyParams(){
-  if (!audioGraph || !ctx) return;
-  const now=ctx.currentTime;
+  if (!audioGraph || !audioCtx) return;
+  const now=audioCtx.currentTime;
   try{ audioGraph.master.gain.setTargetAtTime(Params.masterVol, now, 0.05); }catch{}
-  try{ audioGraph.shaper.curve = mkWaveshaper(ctx, Params.drive).curve; }catch{}
+  try{ audioGraph.shaper.curve = mkWaveshaper(audioCtx, Params.drive).curve; }catch{}
   try{ audioGraph.delay.setMix(Params.delayMix); }catch{}
   try{ audioGraph.er.setMix(Params.erMix); }catch{}
   audioGraph.chains.forEach(ch=>{
@@ -410,79 +362,60 @@ function applyParams(){
   });
 }
 
-/* --------------- VISUALS (p5 optional) --------------- */
-function haveP5(){ return window.__P5_LOADED__ && typeof window.createCanvas==='function'; }
+/* ========================== RENDER LOOP ========================== */
+function render(){
+  ctx2d.fillStyle = '#0b0e14'; ctx2d.fillRect(0,0,canvas.width,canvas.height);
+  if (!activePatch){ requestAnimationFrame(render); return; }
 
-if (haveP5()){
-  let cnv;
-  function setup(){ cnv=createCanvas(innerWidth, innerHeight); pixelDensity(window.devicePixelRatio||1); }
-  function windowResized(){ resizeCanvas(innerWidth, innerHeight); }
-  function drawCube(x,y,z,col,alpha=1){
-    const p=isoProject(x,y,z), s=CUBE*camera.zoom; const c=color(col); c.setAlpha(255*alpha);
-    noStroke(); fill(c); rect(p.x-s*0.5,p.y-s*0.5,s,s,4);
-  }
-  function drawLine3D(a,b,col,alpha=1){
-    const pa=isoProject(a.x,a.y,a.z), pb=isoProject(b.x,b.y,b.z); const c=color(col); c.setAlpha(255*alpha);
-    stroke(c); strokeWeight(2.2*camera.zoom); line(pa.x,pa.y,pb.x,pb.y);
-  }
-  window.setup=setup; window.windowResized=windowResized;
-
-  window.draw=function(){
-    background('#0b0e14');
-    if (!activePatch){ return; }
-    if (UI && !UI.chainsOnly){
-      for (let y=0;y<N;y++){
-        for (let x=0;x<N;x++){
-          for (let z=0;z<N;z++){
-            if ((x+y+z)%2) continue;
-            const t=grid[x][y][z];
-            let c='#131b2a'; if (AUDIO_TYPES.has(t)) c='#162138'; else if (MOD_TYPES.has(t)) c='#182532';
-            drawCube(x-N/2,y-N/2,z-N/2,c, UI.ghost?0.25:0.55);
-          }
+  if (!UI.chainsOnly){
+    for (let y=0;y<N;y++){
+      for (let x=0;x<N;x++){
+        for (let z=0;z<N;z++){
+          if ((x+y+z)%2) continue;
+          const t=grid[x][y][z];
+          let c='#131b2a'; if (AUDIO_TYPES.has(t)) c='#162138'; else if (MOD_TYPES.has(t)) c='#182532';
+          drawCube(x-N/2,y-N/2,z-N/2,c, UI.ghost?0.25:0.55);
         }
       }
     }
-    activePatch.forEach((P,idx)=>{
-      const col=UI.colorChains? P.color : '#ffd37f';
-      const AP=P.audioPath;
-      for(let i=1;i<AP.length;i++){
-        const a=AP[i-1], b=AP[i];
-        drawLine3D({x:a.x-N/2,y:a.y-N/2,z:a.z-N/2},{x:b.x-N/2,y:b.y-N/2,z:b.z-N/2},col,1.0);
-      }
-      P.modLines.forEach(path=>{
-        for(let i=1;i<path.length;i++){
-          const a=path[i-1], b=path[i];
-          drawLine3D({x:a.x-N/2,y:a.y-N/2,z:a.z-N/2},{x:b.x-N/2,y:b.y-N/2,z:b.z-N/2},'#a8f0a2',0.9);
-        }
-      });
-      drawCube(P.source.x-N/2,P.source.y-N/2,P.source.z-N/2,col,0.9);
-      P.shapers.forEach(s=>drawCube(s.x-N/2,s.y-N/2,s.z-N/2,col,0.8));
-      drawCube(P.vca.x-N/2,P.vca.y-N/2,P.vca.z-N/2,col,0.95);
-      drawCube(P.mixer.x-N/2,P.mixer.y-N/2,P.mixer.z-N/2,col,0.95);
-      drawCube(P.output.x-N/2,P.output.y-N/2,P.output.z-N/2,col,1.0);
-    });
-  };
+  }
 
-  // mouse interactions
-  window.mousePressed=()=>{ camera.drag=true; camera.px=mouseX; camera.py=mouseY; };
-  window.mouseReleased=()=>{ camera.drag=false; };
-  window.mouseDragged=()=>{ if(camera.drag){ camera.ox += (mouseX-camera.px); camera.oy += (mouseY-camera.py); camera.px=mouseX; camera.py=mouseY; } };
-  window.mouseWheel=(e)=>{ const k=1 + (-e.deltaY*0.001); camera.zoom=Math.max(0.35,Math.min(2.5,camera.zoom*k)); return false; };
-} else {
-  console.warn('p5 visuals disabled (CDN blocked or offline). Audio can still play.');
+  activePatch.forEach((P,idx)=>{
+    const col=UI.colorChains? P.color : '#ffd37f';
+    const AP=P.audioPath;
+    for(let i=1;i<AP.length;i++){
+      const a=AP[i-1], b=AP[i];
+      drawLine3D({x:a.x-N/2,y:a.y-N/2,z:a.z-N/2},{x:b.x-N/2,y:b.y-N/2,z:b.z-N/2},col,1.0);
+    }
+    P.modLines.forEach(path=>{
+      for(let i=1;i<path.length;i++){
+        const a=path[i-1], b=path[i];
+        drawLine3D({x:a.x-N/2,y:a.y-N/2,z:a.z-N/2},{x:b.x-N/2,y:b.y-N/2,z:b.z-N/2},'#a8f0a2',0.9);
+      }
+    });
+    drawCube(P.source.x-N/2,P.source.y-N/2,P.source.z-N/2,col,0.9);
+    P.shapers.forEach(s=>drawCube(s.x-N/2,s.y-N/2,s.z-N/2,col,0.8));
+    drawCube(P.vca.x-N/2,P.vca.y-N/2,P.vca.z-N/2,col,0.95);
+    drawCube(P.mixer.x-N/2,P.mixer.y-N/2,P.mixer.z-N/2,col,0.95);
+    drawCube(P.output.x-N/2,P.output.y-N/2,P.output.z-N/2,col,1.0);
+  });
+
+  requestAnimationFrame(render);
 }
 
-/* --------------- APP FLOW --------------- */
+/* ========================== BOOT ========================== */
 function reseed(){
   initGrid(seed); longPath=buildSnakePath(); activePatch=buildBigPatch(K);
-  if (ctx){ realizeAudio(activePatch); }
+  if (audioCtx){ realizeAudio(activePatch); }
 }
-(function bootstrap(){
-  initGrid(seed); longPath=buildSnakePath(); activePatch=buildBigPatch(K);
-})();
+(function bootstrap(){ initGrid(seed); longPath=buildSnakePath(); activePatch=buildBigPatch(K); requestAnimationFrame(render); })();
 
-/* --------------- UI BINDINGS --------------- */
-function bindSlider(id,prop,outId,fmt=(v)=>(+v).toFixed(2)){const el=document.getElementById(id),out=document.getElementById(outId);if(!el||!out){console.error('Missing UI element',id);return;}out.textContent=fmt(el.value);el.addEventListener('input',()=>{Params[prop]=+(el.value);out.textContent=fmt(el.value);applyParams();});}
+/* ========================== UI BINDINGS ========================== */
+function bindSlider(id,prop,outId,fmt=(v)=>(+v).toFixed(2)){
+  const el=document.getElementById(id), out=document.getElementById(outId);
+  out.textContent=fmt(el.value);
+  el.addEventListener('input', ()=>{ Params[prop]=+(el.value); out.textContent=fmt(el.value); applyParams(); });
+}
 bindSlider('masterVol','masterVol','masterVolV');
 bindSlider('pitchedVol','pitchedVol','pitchedVolV');
 bindSlider('noiseVol','noiseVol','noiseVolV');
@@ -492,9 +425,9 @@ bindSlider('delayMix','delayMix','delayMixV');
 bindSlider('drive','drive','driveV');
 bindSlider('erMix','erMix','erMixV');
 bindSlider('hitProb','hitProb','hitProbV');
-bindSlider('wowCents','wowCents','wowCentsV',(v)=>Math.round(v));
-bindSlider('flutCents','flutCents','flutCentsV',(v)=>Math.round(v));
-bindSlider('flutRate','flutRate','flutRateV',(v)=>(+v).toFixed(1));
+bindSlider('wowCents','wowCents','wowCentsV',v=>Math.round(v));
+bindSlider('flutCents','flutCents','flutCentsV',v=>Math.round(v));
+bindSlider('flutRate','flutRate','flutRateV',v=>(+v).toFixed(1));
 bindSlider('gearSpread','gearSpread','gearSpreadV');
 bindSlider('swingAmt','swingAmt','swingAmtV');
 bindSlider('jitterPct','jitterPct','jitterPctV');
@@ -508,24 +441,19 @@ document.getElementById('chainsOnly').addEventListener('change',e=>UI.chainsOnly
 document.getElementById('colorChains').addEventListener('change',e=>UI.colorChains=e.target.checked);
 
 document.getElementById('start').onclick = async ()=>{
-  try{
-    if (!ctx){ ctx = mkCtx(); if(!ctx){ alert('Web Audio not supported in this browser.'); return; } }
-    if (ctx.state!=='running'){ await ctx.resume(); }
-    if (!audioGraph){ realizeAudio(activePatch); document.getElementById('start').textContent='Stop Audio'; return; }
-    audioGraph.stop(); audioGraph=null; try{ctx.close();}catch{} ctx=null; document.getElementById('start').textContent='Start Audio';
-  }catch(e){
-    console.error('Start/Stop error', e);
-    alert('Audio init error. See console for details.');
-  }
+  if (!audioCtx){ audioCtx = mkCtx(); if(!audioCtx){ alert('Web Audio not supported.'); return; } }
+  if (audioCtx.state!=='running'){ try{ await audioCtx.resume(); }catch{} }
+  if (!audioGraph){ realizeAudio(activePatch); document.getElementById('start').textContent='Stop Audio'; return; }
+  audioGraph.stop(); audioGraph=null; try{audioCtx.close();}catch{} audioCtx=null; document.getElementById('start').textContent='Start Audio';
 };
 document.getElementById('reroute').onclick = ()=>{
   seed = (seed*1664525 + 1013904223)>>>0; K = +document.getElementById('kchains').value; reseed();
 };
 document.getElementById('kchains').addEventListener('input', e=>{ K = +e.target.value; reseed(); });
 
-window.addEventListener('keydown',(e)=>{
-  if(e.code==='Space'){ e.preventDefault(); document.getElementById('start').click(); }
-  if(e.key==='r'||e.key==='R'){ document.getElementById('reroute').click(); }
+addEventListener('keydown', e=>{
+  if (e.code==='Space'){ e.preventDefault(); document.getElementById('start').click(); }
+  if (e.key==='r' || e.key==='R'){ document.getElementById('reroute').click(); }
 });
 </script>
 </body>
