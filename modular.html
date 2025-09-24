@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Mechanical Modular (Legacy p5.sound – Fixed)</title>
+<title>Mechanical Modular (Legacy p5.sound – No Filter)</title>
 
-<!-- Legacy p5 + p5.sound that work from file:// -->
+<!-- Works from file:// -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.3.2/addons/p5.sound.min.js"></script>
 
@@ -103,7 +103,7 @@
 </div>
 
 <script>
-let noise, stringOsc, stringEnv, outFilter, started=false;
+let noise, stringOsc, stringEnv, started=false;
 
 const State = {
   camBaseHz: 2.0,
@@ -120,25 +120,20 @@ const State = {
 };
 
 function setupAudio(){
-  // Filter first (legacy API: no ctor arg; use setType)
-  outFilter = new p5.Filter();
-  outFilter.setType('lowpass');
-  outFilter.freq(14000);
-  outFilter.res(0.2);
-  outFilter.amp(0.9); // overall level
+  noise = new p5.Noise('white');
+  noise.start();
+  noise.amp(0);   // automated in step loop
 
-  // Sources → filter
-  noise = new p5.Noise('white'); noise.start(); noise.amp(0);
-  outFilter.process(noise);
-
-  stringOsc = new p5.Oscillator('triangle'); stringOsc.freq(State.stringHz); stringOsc.start(); stringOsc.amp(0);
-  outFilter.process(stringOsc);
+  stringOsc = new p5.Oscillator('triangle');
+  stringOsc.freq(State.stringHz);
+  stringOsc.start();
+  stringOsc.amp(0); // automated in step loop
 
   stringEnv = new p5.Envelope(0.005, 0.8, 0.15, 0.0);
 }
 
 function audioOn(){ if(!started){ setupAudio(); started=true; } }
-function audioOff(){ if(outFilter){ outFilter.amp(0, 0.2); } started=false; }
+function audioOff(){ started=false; /* ramps handled in loop */ }
 
 function pendulumHz(len){ const k=1.1; return k / Math.sqrt(Math.max(0.2, len)); }
 
@@ -160,21 +155,21 @@ function stepMechanical(dt){
   const shutter = 1.0 - State.shutterDepth * (0.4 + 0.6*gateC);
   const vcaBase=0.85, vcaMod=1.0-State.pendAmt*pend, vcaLevel=constrain(vcaBase*vcaMod,0,1);
 
-  const noiseLevel = 0.3 * (0.4 + 0.6*gateA);
+  // final output levels (kept conservative to avoid clipping)
+  const noiseLevel = 0.25 * (0.4 + 0.6*gateA);
   noise.amp(noiseLevel * shutter * vcaLevel, 0.02);
 
   stringOsc.freq(State.stringHz);
   if(!stepMechanical.lastB) stepMechanical.lastB=0;
   const prev=stepMechanical.lastB; stepMechanical.lastB=gateB;
-  if(prev<0.15 && gateB>=0.15){ stringEnv.setRange(0.8,0.0); stringEnv.play(stringOsc); }
-  const stringBed=0.15;
+  if(prev<0.15 && gateB>=0.15){ stringEnv.setRange(0.7,0.0); stringEnv.play(stringOsc); }
+  const stringBed=0.12;
   stringOsc.amp(stringBed * shutter * vcaLevel, 0.02);
 }
 
 function bindUI(){
   const aBtn=document.getElementById('audioBtn');
   aBtn.onclick=()=>{ if(!started){ audioOn(); aBtn.textContent='Stop Audio'; } else { audioOff(); aBtn.textContent='Start Audio'; } };
-
   document.getElementById('patch1').onclick=loadPatch1;
   document.getElementById('patch2').onclick=loadPatch2;
   document.getElementById('patch3').onclick=loadPatch3;
@@ -225,7 +220,7 @@ function draw(){
   link(M.cams.x+M.cams.w/2+10, M.cams.y, M.string.x+M.string.w*0.4, M.string.y+M.string.h+8,'#ffd37f');
   link(M.cams.x+M.cams.w-20, M.cams.y, M.shutter.x+M.shutter.w*0.3, M.shutter.y-8,'#ffd37f');
 
-  // simple cam visuals
+  // cam visuals
   stroke('#ffb794'); strokeWeight(4); noFill();
   const cA={x:M.cams.x+60,y:M.cams.y+55,r:24};
   const cB={x:M.cams.x+110,y:M.cams.y+55,r:24};
@@ -250,9 +245,7 @@ function draw(){
   const dt=deltaTime/1000;
   if(started) stepMechanical(dt);
 }
-
 window.addEventListener('load', ()=>{ bindUI(); });
 </script>
 </body>
 </html>
-
