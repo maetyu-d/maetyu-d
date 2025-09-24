@@ -3,16 +3,16 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Isometric Mechanical Modular — Prob + Wow/Flutter + Topology Pitches</title>
+<title>Isometric Mechanical Modular — Tempo Tools</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js"></script>
 <style>
   :root{--bg:#0c0f14; --panel:#141824; --ink:#e6eefc; --muted:#98a7c6; --accent:#80b2ff;}
   html,body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,Segoe UI,Helvetica,Arial}
-  .ui{position:fixed;inset:auto 12px 12px auto;background:var(--panel);border:1px solid #21283a;border-radius:12px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.35);max-width:760px}
+  .ui{position:fixed;inset:auto 12px 12px auto;background:var(--panel);border:1px solid #21283a;border-radius:12px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.35);max-width:840px}
   .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
   .btn{background:#1b2131;border:1px solid #2a3550;color:var(--ink);border-radius:10px;padding:10px 12px;cursor:pointer}
   .btn:focus{outline:2px solid var(--accent);outline-offset:2px}
-  .label{font-size:12px;color:var(--muted);min-width:110px}
+  .label{font-size:12px;color:var(--muted);min-width:120px}
   .slider{display:flex;align-items:center;gap:8px}
   input[type=range]{width:180px}
   .sep{height:1px;background:#232b3f;margin:10px 0}
@@ -30,21 +30,23 @@
     <label><input type="checkbox" id="colorChains" checked> Color chains</label>
   </div>
 
+  <!-- Mix / modulation -->
   <div class="row">
     <div class="slider"><span class="label">Master</span><input id="masterVol" type="range" min="0" max="1" step="0.01" value="0.9"><span id="masterVolV" class="tiny">0.90</span></div>
     <div class="slider"><span class="label">Pitched</span><input id="pitchedVol" type="range" min="0" max="1" step="0.01" value="0.35"><span id="pitchedVolV" class="tiny">0.35</span></div>
     <div class="slider"><span class="label">Noise</span><input id="noiseVol" type="range" min="0" max="1" step="0.01" value="0.45"><span id="noiseVolV" class="tiny">0.45</span></div>
     <div class="slider"><span class="label">LFO depth</span><input id="lfoDepth" type="range" min="0" max="0.6" step="0.01" value="0.18"><span id="lfoDepthV" class="tiny">0.18</span></div>
     <div class="slider"><span class="label">Cam depth</span><input id="camDepth" type="range" min="0" max="0.6" step="0.01" value="0.22"><span id="camDepthV" class="tiny">0.22</span></div>
+    <div class="slider"><span class="label">Hit Prob</span><input id="hitProb" type="range" min="0" max="1" step="0.01" value="0.75"><span id="hitProbV" class="tiny">0.75</span></div>
   </div>
 
   <div class="row">
     <div class="slider"><span class="label">Delay mix</span><input id="delayMix" type="range" min="0" max="1" step="0.01" value="0.25"><span id="delayMixV" class="tiny">0.25</span></div>
     <div class="slider"><span class="label">Drive</span><input id="drive" type="range" min="0" max="1" step="0.01" value="0.15"><span id="driveV" class="tiny">0.15</span></div>
     <div class="slider"><span class="label">ER mix</span><input id="erMix" type="range" min="0" max="1" step="0.01" value="0.18"><span id="erMixV" class="tiny">0.18</span></div>
-    <div class="slider"><span class="label">Hit Prob</span><input id="hitProb" type="range" min="0" max="1" step="0.01" value="0.75"><span id="hitProbV" class="tiny">0.75</span></div>
   </div>
 
+  <!-- Pitch drift -->
   <div class="row">
     <div class="slider"><span class="label">Wow (¢)</span><input id="wowCents" type="range" min="0" max="40" step="1" value="10"><span id="wowCentsV" class="tiny">10</span></div>
     <div class="slider"><span class="label">Flutter (¢)</span><input id="flutCents" type="range" min="0" max="20" step="1" value="4"><span id="flutCentsV" class="tiny">4</span></div>
@@ -52,9 +54,23 @@
   </div>
 
   <div class="sep"></div>
+
+  <!-- ⏱️ Tempo tools (no master clock) -->
+  <div class="row">
+    <div class="slider"><span class="label">Gear spread</span><input id="gearSpread" type="range" min="0" max="1.8" step="0.01" value="1.2"><span id="gearSpreadV" class="tiny">1.20</span></div>
+    <div class="slider"><span class="label">Swing</span><input id="swingAmt" type="range" min="0" max="0.3" step="0.01" value="0.16"><span id="swingAmtV" class="tiny">0.16</span></div>
+    <div class="slider"><span class="label">Jitter</span><input id="jitterPct" type="range" min="0" max="0.2" step="0.005" value="0.10"><span id="jitterPctV" class="tiny">0.10</span></div>
+    <div class="slider"><span class="label">Ratcheting</span><input id="ratchetProb" type="range" min="0" max="0.5" step="0.01" value="0.22"><span id="ratchetProbV" class="tiny">0.22</span></div>
+  </div>
+  <div class="row">
+    <div class="slider"><span class="label">Tempo wobble</span><input id="wobbleDepth" type="range" min="0" max="0.6" step="0.01" value="0.25"><span id="wobbleDepthV" class="tiny">0.25</span></div>
+    <div class="slider"><span class="label">Wobble rate (Hz)</span><input id="wobbleRate" type="range" min="0.03" max="0.8" step="0.01" value="0.18"><span id="wobbleRateV" class="tiny">0.18</span></div>
+    <div class="slider"><span class="label">Env tightness</span><input id="envTight" type="range" min="0.5" max="1.5" step="0.01" value="1.0"><span id="envTightV" class="tiny">1.00</span></div>
+  </div>
+
+  <div class="sep"></div>
   <div class="tiny">
-    Gold = audio, Mint = modulation. Chains are colorized; <b>Hit Prob</b> gates cam events; <b>Wow/Flutter</b> add mechanical pitch drift.  
-    Pitches are derived from each chain’s path length & turn complexity (topology → music).
+    Tempo shaping is distributed: chains get **gears**, **swing**, **jitter**, **ratchets**, **tempo wobble**, and **envelope tightness**—no global BPM.
   </div>
 </div>
 
@@ -77,7 +93,10 @@ const UI={ghost:true,chainsOnly:false,colorChains:true};
 const Params={
   masterVol:0.9,pitchedVol:0.35,noiseVol:0.45,lfoDepth:0.18,camDepth:0.22,
   delayMix:0.25,drive:0.15,erMix:0.18,hitProb:0.75,
-  wowCents:10,flutCents:4,flutRate:6
+  wowCents:10,flutCents:4,flutRate:6,
+  // tempo tools
+  gearSpread:1.2, swingAmt:0.16, jitterPct:0.10, ratchetProb:0.22,
+  wobbleDepth:0.25, wobbleRate:0.18, envTight:1.0
 };
 
 /* ===== Grid & snake ===== */
@@ -117,8 +136,6 @@ function pathBetween(a,b){
   while(p.z!==b.z) step('z', p.z<b.z?1:-1);
   return path;
 }
-
-/* count turns in a segment (complexity) */
 function countTurns(seg){
   let turns=0;
   for(let i=2;i<seg.length;i++){
@@ -130,8 +147,8 @@ function countTurns(seg){
   return turns;
 }
 
-/* ===== Patch builder with topology → music mapping ===== */
-const SCALES = [
+/* ===== Patch builder (topology → music) ===== */
+const SCALES=[
   {name:'Minor pent', ints:[0,3,5,7,10]},
   {name:'Major',      ints:[0,2,4,5,7,9,11]},
   {name:'Blues',      ints:[0,3,5,6,7,10]},
@@ -139,7 +156,6 @@ const SCALES = [
   {name:'Major pent', ints:[0,2,4,7,9]},
   {name:'Dorian',     ints:[0,2,3,5,7,9,10]}
 ];
-
 function buildBigPatch(Kchains=3){
   const L=longPath.length, segLen=Math.floor(L/(Kchains+0.5)), patches=[];
   for(let k=0;k<Kchains;k++){
@@ -158,14 +174,11 @@ function buildBigPatch(Kchains=3){
     const LFO=nearMod(V,TYPES.MOD_LFO)||seg[Math.max(1,Math.floor(seg.length*0.6))]; grid[LFO.x][LFO.y][LFO.z]=TYPES.MOD_LFO;
     const CAM=nearMod(F,TYPES.MOD_CAM)||seg[Math.max(1,Math.floor(seg.length*0.4))]; grid[CAM.x][CAM.y][CAM.z]=TYPES.MOD_CAM;
 
-    // topology → music mapping
-    const length = seg.length;               // ~ big
-    const turns  = countTurns(seg);          // complexity
-    const scale  = SCALES[(turns % SCALES.length)]; // pick scale by complexity
-    // map length to base register: 36..76 (C2..E5)
-    const rootMidi = Math.floor(36 + (length/(N*N*1.2)) * 40); // longer → higher
-    // range (octaves) derived from complexity
-    const octaveSpan = 1 + Math.min(3, Math.floor(turns/30));  // more turns → wider range
+    const length = seg.length;
+    const turns  = countTurns(seg);
+    const scale  = SCALES[(turns % SCALES.length)];
+    const rootMidi = Math.floor(36 + (length/(N*N*1.2)) * 40);
+    const octaveSpan = 1 + Math.min(3, Math.floor(turns/30));
 
     patches.push({
       color:CHAIN_COLORS[k%CHAIN_COLORS.length],
@@ -188,245 +201,7 @@ function mkEarlyReflections(c){const input=mkGain(c,1),out=mkGain(c,1);[0.011,0.
 function mkWaveshaper(c,amount=0.2){const sh=c.createWaveShaper();const k=amount*100+1,n=1024,curve=new Float32Array(n);for(let i=0;i<n;i++){const x=i*2/n-1;curve[i]=(1+k)*x/(1+k*Math.abs(x));}sh.curve=curve;sh.oversample='2x';return sh;}
 function scaleFreq(baseHz, semi){ return baseHz * Math.pow(2, semi/12); }
 function midiToFreq(m){ return 440 * Math.pow(2, (m-69)/12); }
-
-/* random-walk lowpass for wow (returns function(time)->cents) */
-function makeWowGenerator(seed=1, step=0.4, smooth=0.93){
-  let s = (seed%100)/100 - 0.5; // state
-  return ()=>{ s = smooth*s + (1-smooth)*((Math.random()-0.5)*2*step); return s*100; /* approx spread */ };
-}
-
-/* ===== Build audio with probability + wow/flutter ===== */
-function realizeAudio(patches){
-  if (audioGraph && audioGraph.stop) audioGraph.stop();
-  ctx = ctx || mkCtx();
-
-  // Master & FX
-  const master=mkGain(ctx, Params.masterVol);
-  const dryBus=mkGain(ctx, 1.0);
-  const preFx=mkGain(ctx, 1.0);
-  const shaper=mkWaveshaper(ctx, Params.drive);
-  const delay=mkDelayBus(ctx);
-  const er=mkEarlyReflections(ctx);
-
-  dryBus.connect(master);
-  preFx.connect(shaper); shaper.connect(master);
-  preFx.connect(delay.in); delay.out.connect(master);
-  preFx.connect(er.in);   er.out.connect(master);
-  master.connect(ctx.destination);
-
-  const chains=[], stops=[];
-  patches.forEach((P,i)=>{
-    const sType = grid[P.source.x][P.source.y][P.source.z];
-    const pan = mkPanner(ctx, (i%2===0)? -0.35 : 0.35);
-    const isNoise = (sType===TYPES.SOURCE_NOISE);
-
-    // Source
-    let srcNode, srcGain=mkGain(ctx, isNoise? Params.noiseVol : Params.pitchedVol);
-    if (isNoise){ const nz=mkNoise(ctx); nz.connect(srcGain); nz.start(); srcNode=nz; stops.push(()=>{try{nz.stop();}catch{}}); }
-    else { const osc=ctx.createOscillator(); osc.type=(i%3===0?'triangle':(i%3===1?'sine':'sawtooth')); osc.frequency.value=180; osc.connect(srcGain); osc.start(); srcNode=osc; stops.push(()=>{try{osc.stop();}catch{}}); }
-
-    // Shapers: LP -> BP -> shutter(AM)
-    let chain=srcGain;
-    const lp=mkBiquad(ctx,'lowpass', 1600 - i*180, 0.8); chain.connect(lp); chain=lp;
-    const bp=mkBiquad(ctx,'bandpass', 900 + i*140, 5.5); chain.connect(bp); chain=bp;
-
-    const shutter=mkGain(ctx, 0.85);
-    const lfo=ctx.createOscillator(); lfo.type='sine'; lfo.frequency.value = 2.5 + i*0.4;
-    const lfoAmt=mkGain(ctx, Params.lfoDepth); lfo.connect(lfoAmt); lfoAmt.connect(shutter.gain); lfo.start(); stops.push(()=>{try{lfo.stop();}catch{}});
-    chain.connect(shutter); chain=shutter;
-
-    // VCA → pan → buses
-    const vca=mkGain(ctx, 0.10 + 0.05*i);
-    chain.connect(vca); vca.connect(pan);
-    pan.connect(dryBus); pan.connect(preFx);
-
-    // Wow/flutter for pitched
-    let wowGen=null, flutOsc=null, flutAmt=null;
-    if (srcNode.frequency){
-      wowGen = makeWowGenerator( (seed+i*97)>>>0, 0.6, 0.95 ); // slow drift source
-      flutOsc=ctx.createOscillator(); flutOsc.type='sine'; flutOsc.frequency.value = Params.flutRate;
-      flutAmt=mkGain(ctx, Params.flutCents/100); // cents → semitone fraction
-      flutOsc.connect(flutAmt);
-      // apply pitch mod by periodically recomputing freq target (see below)
-      flutOsc.start(); stops.push(()=>{try{flutOsc.stop();}catch{}});
-    }
-
-    // CAM & probability
-    let step=0;
-    const seqLen=8+i;
-    const baseRoot = P.topo.rootMidi;                      // from topology
-    const ints     = P.topo.scale.ints;                    // chosen scale
-    const octSpan  = P.topo.octaveSpan;                    // range
-    function pickNote(step){
-      // deterministic pseudo-rand per step for variety but stable over time
-      const r = (Math.sin((i+1)*31.7*step)+1)/2;
-      const degree = ints[Math.floor(r*ints.length)] || 0;
-      const octave = Math.floor(r*octSpan);
-      return baseRoot + degree + 12*octave;
-    }
-
-    const camTick = setInterval(()=>{
-      step=(step+1)%seqLen;
-      if (Math.random() > Params.hitProb) return; // probability gate
-
-      const t=ctx.currentTime;
-
-      if (srcNode.frequency){
-        // choose note by topology mapping
-        const midi = pickNote(step);
-        const baseF = midiToFreq(midi);
-
-        // compute wow (slow random walk in cents) + flutter (fast cents)
-        const wowC = Params.wowCents * (wowGen? wowGen()/100 : 0);           // cents
-        // get instantaneous flutter phase value (sample sine)
-        const flut = flutOsc ? Math.sin(2*Math.PI*flutOsc.frequency.value*t) : 0;
-        const flutC = Params.flutCents * flut;                                // cents
-        const totalSemis = (wowC + flutC) / 100;                              // cents→semitones
-
-        const f = baseF * Math.pow(2, totalSemis/12);
-        try{ srcNode.frequency.setTargetAtTime(f, t, 0.03);}catch{}
-
-        // pluck envelope
-        vca.gain.cancelScheduledValues(t);
-        vca.gain.setTargetAtTime(0.30, t, 0.01);
-        vca.gain.setTargetAtTime(0.10 + 0.05*i, t+0.18, 0.12);
-      } else {
-        // noise hit
-        vca.gain.cancelScheduledValues(t);
-        vca.gain.setValueAtTime(vca.gain.value, t);
-        vca.gain.linearRampToValueAtTime(0.45, t+0.01);
-        vca.gain.linearRampToValueAtTime(0.10 + 0.05*i, t+0.12);
-        // smack color
-        bp.frequency.setTargetAtTime(1200+Math.random()*800, t, 0.02);
-      }
-    }, Math.max(100, 300 - i*20));
-    stops.push(()=>clearInterval(camTick));
-
-    chains.push({srcNode, srcGain, vca, lp, bp, lfoAmt, pan, isNoise,
-      // store per-chain pitch mod handles
-      flutOsc, flutAmt
-    });
-  });
-
-  audioGraph={
-    master, dryBus, preFx, shaper, delay, er, chains,
-    stop(){ try{master.disconnect();}catch{} }
-  };
-  applyParams();
-}
-
-/* ===== Live param updates ===== */
-function applyParams(){
-  if (!audioGraph || !ctx) return;
-  const now=ctx.currentTime;
-  audioGraph.master.gain.setTargetAtTime(Params.masterVol, now, 0.05);
-  audioGraph.shaper.curve = mkWaveshaper(ctx, Params.drive).curve;
-  audioGraph.delay.setMix(Params.delayMix);
-  audioGraph.er.setMix(Params.erMix);
-
-  audioGraph.chains.forEach(ch=>{
-    const base = ch.isNoise ? Params.noiseVol : Params.pitchedVol;
-    ch.srcGain.gain.setTargetAtTime(base, now, 0.05);
-    if (ch.lfoAmt) ch.lfoAmt.gain.setTargetAtTime(Params.lfoDepth, now, 0.05);
-    // flutter controls (if pitched)
-    if (ch.flutOsc){ try{ ch.flutOsc.frequency.setTargetAtTime(Params.flutRate, now, 0.1); }catch{} }
-    if (ch.flutAmt){ try{ ch.flutAmt.gain.setTargetAtTime(Params.flutCents/100, now, 0.1); }catch{} }
-  });
-}
-
-/* ===== Visualization ===== */
-function drawCube(x,y,z,col,alpha=1){const p=isoProject(x,y,z),s=CUBE*camera.zoom;const c=color(col);c.setAlpha(255*alpha);noStroke();fill(c);rect(p.x-s*0.5,p.y-s*0.5,s,s,4);}
-function drawLine3D(a,b,col,alpha=1){const pa=isoProject(a.x,a.y,a.z),pb=isoProject(b.x,b.y,b.z);const c=color(col);c.setAlpha(255*alpha);stroke(c);strokeWeight(2.2*camera.zoom);line(pa.x,pa.y,pb.x,pb.y);}
-
-/* ===== Flow ===== */
-function reseed(){
-  initGrid(seed); longPath=buildSnakePath(); activePatch=buildBigPatch(K);
-  if (ctx){ realizeAudio(activePatch); }
-}
-function setup(){ createCanvas(window.innerWidth, window.innerHeight); pixelDensity(window.devicePixelRatio||1); initGrid(seed); longPath=buildSnakePath(); activePatch=buildBigPatch(K); }
-function windowResized(){ resizeCanvas(window.innerWidth, window.innerHeight); }
-
-function draw(){
-  background('#0b0e14');
-  if (!UI.chainsOnly){
-    for (let y=0;y<N;y++){
-      for (let x=0;x<N;x++){
-        for (let z=0;z<N;z++){
-          if ((x+y+z)%2) continue;
-          const t=grid[x][y][z];
-          let c='#131b2a'; if (AUDIO_TYPES.has(t)) c='#162138'; else if (MOD_TYPES.has(t)) c='#182532';
-          drawCube(x-N/2,y-N/2,z-N/2,c, UI.ghost?0.25:0.55);
-        }
-      }
-    }
-  }
-  activePatch.forEach((P,idx)=>{
-    const col=UI.colorChains? P.color : '#ffd37f';
-    const AP=P.audioPath;
-    for(let i=1;i<AP.length;i++){
-      const a=AP[i-1], b=AP[i];
-      drawLine3D({x:a.x-N/2,y:a.y-N/2,z:a.z-N/2},{x:b.x-N/2,y:b.y-N/2,z:b.z-N/2},col,1.0);
-    }
-    P.modLines.forEach(path=>{
-      for(let i=1;i<path.length;i++){
-        const a=path[i-1], b=path[i];
-        drawLine3D({x:a.x-N/2,y:a.y-N/2,z:a.z-N/2},{x:b.x-N/2,y:b.y-N/2,z:b.z-N/2},'#a8f0a2',0.9);
-      }
-    });
-    // endpoints
-    drawCube(P.source.x-N/2,P.source.y-N/2,P.source.z-N/2,col,0.9);
-    P.shapers.forEach(s=>drawCube(s.x-N/2,s.y-N/2,s.z-N/2,col,0.8));
-    drawCube(P.vca.x-N/2,P.vca.y-N/2,P.vca.z-N/2,col,0.95);
-    drawCube(P.mixer.x-N/2,P.mixer.y-N/2,P.mixer.z-N/2,col,0.95);
-    drawCube(P.output.x-N/2,P.output.y-N/2,P.output.z-N/2,col,1.0);
-  });
-}
-
-/* ===== Interactions ===== */
-function mousePressed(){camera.drag=true;camera.px=mouseX;camera.py=mouseY;}
-function mouseReleased(){camera.drag=false;}
-function mouseDragged(){if(camera.drag){camera.ox+=(mouseX-camera.px);camera.oy+=(mouseY-camera.py);camera.px=mouseX;camera.py=mouseY;}}
-function mouseWheel(e){const k=1+(-e.deltaY*0.001);camera.zoom=Math.max(0.35,Math.min(2.5,camera.zoom*k));return false;}
-window.addEventListener('keydown',(e)=>{if(e.code==='Space'){e.preventDefault();document.getElementById('start').click();} if(e.key==='r'||e.key==='R'){document.getElementById('reroute').click();}});
-
-/* ===== UI binds ===== */
-function bindSlider(id,prop,outId,fmt=(v)=>(+v).toFixed(2)){const el=document.getElementById(id),out=document.getElementById(outId);out.textContent=fmt(el.value);el.addEventListener('input',()=>{Params[prop]=+(el.value);out.textContent=fmt(el.value);applyParams();});}
-bindSlider('masterVol','masterVol','masterVolV');
-bindSlider('pitchedVol','pitchedVol','pitchedVolV');
-bindSlider('noiseVol','noiseVol','noiseVolV');
-bindSlider('lfoDepth','lfoDepth','lfoDepthV');
-bindSlider('camDepth','camDepth','camDepthV');
-bindSlider('delayMix','delayMix','delayMixV');
-bindSlider('drive','drive','driveV');
-bindSlider('erMix','erMix','erMixV');
-bindSlider('hitProb','hitProb','hitProbV');
-bindSlider('wowCents','wowCents','wowCentsV',(v)=>Math.round(v));
-bindSlider('flutCents','flutCents','flutCentsV',(v)=>Math.round(v));
-bindSlider('flutRate','flutRate','flutRateV',(v)=>(+v).toFixed(1));
-
-document.getElementById('ghost').addEventListener('change',e=>UI.ghost=e.target.checked);
-document.getElementById('chainsOnly').addEventListener('change',e=>UI.chainsOnly=e.target.checked);
-document.getElementById('colorChains').addEventListener('change',e=>UI.colorChains=e.target.checked);
-
-document.getElementById('start').onclick = async ()=>{
-  if (!ctx){ ctx = mkCtx(); }
-  if (ctx.state!=='running'){ await ctx.resume(); }
-  if (!audioGraph){ realizeAudio(activePatch); document.getElementById('start').textContent='Stop Audio'; return; }
-  audioGraph.stop(); audioGraph=null; try{ctx.close();}catch{} ctx=null; document.getElementById('start').textContent='Start Audio';
-};
-document.getElementById('reroute').onclick = ()=>{
-  seed = (seed*1664525 + 1013904223)>>>0;
-  K = +document.getElementById('kchains').value;
-  reseed();
-};
-document.getElementById('kchains').addEventListener('input', e=>{
-  K = +e.target.value;
-  reseed();
-});
-</script>
-</body>
-</html>
-
+function makeWowGenerator(seed=1, step=
 
 
 
