@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mechanical Modular (p5.js)</title>
+<!-- p5 core + sound -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/addons/p5.sound.min.js"></script>
+<style>
+  :root { --bg:#0e0f12; --panel:#141722; --ink:#dfe6f7; --muted:#9fb3d9; --accent:#7fb0ff; --good:#a8f0a2; --warn:#ffd37f; --hot:#ff9ea1;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family: ui-sans-serif,system-ui,Segoe UI,Helvetica,Arial;}
+  .wrap{display:flex;min-height:100vh;gap:16px;padding:16px;box-sizing:border-box;}
+  .ui{width:360px;background:var(--panel);border-radius:14px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25);display:flex;flex-direction:column;gap:14px}
+  h1{font-size:18px;margin:0 0 8px;}
+  h2{font-size:14px;margin:10px 0 4px;color:var(--muted)}
+  .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .btn{background:#1d2333;color:var(--ink);border:1px solid #2b3650;border-radius:10px;padding:10px 12px;cursor:pointer}
+  .btn:focus{outline:2px solid var(--accent);outline-offset:2px}
+  .btn.primary{background:#233257;border-color:#2e4370}
+  .btn.tiny{padding:6px 8px;font-size:12px}
+  label{font-size:12px;color:var(--muted)}
+  input[type=range]{width:100%}
+  .group{border:1px solid #232a3d;border-radius:12px;padding:10px}
+  .kv{display:grid;grid-template-columns:1fr auto;gap:6px;font-size:12px;color:var(--muted)}
+  canvas{border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+  .legend{font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="ui" aria-label="control panel">
+    <h1>Mechanical Modular (Cam + Pendulum)</h1>
+    <div class="row">
+      <button id="audioBtn" class="btn primary" aria-label="Toggle Audio (Space)">Start Audio</button>
+      <button class="btn tiny" id="patch1" aria-label="Load Patch 1 (1)">Patch 1</button>
+      <button class="btn tiny" id="patch2" aria-label="Load Patch 2 (2)">Patch 2</button>
+      <button class="btn tiny" id="patch3" aria-label="Load Patch 3 (3)">Patch 3</button>
+    </div>
+
+    <div class="group">
+      <h2>Cam Stack & Slip-Clutch</h2>
+      <label for="clutch">Clutch Pressure (sync → drift)</label>
+      <input id="clutch" type="range" min="0" max="1" step="0.001" value="0.75" />
+      <div class="row">
+        <div style="flex:1">
+          <label for="camALobes">Cam A Lobes</label>
+          <input id="camALobes" type="range" min="1" max="8" step="1" value="4" />
+        </div>
+        <div style="flex:1">
+          <label for="camBLobes">Cam B Lobes</label>
+          <input id="camBLobes" type="range" min="1" max="8" step="1" value="3" />
+        </div>
+      </div>
+      <label for="camCLobes">Cam C Lobes (polyrhythm)</label>
+      <input id="camCLobes" type="range" min="1" max="8" step="1" value="5" />
+      <div class="row">
+        <div style="flex:1">
+          <label for="ratioN">Cam C Gear Ratio Numerator</label>
+          <input id="ratioN" type="range" min="1" max="9" step="1" value="3" />
+        </div>
+        <div style="flex:1">
+          <label for="ratioD">Cam C Gear Ratio Denominator</label>
+          <input id="ratioD" type="range" min="1" max="9" step="1" value="2" />
+        </div>
+      </div>
+    </div>
+
+    <div class="group">
+      <h2>Pendulum LFO</h2>
+      <label for="pendLen">Pendulum Length (relative) </label>
+      <input id="pendLen" type="range" min="0.2" max="1.2" step="0.01" value="0.55" />
+      <label for="pendAmt">LFO Depth → VCA</label>
+      <input id="pendAmt" type="range" min="0" max="1" step="0.01" value="0.5" />
+    </div>
+
+    <div class="group">
+      <h2>Sources & Shapers</h2>
+      <div class="row">
+        <div style="flex:1">
+          <label for="noisePress">Noise Wheel Pressure (brightness)</label>
+          <input id="noisePress" type="range" min="0" max="1" step="0.01" value="0.6" />
+        </div>
+        <div style="flex:1">
+          <label for="stringTune">String Tune (Hz)</label>
+          <input id="stringTune" type="range" min="50" max="400" step="1" value="160" />
+        </div>
+      </div>
+      <label for="shutterDepth">Shutter Depth (tremolo)</label>
+      <input id="shutterDepth" type="range" min="0" max="1" step="0.01" value="0.35" />
+    </div>
+
+    <div class="group kv">
+      <div>Space</div><div>Start/Stop Audio</div>
+      <div>1 / 2 / 3</div><div>Load Patch 1/2/3</div>
+    </div>
+    <div class="legend">Diagram at right shows a stylized mechanical layout: cams, clutch, pendulum, sources, shapers, and output.</div>
+  </div>
+
+  <div id="sketch-holder" style="flex:1; min-width:600px; display:flex; align-items:center; justify-content:center;">
+    <!-- p5 canvas injected here -->
+  </div>
+</div>
+
+<script>
+/* =========================
+   Audio graph (p5.sound)
+   ========================= */
+
+let masterGain, outFilter, noise, noiseGain, stringOsc, stringEnv, vca, shutterLFO,
+    started = false;
+
+const State = {
+  // “Mechanical” phases (radians) and speeds
+  baseRPM: 90,                 // main shaft speed (visual reference)
+  camBaseHz: 2.0,              // base rotation for cams A/B (before clutch)
+  camA:{ lobes:4, phase:0 },
+  camB:{ lobes:3, phase:0 },
+  camC:{ lobes:5, phase:0, ratioN:3, ratioD:2 },
+  clutchPressure:0.75,         // 0 free → 1 locked
+  clutchDriftHz: 0.15,         // how much drift when loose
+  pendLen:0.55,                // 0.2–1.2
+  pendAmt:0.5,                 // depth to VCA
+  noisePress:0.6,
+  stringHz:160,
+  shutterDepth:0.35
+};
+
+function setupAudio() {
+  masterGain = new p5.Gain();
+  masterGain.connect();        // to destination
+
+  // Output tilt-EQ a bit (mellow highs)
+  outFilter = new p5.Filter('lowpass');
+  outFilter.freq(14000);
+  outFilter.res(0.2);
+  masterGain.disconnect();
+  masterGain.connect(outFilter);
+
+  // Noise wheel
+  noise = new p5.Noise('white');
+  noise.start(); noise.amp(0);
+  noiseGain = new p5.Gain();
+  noise.disconnect(); noise.connect(noiseGain);
+  noiseGain.connect(masterGain);
+
+  // String exciter (simple sustained osc; “damper” gates level)
+  stringOsc = new p5.Osc('triangle');
+  stringOsc.freq(State.stringHz);
+  stringOsc.start(); stringOsc.amp(0);
+  stringEnv = new p5.Envelope(0.005, 0.8, 0.15, 0.0); // quick excitation envelope
+
+  // Damper VCA (final amplitude control)
+  vca = new p5.Gain(); vca.connect(masterGain);
+
+  // Shutter is amplitude tremolo applied pre-VCA
+  shutterLFO = { value: 1.0 };
+
+  // Wire graph: (Noise + String) -> (Shutter) -> (Damper VCA) -> out
+  // We’ll simulate shutter by setting individual amps each frame, then VCA as final.
+}
+
+function audioOn() {
+  if (!getAudioContext().state || getAudioContext().state !== 'running') {
+    userStartAudio();
+  }
+  if (!started) setupAudio();
+  started = true;
+}
+
+function audioOff() {
+  if (!started) return;
+  // ramp down
+  masterGain.amp(0, 0.2);
+}
+
+/* =========================
+   Mechanical engines
+   ========================= */
+
+function pendulumHz(len) {
+  // crude: f ~ k/sqrt(L) (scaled)
+  const k = 1.1; // choose to feel musical
+  return k / Math.sqrt(Math.max(0.2, len));
+}
+
+function stepMechanical(dt) {
+  // base cam angular velocity (A/B share)
+  const clutch = State.clutchPressure;
+  const baseHz = State.camBaseHz;
+
+  // cam A & B: mix of locked speed and drift
+  const driftA = (1.0 - clutch) * State.clutchDriftHz;
+  const driftB = (1.0 - clutch) * (State.clutchDriftHz*1.1);
+
+  State.camA.phase += TWO_PI * (baseHz * clutch + driftA) * dt;
+  State.camB.phase += TWO_PI * (baseHz * clutch + driftB) * dt;
+
+  // cam C polyrhythm: ratioN:ratioD vs base
+  const ratio = (State.camC.ratioN / State.camC.ratioD);
+  const driftC = (1.0 - clutch) * (State.clutchDriftHz*0.9);
+  State.camC.phase += TWO_PI * (baseHz * ratio * clutch + driftC) * dt;
+
+  // wrap
+  State.camA.phase %= TWO_PI; State.camB.phase %= TWO_PI; State.camC.phase %= TWO_PI;
+
+  // pendulum
+  const pHz = pendulumHz(State.pendLen);
+  // phase not needed, use sin for LFO
+  const pend = (sin(millis()/1000 * TWO_PI * pHz) + 1)/2; // 0..1
+
+  // Gates from cams: duty from lobes based on cos^+ shape
+  function camGate(cam) {
+    // multi-lobed cam => periodic peaks; use raised cosine as follower height
+    const lobes = max(1, cam.lobes|0);
+    const x = (cam.phase * lobes) % TWO_PI;
+    // follower height (0..1): sharpen like a cam lobe
+    const h = pow(max(0, cos(x)), 3.0);
+    return h;
+  }
+  const gateA = camGate(State.camA);   // gate Noise
+  const gateB = camGate(State.camB);   // excite String
+  const gateC = camGate(State.camC);   // mod Shutter
+
+  // Shutter tremolo depth: blend base depth + cam C
+  const shutter = 1.0 - State.shutterDepth * (0.4 + 0.6*gateC); // stays > 0
+  shutterLFO.value = shutter;
+
+  // Damper VCA: base open amount modulated by pendulum
+  const vcaBase = 0.85; // fairly open
+  const vcaMod = 1.0 - State.pendAmt * pend; // more pendulum → more damping
+  const vcaLevel = constrain(vcaBase * vcaMod, 0, 1);
+
+  // Apply to audio
+  // Noise brightness via bandpass-ish trick: emulate wheel pressure → tilt-eq
+  const noiseLevel = 0.3 * (0.4 + 0.6*gateA); // cam A gates level
+  noiseGain.amp(noiseLevel * shutter * vcaLevel, 0.02);
+
+  // String: keep quietly on, excite via envelope when cam B peaks
+  stringOsc.freq(State.stringHz);
+  // Trigger when gateB crosses high threshold
+  const now = millis()/1000;
+  if (!stepMechanical.lastB) stepMechanical.lastB = 0;
+  const prev = stepMechanical.lastB; stepMechanical.lastB = gateB;
+  if (prev < 0.15 && gateB >= 0.15) {
+    stringEnv.setRange(0.8, 0.0);
+    stringEnv.play(stringOsc);
+  }
+  // Apply shutter and VCA to string overall gain
+  // (stringEnv handles the short excitation)
+  const stringBed = 0.15; // subtle sustain
+  stringOsc.amp(min(0.9, (stringBed + 0.85*stringOsc.getAmp())) * shutter * vcaLevel, 0.02);
+
+  // Master output soft limiter
+  masterGain.amp(0.9, 0.02);
+}
+
+/* =========================
+   UI bindings
+   ========================= */
+
+function bindUI() {
+  // Buttons
+  const aBtn = document.getElementById('audioBtn');
+  aBtn.onclick = () => {
+    if (!started) {
+      audioOn();
+      aBtn.textContent = 'Stop Audio';
+    } else {
+      if (getAudioContext().state === 'running') {
+        getAudioContext().suspend();
+        aBtn.textContent = 'Start Audio';
+      } else {
+        getAudioContext().resume();
+        aBtn.textContent = 'Stop Audio';
+      }
+    }
+  };
+  document.getElementById('patch1').onclick = loadPatch1;
+  document.getElementById('patch2').onclick = loadPatch2;
+  document.getElementById('patch3').onclick = loadPatch3;
+
+  // Sliders
+  const sliders = {
+    clutch: v => State.clutchPressure = +v,
+    camALobes: v => State.camA.lobes = (+v|0),
+    camBLobes: v => State.camB.lobes = (+v|0),
+    camCLobes: v => State.camC.lobes = (+v|0),
+    ratioN: v => State.camC.ratioN = max(1, (+v|0)),
+    ratioD: v => State.camC.ratioD = max(1, (+v|0)),
+    pendLen: v => State.pendLen = +v,
+    pendAmt: v => State.pendAmt = +v,
+    noisePress: v => State.noisePress = +v,
+    stringTune: v => State.stringHz = +v,
+    shutterDepth: v => State.shutterDepth = +v
+  };
+  Object.entries(sliders).forEach(([id, fn])=>{
+    const el = document.getElementById(id);
+    fn(el.value);
+    el.addEventListener('input', e=>fn(e.target.value));
+  });
+
+  // Keyboard
+  window.addEventListener('keydown', (e)=>{
+    if (e.code === 'Space') { e.preventDefault(); document.getElementById('audioBtn').click(); }
+    if (e.key === '1') loadPatch1();
+    if (e.key === '2') loadPatch2();
+    if (e.key === '3') loadPatch3();
+  });
+}
+
+/* =========================
+   Preset patches (match cards)
+   ========================= */
+
+function loadPatch1() {
+  // Simple Drone with LFO Wobble
+  State.clutchPressure = 0.8;
+  State.camA.lobes = 2; State.camB.lobes = 2; State.camC.lobes = 2;
+  State.camC.ratioN = 1; State.camC.ratioD = 1;
+  State.pendLen = 0.55; State.pendAmt = 0.55;
+  State.noisePress = 0.6; State.stringHz = 160; State.shutterDepth = 0.25;
+  syncUI();
+}
+
+function loadPatch2() {
+  // Polyrhythmic Gates (4:3:5 and 3:2 gear for C)
+  State.clutchPressure = 0.85;
+  State.camA.lobes = 4; State.camB.lobes = 3; State.camC.lobes = 5;
+  State.camC.ratioN = 3; State.camC.ratioD = 2;
+  State.pendLen = 0.5; State.pendAmt = 0.25;
+  State.noisePress = 0.65; State.stringHz = 180; State.shutterDepth = 0.35;
+  syncUI();
+}
+
+function loadPatch3() {
+  // Sequenced Texture (drifting clutch, cams sweep VCA/Filter)
+  State.clutchPressure = 0.55;
+  State.camA.lobes = 3; State.camB.lobes = 5; State.camC.lobes = 4;
+  State.camC.ratioN = 5; State.camC.ratioD = 4;
+  State.pendLen = 0.7; State.pendAmt = 0.6;
+  State.noisePress = 0.55; State.stringHz = 140; State.shutterDepth = 0.45;
+  syncUI();
+}
+
+function syncUI() {
+  const ids = ['clutch','camALobes','camBLobes','camCLobes','ratioN','ratioD','pendLen','pendAmt','noisePress','stringTune','shutterDepth'];
+  const vals = [State.clutchPressure,State.camA.lobes,State.camB.lobes,State.camC.lobes,State.camC.ratioN,State.camC.ratioD,State.pendLen,State.pendAmt,State.noisePress,State.stringHz,State.shutterDepth];
+  ids.forEach((id,i)=>document.getElementById(id).value = vals[i]);
+}
+
+/* =========================
+   p5 visual diagram
+   ========================= */
+
+let W=1000,H=700;
+
+function setup() {
+  const cnv = createCanvas(1000, 700);
+  cnv.parent('sketch-holder');
+  bindUI();
+  loadPatch2(); // start with polyrhythm
+}
+
+function drawModule(x,y,w,h,label, col='#172033') {
+  noStroke();
+  fill(col);
+  rect(x,y,w,h,12);
+  fill('#dfe6f7'); textSize(14); textAlign(CENTER, CENTER);
+  text(label, x+w/2, y+14);
+}
+
+function link(x1,y1,x2,y2, c) {
+  stroke(c); strokeWeight(3);
+  noFill(); line(x1,y1,x2,y2);
+  // arrow head
+  const a = atan2(y2-y1, x2-x1);
+  push(); translate(x2,y2); rotate(a);
+  line(0,0,-10,-5); line(0,0,-10,5);
+  pop();
+}
+
+function draw() {
+  background('#0b0d13');
+
+  const left = 40, top = 40;
+  // Main “rack” lanes
+  const yShaft = 330;
+  stroke('#26304a'); strokeWeight(8); line(60, yShaft, width-60, yShaft);
+  noStroke(); fill('#9fb3d9'); textAlign(LEFT, CENTER); textSize(12);
+  text('Main Shaft (power bus)', 70, yShaft-16);
+
+  // Modules positions
+  const M = {
+    noise:{x:90,y:240,w:180,h:110,title:'Noise Wheel'},
+    string:{x:90,y:400,w:180,h:110,title:'String Exciter'},
+    shutter:{x:360,y:240,w:180,h:110,title:'Shutter Filter'},
+    vca:{x:560,y:240,w:180,h:110,title:'Damper VCA'},
+    horn:{x:780,y:240,w:180,h:110,title:'Resonant Chamber'},
+    clutch:{x:300,y:420,w:160,h:100,title:'Slip-Clutch'},
+    cams:{x:480,y:420,w:220,h:100,title:'Cam Stack A/B/C'},
+    pend:{x:740,y:420,w:220,h:100,title:'Pendulum LFO'}
+  };
+
+  // Draw modules
+  drawModule(M.noise.x,M.noise.y,M.noise.w,M.noise.h,M.noise.title);
+  drawModule(M.string.x,M.string.y,M.string.w,M.string.h,M.string.title);
+  drawModule(M.shutter.x,M.shutter.y,M.shutter.w,M.shutter.h,M.shutter.title);
+  drawModule(M.vca.x,M.vca.y,M.vca.w,M.vca.h,M.vca.title);
+  drawModule(M.horn.x,M.horn.y,M.horn.w,M.horn.h,M.horn.title);
+  drawModule(M.clutch.x,M.clutch.y,M.clutch.w,M.clutch.h,M.clutch.title);
+  drawModule(M.cams.x,M.cams.y,M.cams.w,M.cams.h,M.cams.title);
+  drawModule(M.pend.x,M.pend.y,M.pend.w,M.pend.h,M.pend.title);
+
+  // “mechanical” visuals inside modules (cams/pendulum)
+  push();
+  // cams
+  stroke('#ffb794'); strokeWeight(4); noFill();
+  const cA = {x:M.cams.x+60, y:M.cams.y+55, r:24};
+  const cB = {x:M.cams.x+110,y:M.cams.y+55, r:24};
+  const cC = {x:M.cams.x+160,y:M.cams.y+55, r:24};
+  circle(cA.x,cA.y,cA.r*2); circle(cB.x,cB.y,cB.r*2); circle(cC.x,cC.y,cC.r*2);
+  // lobes (spokes)
+  function camSpokes(cx,cy,r,lobes,phase, col) {
+    stroke(col); strokeWeight(3);
+    for (let i=0;i<lobes;i++){
+      const a = phase + i*(TWO_PI/lobes);
+      line(cx,cy, cx + r*cos(a), cy + r*sin(a));
+    }
+  }
+  camSpokes(cA.x,cA.y,cA.r, max(1,State.camA.lobes|0), State.camA.phase, '#ffd37f');
+  camSpokes(cB.x,cB.y,cB.r, max(1,State.camB.lobes|0), State.camB.phase, '#ffd37f');
+  camSpokes(cC.x,cC.y,cC.r, max(1,State.camC.lobes|0), State.camC.phase, '#ffd37f');
+
+  // clutch gauge
+  noStroke(); fill('#9fb3d9'); textAlign(LEFT, CENTER); textSize(12);
+  text('Clutch: ' + nf(State.clutchPressure,1,2), M.clutch.x+12, M.clutch.y+26);
+  // pendulum
+  stroke('#a8f0a2'); strokeWeight(4);
+  const px = M.pend.x+60, py = M.pend.y+12;
+  line(px,py, px, py+70);
+  const pBobY = py+70 + 20*sin(frameCount*0.02/ max(0.3, Math.sqrt(State.pendLen)));
+  fill('#a8f0a2'); circle(px, pBobY, 16);
+  pop();
+
+  // Patch links (stylized)
+  const cNoise = {x:M.noise.x+M.noise.w, y:M.noise.y+M.noise.h/2};
+  const cString= {x:M.string.x+M.string.w, y:M.string.y+M.string.h/2};
+  const cShut  = {x:M.shutter.x, y:M.shutter.y+M.shutter.h/2};
+  const cVCA   = {x:M.vca.x, y:M.vca.y+M.vca.h/2};
+  const cHorn  = {x:M.horn.x, y:M.horn.y+M.horn.h/2};
+  const cCams  = {x:M.cams.x+M.cams.w/2, y:M.cams.y};
+  const cClu   = {x:M.clutch.x+M.clutch.w/2, y:M.clutch.y};
+  const cPend  = {x:M.pend.x+M.pend.w/2, y:M.pend.y};
+
+  // Sources -> Shutter -> VCA -> Horn
+  link(cNoise.x, cNoise.y, cShut.x, cShut.y, '#7fb0ff');
+  link(cString.x,cString.y, cShut.x, cShut.y, '#7fb0ff');
+  link(M.shutter.x+M.shutter.w, cShut.y, cVCA.x, cVCA.y, '#7fb0ff');
+  link(M.vca.x+M.vca.w, cVCA.y, cHorn.x, cHorn.y, '#7fb0ff');
+
+  // Clutch feeds Cam stack (mechanical drive)
+  link(cClu.x, cClu.y, cCams.x, cCams.y, '#ffb794');
+
+  // Cam A/B/C to targets (Noise gate, String excite, Shutter sweep)
+  link(cCams.x, M.cams.y, M.noise.x+M.noise.w*0.4, M.noise.y-8, '#ffd37f');
+  link(cCams.x+10, M.cams.y, M.string.x+M.string.w*0.4, M.string.y+M.string.h+8, '#ffd37f');
+  link(M.cams.x+M.cams.w-20, M.cams.y, M.shutter.x+M.shutter.w*0.3, M.shutter.y-8, '#ffd37f');
+
+  // Pendulum to Damper VCA (slow wobble)
+  link(cPend.x, cPend.y, M.vca.x+M.vca.w*0.4, M.vca.y+M.vca.h+4, '#a8f0a2');
+
+  // Status footer
+  noStroke(); fill('#9fb3d9'); textAlign(LEFT, BASELINE); textSize(12);
+  const ratio = `${State.camC.ratioN}:${State.camC.ratioD}`;
+  text(`CamA lobes ${State.camA.lobes} | CamB ${State.camB.lobes} | CamC ${State.camC.lobes} @ ${ratio} | Pend L ${nf(State.pendLen,1,2)} | Clutch ${nf(State.clutchPressure,1,2)}`, 32, height-18);
+
+  // Advance “mechanics” + audio every frame
+  const dt = deltaTime/1000;
+  if (started && getAudioContext().state === 'running') {
+    stepMechanical(dt);
+  }
+}
+
+/* ensure UI reflects current state on load */
+window.addEventListener('load', () => {
+  syncUI();
+});
+</script>
+</body>
+</html>
