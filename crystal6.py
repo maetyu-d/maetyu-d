@@ -1,8 +1,10 @@
 # logistic_glassy_11min_sparkly_clear.py
-# Three logistic-map lines with r(t) ending at 4.0.
-# Timbre: glassy sinewave banks (additive + light FM shimmer).
-# All parameters driven by the logistic map.
-# Stereo WAV output, ~11 minutes.
+# Three logistic-map lines with time-varying r(t) ending at 4.0.
+# All parameters are driven by x_{n+1} = r*x_n*(1 - x_n).
+# Timbre: glassy sinewave banks (additive with light FM shimmer).
+# Outputs "logistic_glassy_11min_sparkly_clear.wav".
+#
+# Pure NumPy + stdlib. No external dependencies.
 
 import numpy as np
 import wave, struct
@@ -10,11 +12,11 @@ import wave, struct
 # ---------------------------- CONFIG ----------------------------
 SR        = 44100
 DUR_SEC   = 660            # 11 minutes
-CTRL_HZ   = 200
+CTRL_HZ   = 200            # control-rate for parameter curves
 X0        = 0.5
 VOICES    = 5              # sine-bank voices per line
-BANK_PARTIALS = 11         # more partials for sparkle
-PANS      = [-0.6, 0.1, 0.7]
+BANK_PARTIALS = 11         # sines per voice (sparkle)
+PANS      = [-0.6, 0.1, 0.7]  # constant-power pan per line
 TARGET_DB = -18.0
 FADE_SEC  = 8.0
 OUT_WAV   = "logistic_glassy_11min_sparkly_clear.wav"
@@ -83,75 +85,75 @@ def make_line(r_waypoints, pan_bias=0.0, seed=0):
     fast = moving_avg(x, int(0.06 * CTRL_HZ))
 
     # --------- Sparkly & wide but clear parameter maps ----------
-    base_hz     = map01(slow,  28.0, 220.0)     # wide pitch region
-    detune_ct   = map01(med,    8.0, 40.0)      # inter-voice cents
-    vib_hz      = map01(fast,   0.03, 1.00)     # vibrato rate
-    vib_ct      = map01(med,    0.1,  10.0)     # vibrato depth (cents)
+    base_hz     = np.interp(t, tc, map01(slow,  28.0, 220.0))  # wide pitch
+    detune_ct   = np.interp(t, tc, map01(med,    8.0, 40.0))   # inter-voice cents
+    vib_hz      = np.interp(t, tc, map01(fast,   0.03, 1.00))  # vibrato rate
+    vib_ct      = np.interp(t, tc, map01(med,    0.1,  10.0))  # vibrato depth (cents)
 
     # Glassy sine-bank controls (expanded for sparkle)
-    inharm_amt  = map01(med,    0.05, 0.25)     # more inharmonic spread
-    bank_spread = map01(slow,   0.10, 0.45)     # wider partial spacing
-    bank_decay  = map01(med,    0.30, 0.75)     # slower decay = brighter banks
+    inharm_amt  = np.interp(t, tc, map01(med,    0.05, 0.25))  # more inharmonic spread
+    bank_spread = np.interp(t, tc, map01(slow,   0.10, 0.45))  # wider partial spacing
+    bank_decay  = np.interp(t, tc, map01(med,    0.30, 0.75))  # slower decay = brighter
 
-    # FM shimmer (stronger but still musical)
-    fm_mix      = map01(med,    0.10, 0.45)
-    fm_index    = map01(fast,   0.40, 3.00)
-    fm_ratio    = map01(med,    1.50, 3.50)
+    # FM shimmer (stronger but musical)
+    fm_mix      = np.interp(t, tc, map01(med,    0.10, 0.45))
+    fm_index    = np.interp(t, tc, map01(fast,   0.40, 3.00))
+    fm_ratio    = np.interp(t, tc, map01(med,    1.50, 3.50))
 
     # Space / clarity
-    haas_ms     = map01(slow,   4.0,  22.0)     # wider stereo spread
-    comb_ms     = map01(slow,   8.0,  26.0)
-    comb_fb     = map01(med,    0.10, 0.35)     # lighter feedback for clarity
-    comb_mix    = map01(med,    0.04, 0.25)     # subtler chorus
+    haas_ms     = np.interp(t, tc, map01(slow,   4.0,  22.0))  # wider stereo spread
+    comb_ms     = np.interp(t, tc, map01(slow,   8.0,  26.0))
+    comb_fb     = np.interp(t, tc, map01(med,    0.10, 0.35))  # lighter for clarity
+    comb_mix    = np.interp(t, tc, map01(med,    0.04, 0.25))  # subtler chorus
 
-    amp_env     = map01(slow,   0.72, 1.00)
-    drive       = map01(med,    0.75, 1.15)     # gentler drive → clearer
+    amp_env     = np.interp(t, tc, map01(slow,   0.72, 1.00))
+    drive       = np.interp(t, tc, map01(med,    0.75, 1.15))  # gentler drive → clearer
 
     # Structural “events”
-    sub_gate    = moving_avg((x > 0.82).astype(float), int(0.15 * CTRL_HZ))
-    air_gate    = moving_avg((x > 0.92).astype(float), int(0.10 * CTRL_HZ))
+    sub_gate    = np.interp(t, tc, moving_avg((x > 0.82).astype(float), int(0.15 * CTRL_HZ)))
+    air_gate    = np.interp(t, tc, moving_avg((x > 0.92).astype(float), int(0.10 * CTRL_HZ)))
 
     # Lo-fi grit (clearer): higher bit depth, less decimation
-    bits        = map01(med,   12.0, 10.0)      # 12→10 bits (was 12→6)
-    srate_div   = map01(fast,   1.0,  4.0)      # 1→4× decimation (was up to 8)
+    bits        = np.interp(t, tc, map01(med,   12.0, 10.0))   # 12→10 bits
+    srate_div   = np.interp(t, tc, map01(fast,   1.0,  4.0))   # 1→4×
 
-    # Upsample control streams to audio rate
-    def up(v): return np.interp(t, tc, v)
-    base_hz, detune_ct, vib_hz, vib_ct   = map(up, (base_hz, detune_ct, vib_hz, vib_ct))
-    inharm_amt, bank_spread, bank_decay  = map(up, (inharm_amt, bank_spread, bank_decay))
-    fm_mix, fm_index, fm_ratio           = map(up, (fm_mix, fm_index, fm_ratio))
-    haas_ms, comb_ms, comb_fb, comb_mix  = map(up, (haas_ms, comb_ms, comb_fb, comb_mix))
-    amp_env, drive                       = map(up, (amp_env, drive))
-    sub_gate, air_gate                   = map(up, (sub_gate, air_gate))
-    bits, srate_div                      = map(up, (bits, srate_div))
-
-    # Sinewave bank synthesis per voice
+    # ------------- Sine-bank synthesis (broadcasting-safe) -------------
     line = np.zeros(N, dtype=np.float64)
     vibrato = np.sin(2*np.pi*vib_hz*t) * vib_ct
 
+    partials = np.arange(1, BANK_PARTIALS + 1)
+    offsets_base = np.linspace(-1.0, 1.0, BANK_PARTIALS)  # shape (P,)
+
+    # Amplitude decay as a single scalar (median) to avoid per-sample normalization cost
+    decay = float(np.median(bank_decay))
+    amps = (1.0 / (partials ** decay))
+    amps = amps / amps.sum()  # shape (P,)
+
     for v in range(VOICES):
         d = np.linspace(-1.0, 1.0, VOICES)[v]
-        voice_ratio = cents_to_ratio(d * detune_ct + vibrato)
-        fc = base_hz * voice_ratio  # carrier
+        voice_ratio = cents_to_ratio(d * detune_ct + vibrato)  # (N,)
+        fc = base_hz * voice_ratio                              # (N,)
 
-        # FM shimmer
-        fm = fm_index * np.sin(2*np.pi * (fc * fm_ratio) * t)
-
-        # Partial setup
-        partials = np.arange(1, BANK_PARTIALS + 1)
-        offsets  = np.linspace(-1.0, 1.0, BANK_PARTIALS) * bank_spread
-        amps     = (1.0 / partials**bank_decay)
-        amps    /= np.sum(amps)
+        # FM shimmer (common to all partials in this voice)
+        fm = fm_index * np.sin(2*np.pi * (fc * fm_ratio) * t)   # (N,)
 
         voice = np.zeros(N, dtype=np.float64)
-        for pk, off, ak in zip(partials, offsets, amps):
-            pratio = pk * (1.0 + inharm_amt * off)
-            phase_inc = (fc * pratio) / SR
-            # Subtle PM tied to “air” to make highs twinkle
-            pm = 0.02 * off * air_gate
-            phase = np.cumsum(phase_inc) + pm * np.sin(2*np.pi*phase_inc * np.arange(N))
-            s = np.sin(2*np.pi*phase + fm_mix * fm)
-            voice += ak * s
+
+        # Precompute a time-varying inharm factor once
+        inh_spread = inharm_amt * bank_spread  # (N,)
+
+        for pk, o_k, a_k in zip(partials, offsets_base, amps):
+            # Time-varying stretch for this partial: 1 + o_k * inh_spread(t)
+            stretch = 1.0 + o_k * inh_spread               # (N,)
+            freq_k  = fc * (pk * stretch)                  # (N,)
+            phase   = np.cumsum(freq_k / SR)               # (N,)
+
+            # Small phase modulation tied to highs
+            pm = 0.02 * o_k * air_gate                     # (N,)
+
+            # Final partial with FM shimmer mixed in
+            s = np.sin(2*np.pi*phase + pm + fm_mix * fm)   # (N,)
+            voice += a_k * s
 
         line += voice
 
@@ -162,19 +164,20 @@ def make_line(r_waypoints, pan_bias=0.0, seed=0):
     sub = np.sin(2*np.pi*sub_phase) * sub_gate
     line += 0.16 * sub  # slightly lower for clarity
 
-    # Airy noise frost (tightened for clarity)
+    # Airy noise frost (tight and clear)
     air = (rng.normal(0, 1, N) * 0.03) * air_gate
     line += air
 
     # Gentle nonlinear color
     line = softsat(line, drive)
 
-    # Subtle comb shimmer
+    # Subtle comb shimmer (mono pre-stereo)
     delay_samples = int(np.median(comb_ms) * 0.001 * SR)
-    line = comb_feedback(line, delay_samples, float(np.median(comb_fb)),
+    line = comb_feedback(line, delay_samples,
+                         float(np.median(comb_fb)),
                          float(np.median(comb_mix)))
 
-    # Lo-fi grit (mild)
+    # Mild lo-fi (bit-crush + decimate) using medians for stability
     q_bits = int(np.clip(np.median(bits), 4, 16))
     levels = 2**q_bits
     line = np.round((line * 0.5 + 0.5) * (levels - 1)) / (levels - 1)
@@ -191,6 +194,7 @@ def make_line(r_waypoints, pan_bias=0.0, seed=0):
     L = line.copy(); R = line.copy()
     if d_samp > 0:
         R = np.concatenate([np.zeros(d_samp), R[:-d_samp]])
+
     pan = np.clip(pan_bias, -1.0, 1.0)
     gL = np.sqrt((1.0 - pan) * 0.5)
     gR = np.sqrt((1.0 + pan) * 0.5)
@@ -224,3 +228,4 @@ with wave.open(OUT_WAV, "w") as wf:
     wf.writeframes(struct.pack("<" + "h"*ints.size, *ints.flatten()))
 
 print("Wrote:", OUT_WAV)
+
