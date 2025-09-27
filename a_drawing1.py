@@ -2,76 +2,89 @@
 """
 Op Art Intensified Generator (Full-size, single-pass)
 
-Generates a 10000 x 12000 px print-ready image composed of:
-- Triple fine diagonal families (-21°, -20°, -19°) in red/blue/black with jitter and 1–2 px strokes
-- Two complementary-color crosshatch bands (~70° and ~130°) using bold 4–6 px strokes
-- Bands aligned along -20° axis (no warping in this version)
-
-Usage:
-  python opart_intensified_full.py --out opart_intensified_10000x12000.png
+Changes requested:
+- Fine diagonal spacing: 36 px (was 12)
+- Fine diagonal stroke: 2–5 px (was 1–2)
+- Crosshatch spacing: 300 px (was 242)
+- Crosshatch stroke: 6–8 px (was 4–6)
 """
 
-import math, random, time, argparse
+import math, random
 from PIL import Image, ImageDraw
 
-def draw_parallel_lines(draw, w, h, spacing, angle_deg, colors, width_range=(1,2), jitter=0.0, alpha=255):
-    """Draw evenly spaced parallel lines across the canvas at a given angle."""
-    theta = math.radians(angle_deg)
-    ux, uy = math.cos(theta), math.sin(theta)           
-    nx, ny = -math.sin(theta), math.cos(theta)          
+# ---------- Core geometry utilities ----------
 
-    corners = [(0,0),(w,0),(0,h),(w,h)]
-    ds = [cx*nx + cy*ny for (cx,cy) in corners]
-    dmin, dmax = min(ds), max(ds)
+def draw_parallel_lines(draw, w, h, spacing, angle_deg, colors,
+                        width_range=(2,5), jitter=0.6, alpha=150):
+    """
+    Draw evenly spaced, infinite parallel lines at angle_deg, clipped to the WxH canvas.
+    Efficient math (no rotations). Slight jitter along the line normal to induce vibrato.
+    """
+    theta = math.radians(angle_deg)
+    ux, uy = math.cos(theta), math.sin(theta)           # line direction
+    nx, ny = -math.sin(theta), math.cos(theta)          # normal to line
+
+    # Project canvas corners on the normal to find min/max distance (coverage range)
+    corners = [(0,0), (w,0), (0,h), (w,h)]
+    distances = [x*nx + y*ny for (x,y) in corners]
+    dmin, dmax = min(distances), max(distances)
 
     d = dmin - spacing
-    i = 0
+    idx = 0
     while d <= dmax + spacing:
-        col_raw = colors[i % len(colors)]
-        col = (*col_raw, alpha)
+        col = (*colors[idx % len(colors)], alpha)
+        idx += 1
+
+        # tiny normal jitter for optical shimmer
         jd = (random.uniform(-jitter, jitter) if jitter else 0.0)
 
+        # point p0 on this line: n·p0 = d + jd, pick around center for stability
         cx, cy = w/2.0, h/2.0
         d_center = nx*cx + ny*cy
         shift = (d + jd) - d_center
         p0x, p0y = cx + nx*shift, cy + ny*shift
 
-        t0, t1 = -1e9, 1e9
+        # Liang–Barsky clip of infinite line p(t) = p0 + t*u to [0,w]×[0,h]
+        t0, t1 = -1e12, 1e12
         def clip(p, q):
             nonlocal t0, t1
             if abs(p) < 1e-9:
-                if q < 0: return False
-                return True
+                return q >= 0  # parallel: keep if inside
             r = q / p
             if p < 0:
                 if r > t0: t0 = r
             else:
                 if r < t1: t1 = r
             return t0 <= t1
+
         if not (clip(-ux,  p0x - 0) and
                 clip( ux,  w - p0x) and
                 clip(-uy,  p0y - 0) and
                 clip( uy,  h - p0y)):
             d += spacing
-            i += 1
             continue
 
         x1, y1 = p0x + t0*ux, p0y + t0*uy
         x2, y2 = p0x + t1*ux, p0y + t1*uy
         lw = random.randint(width_range[0], width_range[1])
         draw.line([(x1, y1), (x2, y2)], fill=col, width=lw)
+
         d += spacing
-        i += 1
 
-def draw_crosshatch_in_band(draw, w, h, spacing, angles_deg, colors, width_range, alpha,
-                            band_angle_deg, band_center_offset, band_width):
-    """Draw crosshatch grids inside diagonal bands (straight bands)."""
+def draw_crosshatch_in_band(draw, w, h, spacing, angles_deg, colors,
+                            width_range=(6,8), alpha=210,
+                            band_angle_deg=-20, band_center_offset=0, band_width=1000):
+    """
+    Draw line families at angles_deg, but only within a diagonal band defined by band_angle_deg,
+    band_center_offset (signed distance along band normal), and band_width.
+    """
     bt = math.radians(band_angle_deg)
-    bn_x, bn_y = -math.sin(bt), math.cos(bt)  
+    bn_x, bn_y = -math.sin(bt), math.cos(bt)  # band normal
 
+    # Band center in canvas coordinates
     cx0, cy0 = w/2.0 + bn_x*band_center_offset, h/2.0 + bn_y*band_center_offset
     d_center = bn_x*cx0 + bn_y*cy0
-    half_w = band_width/2.0
+    half_w = band_width / 2.0
     d1, d2 = d_center - half_w, d_center + half_w
 
     for angle_deg, color in zip(angles_deg, colors):
@@ -79,12 +92,14 @@ def draw_crosshatch_in_band(draw, w, h, spacing, angles_deg, colors, width_range
         ux, uy = math.cos(theta), math.sin(theta)
         n_x, n_y = -math.sin(theta), math.cos(theta)
 
-        corners = [(0,0),(w,0),(0,h),(w,h)]
-        ds = [cx*n_x + cy*n_y for (cx,cy) in corners]
+        # distance range across canvas for this line orientation
+        corners = [(0,0), (w,0), (0,h), (w,h)]
+        ds = [x*n_x + y*n_y for (x,y) in corners]
         dmin, dmax = min(ds), max(ds)
 
         d = dmin - spacing
         while d <= dmax + spacing:
+            # point p0 with n·p0 = d
             if abs(n_y) > 1e-9:
                 p0x = w/2.0
                 p0y = (d - n_x*p0x) / n_y
@@ -92,18 +107,19 @@ def draw_crosshatch_in_band(draw, w, h, spacing, angles_deg, colors, width_range
                 p0y = h/2.0
                 p0x = (d - n_y*p0y) / n_x
 
-            t0, t1 = -1e9, 1e9
+            # clip to canvas
+            t0, t1 = -1e12, 1e12
             def clip(p, q):
                 nonlocal t0, t1
                 if abs(p) < 1e-9:
-                    if q < 0: return False
-                    return True
+                    return q >= 0
                 r = q / p
                 if p < 0:
                     if r > t0: t0 = r
                 else:
                     if r < t1: t1 = r
                 return t0 <= t1
+
             if not (clip(-ux,  p0x - 0) and
                     clip( ux,  w - p0x) and
                     clip(-uy,  p0y - 0) and
@@ -111,6 +127,7 @@ def draw_crosshatch_in_band(draw, w, h, spacing, angles_deg, colors, width_range
                 d += spacing
                 continue
 
+            # intersect with band edges (two parallels at distances d1, d2 along band normal)
             denom = bn_x*ux + bn_y*uy
             if abs(denom) < 1e-9:
                 d += spacing
@@ -126,37 +143,64 @@ def draw_crosshatch_in_band(draw, w, h, spacing, angles_deg, colors, width_range
                 x2, y2 = p0x + t_end*ux,   p0y + t_end*uy
                 lw = random.randint(width_range[0], width_range[1])
                 draw.line([(x1, y1), (x2, y2)], fill=(*color, alpha), width=lw)
+
             d += spacing
+
+# ---------- Main builder ----------
 
 def build_image(W=10000, H=12000, seed=42, out="opart_intensified_10000x12000.png"):
     random.seed(seed)
     img = Image.new("RGBA", (W, H), (255, 255, 255, 255))
     draw = ImageDraw.Draw(img)
 
-    # Fine diagonals
-    for ang in [-21, -20, -19]:
-        draw_parallel_lines(draw, W, H, spacing=12, angle_deg=ang,
-                            colors=[(220,40,40), (40,80,200), (0,0,0)],
-                            width_range=(1,2), jitter=0.6, alpha=120)
+    # --- Fine diagonals (triple), UPDATED spacing & stroke ---
+    fine_angles = [-21, -20, -19]
+    fine_spacing = 36               # (was 12)
+    fine_colors  = [(220,40,40), (40,80,200), (0,0,0)]
+    for ang in fine_angles:
+        draw_parallel_lines(draw, W, H,
+                            spacing=fine_spacing,
+                            angle_deg=ang,
+                            colors=fine_colors,
+                            width_range=(2,5),   # (was 1–2)
+                            jitter=0.6,
+                            alpha=150)
 
-    # Crosshatch bands
-    band_angle = -20
-    band_width = int(min(W, H) * 0.28)
-    gap_width  = int(band_width * 0.60)
-    offset0    = int(-band_width * 0.20)
-    offset1    = offset0 + band_width + gap_width
+    # --- Crosshatch bands (complementary), UPDATED spacing & stroke ---
+    grid_spacing = 300              # (was 242)
+    grid_angles  = [70, 130]
+    grid_colors  = [(20,160,120), (220,100,40)]  # green/cyan + red/orange
+    band_angle   = -20
+    band_width   = int(min(W, H) * 0.28)
+    gap_width    = int(band_width * 0.60)
+    offset0      = int(-band_width * 0.20)
+    offset1      = offset0 + band_width + gap_width
 
-    for offset in [offset0, offset1]:
-        draw_crosshatch_in_band(draw, W, H, spacing=242,
-                                angles_deg=[70,130],
-                                colors=[(20,160,120),(220,100,40)],
-                                width_range=(4,6), alpha=200,
-                                band_angle_deg=band_angle,
-                                band_center_offset=offset,
-                                band_width=band_width)
+    draw_crosshatch_in_band(draw, W, H,
+                            spacing=grid_spacing,
+                            angles_deg=grid_angles,
+                            colors=grid_colors,
+                            width_range=(6,8),   # (was 4–6)
+                            alpha=210,
+                            band_angle_deg=band_angle,
+                            band_center_offset=offset0,
+                            band_width=band_width)
+
+    draw_crosshatch_in_band(draw, W, H,
+                            spacing=grid_spacing,
+                            angles_deg=grid_angles,
+                            colors=grid_colors,
+                            width_range=(6,8),
+                            alpha=210,
+                            band_angle_deg=band_angle,
+                            band_center_offset=offset1,
+                            band_width=band_width)
 
     img.convert("RGB").save(out, "PNG", optimize=True)
     print(f"Saved {out}")
 
+# ---------- Entry point ----------
+
 if __name__ == "__main__":
     build_image()
+
