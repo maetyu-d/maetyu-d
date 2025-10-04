@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Chrononaut</title>
+<style>
+  body {
+    margin:0; padding:0;
+    background:black; color:#33ff33;
+    font-family:"Courier New", monospace;
+    font-size:16px; line-height:1.5;
+  }
+  #terminal {
+    display:grid;
+    grid-template-columns: 2fr 1fr;
+    height:100vh;
+  }
+  #wiki, #side {
+    border:1px solid #33ff33;
+    padding:8px; overflow:auto;
+  }
+  a { color:#33ff33; text-decoration:underline; cursor:pointer; }
+  input, button, select, textarea {
+    background:black; color:#33ff33;
+    border:1px solid #33ff33; font-family:inherit;
+  }
+  h1,h2,h3 { color:#33ff33; }
+</style>
+</head>
+<body>
+<div id="terminal">
+  <div id="wiki">
+    <h1>CHRONONAUT</h1>
+    <p>You are a Ballardian time-travelling detective.</p>
+    <p><b>Prologue:</b> Access <i>Special relativity</i> or <i>Time dilation</i> in the terminal. 
+       Deduce the activation phrase and power your capsule.</p>
+    <div>
+      <input id="search" placeholder="Search Wikipedia...">
+      <select id="lang">
+        <option value="en" selected>EN</option>
+        <option value="fr">FR</option>
+        <option value="es">ES</option>
+      </select>
+      <button onclick="doSearch()">Search</button>
+    </div>
+    <div id="wiki-content"></div>
+  </div>
+  <div id="side">
+    <h3>Status</h3>
+    <div id="status">Prologue active</div>
+    <h3>Notes</h3>
+    <textarea id="notes" rows="10" style="width:100%;"></textarea>
+    <button onclick="saveNotes()">Save Notes</button>
+    <h3>Visited Articles</h3>
+    <ul id="visited"></ul>
+    <h3>Enter Activation Phrase</h3>
+    <input id="phrase" placeholder="type phrase...">
+    <button onclick="checkPhrase()">Enter</button>
+    <div id="hub" style="display:none;">
+      <h3>Cases Hub</h3>
+      <ul>
+        <li><a id="link-westbridge" onclick="openCase('westbridge')">Westbridge University</a></li>
+        <li><a id="link-helix" onclick="openCase('helix')">Helix Arcology 2091</a></li>
+        <li><a id="link-burroughs" onclick="openCase('burroughs')">Burroughs in Tangier</a></li>
+        <li><a id="link-prehistoric" onclick="openCase('prehistoric')">Prehistoric Echoes</a></li>
+        <li><a id="link-perec" onclick="openCase('perec')">Perec’s Paris Apartment</a></li>
+      </ul>
+    </div>
+    <div id="end-screen" style="display:none; text-align:center; padding:20px;">
+      <h2>CHRONONAUT: Cases Complete</h2>
+      <p>You have traversed eras, cracked ciphers, read the traces of time, and closed all investigations.</p>
+      <p>The capsule hums quietly. Where — or when — will you go next?</p>
+      <button onclick="resetGame()">Reset Game</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- State ----------
+let visited = JSON.parse(localStorage.getItem("visited")||"[]");
+let notes = localStorage.getItem("notes")||"";
+let progress = JSON.parse(localStorage.getItem("progress")||'{"prologue":false}');
+
+document.getElementById("notes").value = notes;
+updateVisited();
+
+// ---------- General ----------
+function saveNotes(){
+  localStorage.setItem("notes", document.getElementById("notes").value);
+}
+function updateVisited(){
+  let ul = document.getElementById("visited");
+  ul.innerHTML="";
+  visited.forEach(v=>{
+    let li=document.createElement("li");
+    li.textContent=v;
+    ul.appendChild(li);
+  });
+}
+function sanitize(html, lang){
+  html = html.replace(/href="\/wiki\/([^"]+)"/g, 
+    (m,p)=>`href="#" onclick="loadArticle('${decodeURIComponent(p)}','${lang}')"` );
+  return html;
+}
+function loadArticle(title, lang="en"){
+  fetch(`https://${lang}.wikipedia.org/api/rest_v1/page/html/${encodeURIComponent(title)}`)
+  .then(r=>r.text())
+  .then(html=>{
+    document.getElementById("wiki-content").innerHTML = sanitize(html, lang);
+    if(!visited.includes(title)){
+      visited.push(title);
+      localStorage.setItem("visited", JSON.stringify(visited));
+      updateVisited();
+    }
+  })
+  .catch(()=>{document.getElementById("wiki-content").innerHTML="Error loading article.";});
+}
+function doSearch(){
+  let q=document.getElementById("search").value;
+  let lang=document.getElementById("lang").value;
+  fetch(`https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&utf8=&format=json&origin=*`)
+  .then(r=>r.json())
+  .then(data=>{
+    let res="<h3>Search results:</h3><ul>";
+    data.query.search.forEach(s=>{
+      res+=`<li><a href="#" onclick="loadArticle('${s.title}','${lang}')">${s.title}</a></li>`;
+    });
+    res+="</ul>";
+    document.getElementById("wiki-content").innerHTML=res;
+  });
+}
+
+// ---------- Prologue ----------
+function checkPhrase(){
+  let phrase=document.getElementById("phrase").value.trim().toLowerCase();
+  if(phrase==="time dilation"){
+    progress.prologue=true;
+    localStorage.setItem("progress", JSON.stringify(progress));
+    document.getElementById("status").innerText="Capsule powered. Hub unlocked.";
+    document.getElementById("hub").style.display="block";
+    updateHub();
+    checkAllComplete();
+  } else {
+    document.getElementById("status").innerText="Incorrect phrase.";
+  }
+}
+
+// ---------- Hub gating ----------
+function updateHub(){
+  document.querySelectorAll('#hub a').forEach(a=>{
+    a.style.pointerEvents="none"; a.style.opacity="0.3";
+  });
+  if(progress.prologue){ enable("link-westbridge"); }
+  if(localStorage.getItem("westbridge_complete")==="true"){ enable("link-helix"); }
+  if(localStorage.getItem("helix_complete")==="true"){ enable("link-burroughs"); }
+  if(localStorage.getItem("burroughs_complete")==="true"){ enable("link-prehistoric"); }
+  if(localStorage.getItem("prehistoric_complete")==="true"){ enable("link-perec"); }
+}
+function enable(id){ let e=document.getElementById(id); e.style.pointerEvents="auto"; e.style.opacity="1.0"; }
+function checkAllComplete(){
+  if(
+    localStorage.getItem("westbridge_complete")==="true" &&
+    localStorage.getItem("helix_complete")==="true" &&
+    localStorage.getItem("burroughs_complete")==="true" &&
+    localStorage.getItem("prehistoric_complete")==="true" &&
+    localStorage.getItem("perec_complete")==="true"
+  ){
+    document.getElementById("hub").style.display="none";
+    document.getElementById("wiki-content").innerHTML="";
+    document.getElementById("end-screen").style.display="block";
+  }
+}
+function resetGame(){
+  if(confirm("Are you sure you want to reset all progress?")){
+    localStorage.clear();
+    location.reload();
+  }
+}
+function visitedHas(title){ return visited.some(v=>v.toLowerCase()===title.toLowerCase()); }
+
+// ---------- Cipher helpers ----------
+function caesarDecrypt(text, shift){
+  return text.replace(/[a-z]/gi, c=>{
+    let base = c<='Z'?'A'.charCodeAt(0):'a'.charCodeAt(0);
+    return String.fromCharCode((c.charCodeAt(0)-base-shift+26)%26+base);
+  });
+}
+function vigenereDecrypt(text, key){
+  key=key.toLowerCase().replace(/[^a-z]/g,'');
+  let out="", j=0;
+  for(let i=0;i<text.length;i++){
+    let c=text[i];
+    if(/[a-z]/i.test(c)){
+      let base = c<='Z'?'A'.charCodeAt(0):'a'.charCodeAt(0);
+      let shift=key.charCodeAt(j%key.length)-97;
+      out+=String.fromCharCode((c.charCodeAt(0)-base-shift+26)%26+base);
+      j++;
+    } else out+=c;
+  }
+  return out;
+}
+
+// ---------- Cases ----------
+function openCase(caseId){
+  // CASE 1: WESTBRIDGE
+  if(caseId==="westbridge"){
+    document.getElementById("wiki-content").innerHTML=`
+      <h2>Case 1: Westbridge University</h2>
+      <p>Professor dead, strange cipher notes. Required: Voynich manuscript + Ada/Babbage.</p>
+      <div id="westbridge-puzzles">
+        <h3>Caesar Cipher</h3>
+        <p>KHOOR ZRUOG</p>
+        <input id="caesarAns"><button onclick="checkCaesar()">Submit</button>
+        <div id="caesarStatus"></div>
+        <h3>Vigenère Cipher</h3>
+        <p>LXFOPVEFRNHR, key=voynich</p>
+        <input id="vigAns"><button onclick="checkVigenere()">Submit</button>
+        <div id="vigStatus"></div>
+      </div>
+      <div id="westbridge-final" style="display:none;">
+        <h3>Final Accusation</h3>
+        <input id="finalAns"><button onclick="checkWestbridgeFinal()">Accuse</button>
+        <div id="finalStatus"></div>
+      </div>`;
+  }
+
+  // CASE 2: HELIX
+  if(caseId==="helix"){
+    document.getElementById("wiki-content").innerHTML=`
+      <h2>Case 2: Helix Arcology 2091</h2>
+      <p>Biotech intrigue. Required: Arcology + Cellular automaton + CRISPR.</p>
+      <div id="helix-puzzles">
+        <h3>Automaton</h3>
+        <p>Rule 90 on 01010 → ?</p>
+        <input id="autoAns"><button onclick="checkAutomaton()">Submit</button>
+        <div id="autoStatus"></div>
+        <h3>DNA Edit</h3>
+        <p>ATCAGGTAGGCTA, cut AGG→---</p>
+        <input id="dnaAns"><button onclick="checkDNA()">Submit</button>
+        <div id="dnaStatus"></div>
+      </div>
+      <div id="helix-final" style="display:none;">
+        <h3>Final Accusation</h3>
+        <input id="helixFinalAns"><button onclick="checkHelixFinal()">Accuse</button>
+        <div id="helixFinalStatus"></div>
+      </div>`;
+    checkHelixUnlock();
+  }
+
+  // CASE 3: BURROUGHS
+  if(caseId==="burroughs"){
+    document.getElementById("wiki-content").innerHTML=`
+      <h2>Case 3: Burroughs in Tangier</h2>
+      <p>1959 Tangier, cut-up clues. Required: William S. Burroughs + Naked Lunch + Tangier.</p>
+      <div id="burroughs-puzzles">
+        <h3>Cut-up</h3>
+        <p>Fragments: naked, was, lunch, written, here</p>
+        <input id="cutupAns"><button onclick="checkCutup()">Submit</button>
+        <div id="cutupStatus"></div>
+        <h3>Hotel</h3>
+        <p>Which hotel?</p>
+        <input id="hotelAns"><button onclick="checkHotel()">Submit</button>
+        <div id="hotelStatus"></div>
+      </div>
+      <div id="burroughs-final" style="display:none;">
+        <h3>Final Accusation</h3>
+        <input id="burroughsFinalAns"><button onclick="checkBurroughsFinal()">Accuse</button>
+        <div id="burroughsFinalStatus"></div>
+      </div>`;
+    checkBurroughsUnlock();
+  }
+
+  // CASE 4: PREHISTORIC
+  if(caseId==="prehistoric"){
+    document.getElementById("wiki-content").innerHTML=`
+      <h2>Case 4: Prehistoric Echoes</h2>
+      <p>Lascaux, Chauvet, Upper Paleolithic. Required: those 3 articles.</p>
+      <div id="prehistoric-puzzles">
+        <h3>Symbols</h3>
+        <p>🔺 ⚪ ✋ 🔺, key: A/O/H</p>
+        <input id="symbolAns"><button onclick="checkSymbol()">Submit</button>
+        <div id="symbolStatus"></div>
+        <h3>Chronology</h3>
+        <p>Which cave is older?</p>
+        <input id="chronoAns"><button onclick="checkChrono()">Submit</button>
+        <div id="chronoStatus"></div>
+      </div>
+      <div id="prehistoric-final" style="display:none;">
+        <h3>Final Accusation</h3>
+        <input id="prehistoricFinalAns"><button onclick="checkPrehistoricFinal()">Accuse</button>
+        <div id="prehistoricFinalStatus"></div>
+      </div>`;
+    checkPrehistoricUnlock();
+  }
+
+  // CASE 5: PEREC
+  if(caseId==="perec"){
+    document.getElementById("wiki-content").innerHTML=`
+      <h2>Case 5: Perec’s Paris Apartment</h2>
+      <p>Rue Simon-Crubellier. Required: Perec + Oulipo + Knight’s tour.</p>
+      <div id="perec-puzzles">
+        <h3>Lipogram</h3>
+        <p>Sentence with no "e".</p>
+        <input id="lipogramAns"><button onclick="checkLipogram()">Submit</button>
+        <div id="lipogramStatus"></div>
+        <h3>Knight</h3>
+        <p>Can knight a1→c2 in 3 moves?</p>
+        <input id="knightAns"><button onclick="checkKnight()">Submit</button>
+        <div id="knightStatus"></div>
+      </div>
+      <div id="perec-final" style="display:none;">
+        <h3>Final Accusation</h3>
+        <input id="perecFinalAns"><button onclick="checkPerecFinal()">Accuse</button>
+        <div id="perecFinalStatus"></div>
+      </div>`;
+    checkPerecUnlock();
+  }
+}
+
+// ---------- Case Logic ----------
+function checkCaesar(){
+  let ans=document.getElementById("caesarAns").value.trim().toLowerCase();
+  let correct=caesarDecrypt("KHOOR ZRUOG",3).toLowerCase(); // hello world
+  if(ans===correct){
+    document.getElementById("caesarStatus").innerText="✔ Correct.";
+    localStorage.setItem("westbridge_caesar","done"); unlockWestbridgeFinal();
+  } else { document.getElementById("caesarStatus").innerText="✖ Try again."; }
+}
+function checkVigenere(){
+  let ans=document.getElementById("vigAns").value.trim().toLowerCase();
+  let correct=vigenereDecrypt("LXFOPVEFRNHR","voynich").toLowerCase(); // attackatdawn
+  if(ans===correct){
+    document.getElementById("vigStatus").innerText="✔ Correct.";
+    localStorage.setItem("westbridge_vig","done"); unlockWestbridgeFinal();
+  } else { document.getElementById("vigStatus").innerText="✖ Try again."; }
+}
+function unlockWestbridgeFinal(){
+  if(localStorage.getItem("westbridge_caesar")==="done" && localStorage.getItem("westbridge_vig")==="done"){
+    document.getElementById("westbridge-final").style.display="block";
+  }
+}
+function checkWestbridgeFinal(){
+  let ans=document.getElementById("finalAns").value.trim().toLowerCase();
+  if(ans.includes("dean")){
+    document.getElementById("finalStatus").innerText="Case closed. The Dean did it!";
+    localStorage.setItem("westbridge_complete","true"); updateHub(); checkAllComplete();
+  } else { document.getElementById("finalStatus").innerText="Not enough evidence."; }
+}
+
+function checkHelixUnlock(){
+  if( visitedHas("Arcology") && visitedHas("Cellular automaton") && visitedHas("CRISPR") ){
+    document.getElementById("helix-puzzles").style.display="block";
+  } else {
+    document.getElementById("helix-puzzles").style.display="none";
+    document.getElementById("wiki-content").innerHTML += "<p style='color:#f55;'>Read Arcology, Cellular automaton, and CRISPR first.</p>";
+  }
+}
+function checkAutomaton(){ let ans=document.getElementById("autoAns").value.trim(); if(ans==="10101"){ document.getElementById("autoStatus").innerText="✔ Correct."; localStorage.setItem("helix_auto","done"); unlockHelixFinal(); } else document.getElementById("autoStatus").innerText="✖"; }
+function checkDNA(){ let ans=document.getElementById("dnaAns").value.trim().toUpperCase(); let correct="ATC---T---CTA"; if(ans===correct){ document.getElementById("dnaStatus").innerText="✔ Correct."; localStorage.setItem("helix_dna","done"); unlockHelixFinal(); } else document.getElementById("dnaStatus").innerText="✖"; }
+function unlockHelixFinal(){ if(localStorage.getItem("helix_auto")==="done" && localStorage.getItem("helix_dna")==="done"){ document.getElementById("helix-final").style.display="block"; } }
+function checkHelixFinal(){ let ans=document.getElementById("helixFinalAns").value.trim().toLowerCase(); if(ans.includes("ceo")){ document.getElementById("helixFinalStatus").innerText="Case solved. CEO staged it."; localStorage.setItem("helix_complete","true"); updateHub(); checkAllComplete(); } else document.getElementById("helixFinalStatus").innerText="Not enough evidence."; }
+
+function checkBurroughsUnlock(){
+  if( visitedHas("William S. Burroughs") && visitedHas("Naked Lunch") && visitedHas("Tangier") ){
+    document.getElementById("burroughs-puzzles").style.display="block";
+  } else {
+    document.getElementById("burroughs-puzzles").style.display="none";
+    document.getElementById("wiki-content").innerHTML += "<p style='color:#f55;'>Read Burroughs, Naked Lunch, and Tangier first.</p>";
+  }
+}
+function checkCutup(){ let ans=document.getElementById("cutupAns").value.trim().toLowerCase(); if(ans.includes("naked")&&ans.includes("lunch")&&ans.includes("written")&&ans.includes("here")){ document.getElementById("cutupStatus").innerText="✔ Correct."; localStorage.setItem("burroughs_cutup","done"); unlockBurroughsFinal(); } else document.getElementById("cutupStatus").innerText="✖"; }
+function checkHotel(){ let ans=document.getElementById("hotelAns").value.trim().toLowerCase(); if(ans.includes("muniria")){ document.getElementById("hotelStatus").innerText="✔ Correct."; localStorage.setItem("burroughs_hotel","done"); unlockBurroughsFinal(); } else document.getElementById("hotelStatus").innerText="✖"; }
+function unlockBurroughsFinal(){ if(localStorage.getItem("burroughs_cutup")==="done"&&localStorage.getItem("burroughs_hotel")==="done"){ document.getElementById("burroughs-final").style.display="block"; } }
+function checkBurroughsFinal(){ let ans=document.getElementById("burroughsFinalAns").value.trim().toLowerCase(); if(ans.includes("kerouac")){ document.getElementById("burroughsFinalStatus").innerText="Case solved. Kerouac left clue."; localStorage.setItem("burroughs_complete","true"); updateHub(); checkAllComplete(); } else document.getElementById("burroughsFinalStatus").innerText="✖"; }
+
+function checkPrehistoricUnlock(){
+  if( visitedHas("Lascaux") && visitedHas("Chauvet Cave") && visitedHas("Upper Paleolithic") ){
+    document.getElementById("prehistoric-puzzles").style.display="block";
+  } else {
+    document.getElementById("prehistoric-puzzles").style.display="none";
+    document.getElementById("wiki-content").innerHTML += "<p style='color:#f55;'>Read Lascaux, Chauvet Cave, and Upper Paleolithic first.</p>";
+  }
+}
+function checkSymbol(){ let ans=document.getElementById("symbolAns").value.trim().toUpperCase().replace(/\s+/g,''); if(ans==="AOHA"){ document.getElementById("symbolStatus").innerText="✔ AOHA."; localStorage.setItem("prehistoric_symbol","done"); unlockPrehistoricFinal(); } else document.getElementById("symbolStatus").innerText="✖"; }
+function checkChrono(){ let ans=document.getElementById("chronoAns").value.trim().toLowerCase(); if(ans.includes("chauvet")){ document.getElementById("chronoStatus").innerText="✔ Chauvet older."; localStorage.setItem("prehistoric_chrono","done"); unlockPrehistoricFinal(); } else document.getElementById("chronoStatus").innerText="✖"; }
+function unlockPrehistoricFinal(){ if(localStorage.getItem("prehistoric_symbol")==="done"&&localStorage.getItem("prehistoric_chrono")==="done"){ document.getElementById("prehistoric-final").style.display="block"; } }
+function checkPrehistoricFinal(){ let ans=document.getElementById("prehistoricFinalAns").value.trim().toLowerCase(); if(ans.includes("shaman")){ document.getElementById("prehistoricFinalStatus").innerText="Case solved. The shaman did it."; localStorage.setItem("prehistoric_complete","true"); updateHub(); checkAllComplete(); } else document.getElementById("prehistoricFinalStatus").innerText="✖"; }
+
+function checkPerecUnlock(){
+  if( visitedHas("Georges Perec") && visitedHas("Oulipo") && visitedHas("Knight's tour") ){
+    document.getElementById("perec-puzzles").style.display="block";
+  } else {
+    document.getElementById("perec-puzzles").style.display="none";
+    document.getElementById("wiki-content").innerHTML += "<p style='color:#f55;'>Read Perec, Oulipo, Knight’s tour first.</p>";
+  }
+}
+function checkLipogram(){ let ans=document.getElementById("lipogramAns").value.trim(); if(ans && !/[eE]/.test(ans)){ document.getElementById("lipogramStatus").innerText="✔ No e."; localStorage.setItem("perec_lipogram","done"); unlockPerecFinal(); } else document.getElementById("lipogramStatus").innerText="✖"; }
+function checkKnight(){ let ans=document.getElementById("knightAns").value.trim().toLowerCase(); if(ans==="yes"){ document.getElementById("knightStatus").innerText="✔ Correct."; localStorage.setItem("perec_knight","done"); unlockPerecFinal(); } else document.getElementById("knightStatus").innerText="✖"; }
+function unlockPerecFinal(){ if(localStorage.getItem("perec_lipogram")==="done"&&localStorage.getItem("perec_knight")==="done"){ document.getElementById("perec-final").style.display="block"; } }
+function checkPerecFinal(){ let ans=document.getElementById("perecFinalAns").value.trim().toLowerCase(); if(ans.includes("perec")){ document.getElementById("perecFinalStatus").innerText="Case solved. Perec authored the labyrinth."; localStorage.setItem("perec_complete","true"); updateHub(); checkAllComplete(); } else document.getElementById("perecFinalStatus").innerText="✖"; }
+
+// ---------- Init ----------
+if(progress.prologue){
+  document.getElementById("status").innerText="Capsule powered. Hub unlocked.";
+  document.getElementById("hub").style.display="block";
+  updateHub();
+  checkAllComplete();
+}
+</script>
+</body>
+</html>
