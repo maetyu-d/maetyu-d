@@ -1,0 +1,1522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Asymmetric vs Symmetric Bots — 10k World (No Goals)</title>
+  <style>
+    :root{
+      --bg:#0b0f14;           /* deep slate */
+      --panel:#121923;        /* slightly lighter */
+      --ink:#223141;          /* subtle borders */
+      --text:#cdd6e0;         /* body text */
+      --muted:#8ea0b5;        /* secondary text */
+      --accent:#2fe36e;       /* green */
+      --accent2:#ff9900;      /* orange */
+      --danger:#e25555;       /* error */
+      --ok:#2fe36e;
+      --shadow: 0 6px 20px rgba(0,0,0,0.35);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%; margin:0; background:var(--bg); color:var(--text); font:14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji"}
+
+    /* Header */
+    header{
+      position:sticky; top:0; z-index:10;
+      background:linear-gradient(180deg, #17202b 0%, #111923 100%);
+      border-bottom:1px solid var(--ink);
+      box-shadow:0 10px 20px rgba(0,0,0,0.25);
+    }
+    .row{display:flex; gap:10px; align-items:center; padding:10px; max-width:1400px; margin:0 auto}
+    .title{font-weight:700; letter-spacing:0.3px; opacity:.95}
+    .spacer{flex:1}
+
+    .btn{background:#16202b; border:1px solid var(--ink); color:var(--text); padding:6px 10px; border-radius:10px; cursor:pointer; box-shadow:inset 0 1px 0 rgba(255,255,255,0.03); transition:transform .05s ease, filter .15s ease, background .15s ease}
+    .btn:hover{filter:brightness(1.08)}
+    .btn:active{transform:translateY(1px)}
+    .btn.secondary{background:#1a2330}
+    .btn.warn{background:#211818; border-color:#3a1f22; color:#ffb8c0}
+
+    .tag{border:1px solid var(--ink); padding:4px 8px; border-radius:999px; font-size:12px; color:var(--muted); background:#0f151d}
+    .tag.ok{color:var(--ok); border-color:#1e3b2a; background:#0e1912}
+    .tag.stop{color:#ffb5b5; border-color:#3a2020; background:#1a1010}
+
+    .slider{display:flex; align-items:center; gap:8px}
+    .slider input[type=range]{width:180px}
+    .kv{display:flex; gap:8px; align-items:center}
+
+    /* Layout */
+    main{max-width:1400px; margin:12px auto; padding:0 10px;}
+    .grid{display:grid; grid-template-columns: 1.2fr 1fr; gap:12px}
+
+    .panel{background:var(--panel); border:1px solid var(--ink); border-radius:14px; padding:10px; box-shadow: var(--shadow); position:relative}
+    .panel h3{margin:0 0 10px 0; font-size:13px; font-weight:700; color:#a9b7c6; letter-spacing:0.3px}
+    .panel .sub{color:var(--muted); font-size:12px}
+
+    /* Canvases */
+    .view{display:flex; flex-direction:column; gap:10px}
+    .canvas-wrap{position:relative; background:#0a0f14; border:1px solid var(--ink); border-radius:12px; overflow:hidden}
+    canvas{display:block; width:100%; height:100%}
+    .view .overlay-border{position:absolute; inset:0; pointer-events:none; border:1px solid rgba(255,255,255,0.06); border-radius:12px}
+
+    .flex{display:flex; gap:12px}
+    .col{display:flex; flex-direction:column; gap:12px}
+
+    /* Stats grid */
+    .stats{display:grid; grid-template-columns: auto 1fr; gap:6px 12px; font-size:12px}
+    .stats dt{color:#8aa2b8}
+    .stats dd{margin:0; color:#d6dee7}
+
+    /* Chart */
+    #chart{width:100%; height:160px; display:block; background:#0f151d; border:1px solid var(--ink); border-radius:10px}
+
+    /* Brush controls */
+    .controls{display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:8px; align-items:end}
+    .controls label{display:flex; flex-direction:column; gap:4px; font-size:12px; color:#9bb0c6}
+    .controls input[type=number]{background:#0f151d; color:var(--text); border:1px solid var(--ink); padding:6px 8px; border-radius:8px}
+    .controls input[type=checkbox]{transform:translateY(1px)}
+    .controls select, .controls input[type=range]{background:#0f151d; border:1px solid var(--ink); border-radius:8px}
+    .swatch{width:40px; height:28px; border:1px solid var(--ink); border-radius:6px; background:#000}
+
+    /* DSL */
+    textarea{width:100%; min-height:160px; background:#0c1218; color:#dbe6f3; border:1px solid var(--ink); border-radius:10px; padding:8px; font:12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
+
+    .footer-note{font-size:12px; color:#8095aa}
+    .error{color:#ffb5b5}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="row">
+      <div class="title">Asymmetric vs Symmetric Bots — 10k World (No Goals)</div>
+      <div class="spacer"></div>
+      <div class="kv">State: <span id="stateTag" class="tag ok">Running</span></div>
+      <div class="kv">Fatigue: <span id="fatigueBar" class="tag" title="Focused bot fatigue">0%</span></div>
+      <button id="btnPause" class="btn">Pause</button>
+      <button id="btnStep" class="btn secondary" title="Step one tick when paused">Step</button>
+      <div class="slider" title="Follow-cam zoom">
+        <span>Zoom</span>
+        <input id="zoom" type="range" min="0" max="1" step="0.001" value="0.45" />
+      </div>
+      <div class="slider" title="Simulation speed">
+        <span>Speed</span>
+        <input id="speed" type="range" min="0.05" max="5" step="0.01" value="1" />
+        <span id="speedTag" class="tag">1.00×</span>
+      </div>
+      <div class="slider" title="Darkness threshold: tiles below this render black">
+        <span>Black &lt;</span>
+        <input id="darkThreshold" type="range" min="0" max="1" step="0.01" value="0.5" />
+        <span id="darkTag" class="tag">0.50</span>
+      </div>
+      <button id="btnExport" class="btn warn" title="Export 10k×10k trails only (A then B)">Export 10k Trail PNG</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="grid">
+      <!-- LEFT: Follow Cam + Stats + Chart -->
+      <div class="col">
+        <div class="panel view">
+          <div class="canvas-wrap" style="height:420px">
+            <canvas id="viewFollow"></canvas>
+            <div class="overlay-border"></div>
+          </div>
+        </div>
+
+        <div class="flex">
+          <div class="panel" style="flex:1">
+            <h3>Focused Bot — Stats</h3>
+            <dl class="stats" id="statsGrid"></dl>
+          </div>
+          <div class="panel" style="flex:1">
+            <h3>Sensor Chart (30s / 10 Hz)</h3>
+            <canvas id="chart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Full Map + Brush + DSL -->
+      <div class="col">
+        <div class="panel view">
+          <div class="canvas-wrap" style="height:540px">
+            <canvas id="viewMap"></canvas>
+            <div class="overlay-border"></div>
+          </div>
+          <div class="panel" style="margin:0; background:transparent; border:none; box-shadow:none; padding:0">
+            <div class="flex" style="align-items:center; gap:10px">
+              <button id="btnBrushToggle" class="btn secondary">Brush: Off</button>
+              <div class="controls" style="flex:1">
+                <label>Size (px)
+                  <input id="brushSize" type="number" min="10" max="5000" step="10" value="600" />
+                </label>
+                <label>Value (0–1)
+                  <input id="brushVal" type="number" min="0" max="1" step="0.01" value="0.85" />
+                </label>
+                <label>Soft
+                  <input id="brushSoft" type="checkbox" checked />
+                </label>
+                <label>Mode
+                  <select id="brushMode">
+                    <option value="set">Set</option>
+                    <option value="add">Add</option>
+                    <option value="sub">Sub</option>
+                  </select>
+                </label>
+              </div>
+              <div>
+                <div class="sub" style="margin-bottom:4px">Preview</div>
+                <div id="brushSwatch" class="swatch"></div>
+              </div>
+            </div>
+            <div class="footer-note" style="margin-top:6px">Tip: Right-click on the map to erase to black. Brush paints the <em>brightness grid</em> and re-renders the world background.</div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>World DSL</h3>
+
+          <details id="dslHelp" style="margin:6px 0 10px;">
+            <summary style="cursor:pointer">Show DSL paths & ready-made macros</summary>
+            <pre style="white-space:pre-wrap; font-size:12px; color:#cfe1f0; background:#0b1219; border:1px solid var(--ink); padding:8px; border-radius:10px;">
+# --- Set on focused bot ---
+set bot.maxSpeed 200
+set bot.kp 6.0
+set bot.kd 1.2
+set bot.wheelRatio 0.7
+set bot.asymBiasConst 1.4
+set bot.asymResponse 0.7
+set bot.limp.amp 0.5
+set bot.limp.freq 0.12
+set bot.limp.bias 1.57
+set bot.color #22ff88
+set bot.trailColor #22ff88
+set bot.trailWidth 3
+set bot.trailOpacity 0.8
+# Sensors
+set bot.sensors.d1 260
+set bot.sensors.d2 480
+set bot.sensors.nearOff 0.35
+set bot.sensors.farOff 0.90
+# Control
+set bot.control.deltaGain 0.28
+set bot.control.darkAmplify 1.0
+set bot.control.flankNudge 0.10
+set bot.control.contrastThreshold 0.07
+set bot.control.dimSeekDampWeak 0.30
+set bot.control.dimSeekDampStrong 0.80
+# Model & speed
+set bot.model.turnSlowCap 0.65
+set bot.speedMap.darkBase 0.80
+set bot.speedMap.brightAdd 0.20
+# Social (optional flocking-ish)
+set bot.social.cohesionR 600
+set bot.social.cohesionGain 0.50
+set bot.social.alignR 600
+set bot.social.alignGain 0.35
+set bot.social.sepR 140
+set bot.social.sepGain 0.40
+set bot.social.sameTypeOnly true
+# Fatigue
+set bot.fatigueRateScalar 1.0
+set bot.restSeconds 15
+
+# --- Per-type defaults (affect current & future bots) ---
+setType A wheelRatio 0.70
+setType A sensors.d1 250
+setType A control.deltaGain 0.24
+setType B speedMap.darkBase 0.55
+
+# --- Ready-made macros (use: call <name>) ---
+# sharpASeeker — stronger A gradient response, still dim-seeking
+call sharpASeeker
+# limp — strong limp & asymmetry; sluggish steering and speed
+call limp
+# lazyBCruiser — smoother, slower B with gentler dark avoidance
+call lazyBCruiser
+# flockLiteA — gentle same-type attraction & alignment for A
+call flockLiteA
+# denseFlockB — tighter group behavior for B
+call denseFlockB
+# mazeRunner — rectangular corridors maze
+call mazeRunner
+# arenaObstacles — three polygon zones pre-placed
+call arenaObstacles
+# brightCorridor — two bright guide corridors
+call brightCorridor
+# thiccTrails — thicker, more opaque trails
+call thiccTrails
+# resetWorld — regen light + respawn defaults
+call resetWorld
+            </pre>
+          </details>
+
+          <textarea id="dsl" spellcheck="false"># ===============================
+# Pass 1 — Obstacles (executed first)
+# ===============================
+# You can switch layouts by calling a macro below.
+#call arenaObstacles
+
+# Or start clean
+clearObstacles
+addObstacle 0/0 1000/0 1000/1000 0/1000
+
+# ===============================
+# Macros (ready-made presets)
+# Use: call &lt;name&gt;
+# ===============================
+macro sharpASeeker
+  # A-type: stronger gradient response but still dim-seeking bias
+  setType A control.deltaGain 0.30
+  setType A control.contrastThreshold 0.06
+  setType A control.dimSeekDampWeak 0.28
+  setType A control.dimSeekDampStrong 0.72
+  setType A control.flankNudge 0.10
+  setType A sensors.d1 260
+  setType A sensors.d2 520
+  setType A wheelRatio 0.72
+  setType A asymResponse 0.75
+  setType A maxSpeed 180
+end
+
+macro lazyBCruiser
+  setType B control.deltaGain 0.22
+  setType B control.darkAmplify 0.8
+  setType B control.flankNudge 0.06
+  setType B model.turnSlowCap 0.65
+  setType B speedMap.darkBase 0.70
+  setType B speedMap.brightAdd 0.25
+  setType B maxSpeed 140
+  setType B speedNoise 0.02
+  setType B steerNoise 0.10
+end
+
+macro flockLiteA
+  # Gentle cohesion & alignment for A (same-type only)
+  setType A social.cohesionR 700
+  setType A social.alignR 700
+  setType A social.sepR 160
+  setType A social.cohesionGain 0.45
+  setType A social.alignGain 0.30
+  setType A social.sepGain 0.35
+  setType A social.sameTypeOnly true
+end
+
+macro denseFlockB
+  # Tighter grouping for B
+  setType B social.cohesionR 600
+  setType B social.alignR 600
+  setType B social.sepR 120
+  setType B social.cohesionGain 0.55
+  setType B social.alignGain 0.45
+  setType B social.sepGain 0.40
+  setType B social.sameTypeOnly true
+end
+
+macro flockOff
+  # Disable all social terms
+  setType A social.cohesionGain 0
+  setType A social.alignGain 0
+  setType A social.sepGain 0
+  setType B social.cohesionGain 0
+  setType B social.alignGain 0
+  setType B social.sepGain 0
+end
+
+macro arenaObstacles
+  clearObstacles
+  addObstacle 1500/1500 3500/1400 3600/3200 1400/3300
+  addObstacle 6500/2000 8500/2000 8500/3500 6500/3600
+  addObstacle 4000/6500 6000/6400 6100/8000 3900/8100
+end
+
+macro brightCorridor
+  paintRect 0 4800 10000 400 0.85
+  paintRect 2000 0 400 10000 0.85
+end
+
+macro thiccTrails
+  setType A trailWidth 4
+  setType B trailWidth 4
+  setType A trailOpacity 0.95
+  setType B trailOpacity 0.95
+end
+
+macro limp
+  # Strong limp & asymmetry; sluggish steering and speed
+  setType A wheelRatio 0.55
+  setType A asymBiasConst 1.6
+  setType A asymResponse 0.9
+  setType A limp.amp 0.70
+  setType A limp.freq 0.07
+
+  setType A control.deltaGain 0.18
+  setType A control.contrastThreshold 0.12
+  setType A control.dimSeekDampWeak 0.22
+  setType A control.dimSeekDampStrong 0.60
+
+  setType A sensors.d1 180
+  setType A sensors.d2 320
+  setType A steerNoise 0.30
+
+  setType A model.turnSlowCap 0.90
+  setType A speedMap.darkBase 0.45
+  setType A speedMap.brightAdd 0.15
+  setType A maxSpeed 110
+
+  setType A fatigueRateScalar 2.5
+  setType A restSeconds 25
+end
+
+macro mazeRunner
+  # Build rectangular corridor maze walls (A cannot enter; B can)
+  clearObstacles
+  # Outer ring
+  addObstacle 1200/1200 8800/1200 8800/1400 1200/1400
+  addObstacle 1200/8600 8800/8600 8800/8800 1200/8800
+  addObstacle 1200/1400 1400/1400 1400/8600 1200/8600
+  addObstacle 8600/1400 8800/1400 8800/8600 8600/8600
+  # Inner corridors (H)
+  addObstacle 1600/2200 8400/2200 8400/2400 1600/2400
+  addObstacle 1600/3200 8400/3200 8400/3400 1600/3400
+  addObstacle 1600/4200 8400/4200 8400/4400 1600/4400
+  addObstacle 1600/5200 8400/5200 8400/5400 1600/5400
+  addObstacle 1600/6200 8400/6200 8400/6400 1600/6400
+  addObstacle 1600/7200 8400/7200 8400/7400 1600/7400
+  # Vertical blockers
+  addObstacle 3000/1600 3200/1600 3200/8200 3000/8200
+  addObstacle 5000/1600 5200/1600 5200/8200 5000/8200
+  addObstacle 7000/1600 7200/1600 7200/8200 7000/8200
+end
+
+macro resetWorld
+  regenLight
+  setDarkThreshold 0.5
+  clearBots
+  spawnA 6
+  spawnB 6
+  focus 0
+end
+
+# ===============================
+# Pass 2 — Spawns & Settings
+# ===============================
+spawnA 6
+spawnB 6
+focus 0
+
+# Example tweaks
+setType A wheelRatio 0.70
+setType A limp.amp 0.45
+setType A speedNoise 0.05
+setType A fatigueNoise 0.10
+setType B trailColor #ff9900
+set bot.trailWidth 4
+
+# Paint: a bright patch and a dark crater
+paintRect 2000 2000 1200 800 0.9
+paintCircle 6000 6000 900 0.1
+
+# Adjust darkness threshold
+setDarkThreshold 0.5
+
+# Try presets (uncomment to apply)
+#call sharpASeeker
+#call limp
+#call lazyBCruiser
+#call flockLiteA
+#call denseFlockB
+#call mazeRunner
+#call brightCorridor
+#call thiccTrails
+#call resetWorld</textarea>
+          <div id="dslError" class="error"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+  // ==========================
+  // Utilities
+  // ==========================
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const lerp = (a,b,t)=>a+(b-a)*t;
+  const rand = (a=1,b=0)=>Math.random()*(b-a)+a;
+  const hexColorSafe = (str, fallback)=>/^#?[0-9a-fA-F]{6}$/.test(str||'') ? (str[0]==='#'?str:'#'+str) : fallback;
+  const wrapAngle = (a)=>{ while(a>Math.PI) a-=Math.PI*2; while(a<-Math.PI) a+=Math.PI*2; return a; };
+  const dist2=(x1,y1,x2,y2)=>{const dx=x2-x1, dy=y2-y1; return dx*dx+dy*dy};
+
+  function polygonContainsPoint(poly, x, y){
+    // ray casting
+    let inside=false; const n=poly.length;
+    for(let i=0,j=n-1;i<n;j=i++){
+      const xi=poly[i][0], yi=poly[i][1];
+      const xj=poly[j][0], yj=poly[j][1];
+      const intersect = ((yi>y)!=(yj>y)) && (x < (xj-xi)*(y-yi)/(yj-yi+1e-9) + xi);
+      if(intersect) inside=!inside;
+    }
+    return inside;
+  }
+  function closestPointOnSegment(ax,ay,bx,by,px,py){
+    const abx=bx-ax, aby=by-ay; const apx=px-ax, apy=py-ay; const ab2=abx*abx+aby*aby; if(ab2===0) return [ax,ay];
+    let t = (apx*abx+apy*aby)/ab2; t=clamp(t,0,1); return [ax+abx*t, ay+aby*t];
+  }
+  function escapeVectorFromPolygon(poly, x, y){
+    // find closest edge and return vector from point to closest point on that edge, pointing outward
+    let minD2=Infinity, vx=0, vy=0;
+    for(let i=0;i<poly.length;i++){
+      const a=poly[i], b=poly[(i+1)%poly.length];
+      const [cx,cy]=closestPointOnSegment(a[0],a[1],b[0],b[1],x,y);
+      const d2=dist2(x,y,cx,cy);
+      if(d2<minD2){minD2=d2; vx=cx-x; vy=cy-y;}
+    }
+    const len=Math.hypot(vx,vy)||1; return [vx/len, vy/len];
+  }
+
+  // ==========================
+  // World & Rendering
+  // ==========================
+  const WORLD_W=10000, WORLD_H=10000; // 10k world
+  const GRID_N=100;                    // 100x100 tiles
+  const TILE=100;                      // each tile = 100px
+
+  const DPR = Math.max(1, Math.min(window.devicePixelRatio||1, 2));
+
+  const state = {
+    running:true,
+    stepOnce:false,
+    speed:1.0,
+    darkThreshold:0.5,
+    _userDarkOverride:false,
+    showLabels:false,
+    trailEnabled:true,
+    zoomT:0.45, // 0..1 controls follow-cam width
+  };
+
+  // Brightness grid [GRID_N][GRID_N] with b in [0,1]
+  const grid = new Float32Array(GRID_N*GRID_N);
+
+  // Offscreen layers (background bitmap + trails A/B)
+  let bgCanvasA=null; // base background (grayscale/black) drawn once
+  let trailA=null, trailB=null; // offscreen 10k trail layers
+  let trailACtx=null, trailBCtx=null;
+
+  function tryCreateBigCanvas(label){
+    const c=document.createElement('canvas');
+    c.width=WORLD_W; c.height=WORLD_H;
+    return c;
+  }
+
+  function initOffscreens(){
+    try{
+      bgCanvasA = tryCreateBigCanvas('bg');
+      trailA = tryCreateBigCanvas('trailA');
+      trailB = tryCreateBigCanvas('trailB');
+      trailACtx = trailA.getContext('2d', {alpha:true, desynchronized:true});
+      trailBCtx = trailB.getContext('2d', {alpha:true, desynchronized:true});
+      trailACtx.lineCap='round'; trailACtx.lineJoin='round';
+      trailBCtx.lineCap='round'; trailBCtx.lineJoin='round';
+    }catch(e){
+      console.error('Failed to allocate 10k canvases', e);
+      alert('⚠️ Unable to allocate 10k×10k canvases. This device may not have enough memory. The app may not function as specified.');
+    }
+  }
+
+  // Generate noise + blur for grid
+  function regenLight(seed=Math.random()*1e9){
+    const n=GRID_N;
+    // Simple value noise with two octaves
+    const r = (x,y)=>{
+      const s = Math.sin((x*374761393 + y*668265263 + seed) * 0.00003) * 43758.5453;
+      return s - Math.floor(s);
+    };
+    for(let y=0;y<n;y++){
+      for(let x=0;x<n;x++){
+        const f1 = r(x*53,y*47);
+        const f2 = r(x*9+1000,y*11+2000);
+        grid[y*n+x] = clamp(0.15 + 0.85*(0.65*f1 + 0.35*f2), 0, 1);
+      }
+    }
+    // Box blur 1 pass
+    const tmp=new Float32Array(n*n);
+    for(let y=0;y<n;y++){
+      for(let x=0;x<n;x++){
+        let acc=0, cnt=0;
+        for(let dy=-1; dy<=1; dy++){
+          for(let dx=-1; dx<=1; dx++){
+            const xx=clamp(x+dx,0,n-1), yy=clamp(y+dy,0,n-1);
+            acc+=grid[yy*n+xx]; cnt++;
+          }
+        }
+        tmp[y*n+x]=acc/cnt;
+      }
+    }
+    grid.set(tmp);
+    renderBackgroundBitmap();
+  }
+
+  function bAt(px,py){ // px,py in world
+    const gx = clamp((px|0)/TILE|0,0,GRID_N-1);
+    const gy = clamp((py|0)/TILE|0,0,GRID_N-1);
+    return grid[gy*GRID_N+gx];
+  }
+
+  function brightnessToGray(b){
+    // Tiles with b < threshold are black; else grayscale 20–235 linear map
+    if(b < state.darkThreshold) return 0; // black
+    const t = (b - state.darkThreshold) / (1 - state.darkThreshold + 1e-9);
+    const g = Math.round(lerp(20,235, clamp(t,0,1)));
+    return g;
+  }
+
+  function renderBackgroundBitmap(){
+    if(!bgCanvasA) return;
+    const ctx = bgCanvasA.getContext('2d', {alpha:false});
+    ctx.save();
+    for(let y=0; y<GRID_N; y++){
+      for(let x=0; x<GRID_N; x++){
+        const b = grid[y*GRID_N+x];
+        const g = brightnessToGray(b);
+        if(g===0){ ctx.fillStyle = '#000'; }
+        else { const v=g|0; ctx.fillStyle = `rgb(${v},${v},${v})`; }
+        ctx.fillRect(x*TILE, y*TILE, TILE, TILE);
+      }
+    }
+    ctx.restore();
+  }
+
+  // ==========================
+  // Obstacles
+  // ==========================
+  const obstacles = []; // polygons [[x,y], ...]
+
+  function drawObstacles(ctx, x=0, y=0, scale=1){
+    ctx.save();
+    ctx.strokeStyle = 'rgba(150,190,230,0.8)';
+    ctx.fillStyle = 'rgba(40,80,120,0.15)';
+    ctx.lineWidth = 2*scale;
+    for(const poly of obstacles){
+      ctx.beginPath();
+      for(let i=0;i<poly.length;i++){
+        const p=poly[i];
+        const xx=(p[0]-x)*scale, yy=(p[1]-y)*scale;
+        if(i===0) ctx.moveTo(xx,yy); else ctx.lineTo(xx,yy);
+      }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // ==========================
+  // Bots & Simulation
+  // ==========================
+  const TYPE_A='A', TYPE_B='B';
+  const bots=[]; // unified list
+  let focusIndex=0;
+
+  const defaults = {
+    A: {
+      type:TYPE_A,
+      color:'#2fe36e', trailColor:'#2fe36e', trailWidth:2, trailOpacity:0.9,
+      maxSpeed:150,
+      wheelRatio:0.8,
+      asymBiasConst:1.2,              // scales constant drift due to asymmetry
+      asymResponse:0.6,               // skew left/right response by asymmetry
+      sensors:{ d1:220, d2:420, nearOff:0.35, farOff:0.90 },
+      control:{                       // steering behavior knobs
+        deltaGain:0.26,
+        darkAmplify:0.0,              // A dampens in dark instead of amplifying
+        flankNudge:0.08,
+        contrastThreshold:0.08,
+        dimSeekDampWeak:0.35,
+        dimSeekDampStrong:0.75
+      },
+      model:{ turnSlowCap:0.6 },      // cap for turn slowdown (0..0.99)
+      speedMap:{ darkBase:0.85, brightAdd:0.15 }, // speed = base + add*b
+      social:{                         // flocking-ish (all gains default 0 = off)
+        cohesionR:600, cohesionGain:0.0,
+        alignR:600,    alignGain:0.0,
+        sepR:140,      sepGain:0.0,
+        sameTypeOnly:true,
+        maxNeighbors:24
+      },
+      limp:{amp:0.35, freq:0.08, bias:0},
+      kp:4.0, kd:0.9,
+      speedNoise:0.05, steerNoise:0.2, fatigueNoise:0.10,
+      fatigueRateScalar:1.0, restSeconds:15,
+    },
+    B: {
+      type:TYPE_B,
+      color:'#ff9900', trailColor:'#ff9900', trailWidth:2, trailOpacity:0.9,
+      maxSpeed:160,
+      wheelRatio:1.0,
+      asymBiasConst:1.2,
+      asymResponse:0.6,
+      sensors:{ d1:220, d2:420, nearOff:0.35, farOff:0.90 },
+      control:{
+        deltaGain:0.30,
+        darkAmplify:1.2,
+        flankNudge:0.15,
+        contrastThreshold:0.08,
+        dimSeekDampWeak:0.50,
+        dimSeekDampStrong:0.90
+      },
+      model:{ turnSlowCap:0.8 },
+      speedMap:{ darkBase:0.60, brightAdd:0.40 },
+      social:{
+        cohesionR:600, cohesionGain:0.0,
+        alignR:600,    alignGain:0.0,
+        sepR:140,      sepGain:0.0,
+        sameTypeOnly:true,
+        maxNeighbors:24
+      },
+      limp:{amp:0.0, freq:0.0, bias:0},
+      kp:4.0, kd:0.9,
+      speedNoise:0.03, steerNoise:0.12, fatigueNoise:0.06,
+      fatigueRateScalar:0.5, restSeconds:15,
+    }
+  };
+
+  function makeBot(type){
+    const base = JSON.parse(JSON.stringify(defaults[type]));
+    const b = {
+      ...base,
+      x: Math.random()*WORLD_W,
+      y: Math.random()*WORLD_H,
+      heading: Math.random()*Math.PI*2 - Math.PI,
+      angVel: 0, speed: 0,
+      fatigue: 0, resting: false, restTimer: 0,
+      lastX:null, lastY:null,
+      samples:{ ahead:0, L1:0, R1:0, L2:0, R2:0, speed:0, angVel:0 }
+    };
+    b.color = hexColorSafe(b.color, type===TYPE_A?'#2fe36e':'#ff9900');
+    b.trailColor = hexColorSafe(b.trailColor, type===TYPE_A?'#2fe36e':'#ff9900');
+    return b;
+  }
+
+  function spawn(type, n){ for(let i=0;i<n;i++) bots.push(makeBot(type)); }
+
+  function reflectAtBounds(bot){
+    let hit=false;
+    if(bot.x<0){bot.x=-bot.x; bot.heading = Math.PI - bot.heading; hit=true}
+    if(bot.x>WORLD_W){bot.x=WORLD_W - (bot.x-WORLD_W); bot.heading=Math.PI - bot.heading; hit=true}
+    if(bot.y<0){bot.y=-bot.y; bot.heading = -bot.heading; hit=true}
+    if(bot.y>WORLD_H){bot.y=WORLD_H - (bot.y-WORLD_H); bot.heading = -bot.heading; hit=true}
+    if(hit) bot.heading = wrapAngle(bot.heading);
+  }
+
+  // Sensor sampling
+  function sampleLightAt(bot, ang, dist){
+    const px = bot.x + Math.cos(bot.heading + ang) * dist;
+    const py = bot.y + Math.sin(bot.heading + ang) * dist;
+    return bAt(px,py);
+  }
+
+  function desiredHeadingDelta(bot){
+    const s = bot.sensors || (defaults[bot.type] && defaults[bot.type].sensors) || {d1:220,d2:420,nearOff:0.35,farOff:0.90};
+    const a  = sampleLightAt(bot, 0,            s.d1);
+    const L1 = sampleLightAt(bot, +s.nearOff,   s.d1);
+    const R1 = sampleLightAt(bot, -s.nearOff,   s.d1);
+    const L2 = sampleLightAt(bot, +s.farOff,    s.d2);
+    const R2 = sampleLightAt(bot, -s.farOff,    s.d2);
+
+    const grad = (0.7*(R1 - L1) + 0.3*(R2 - L2)); // right - left
+    const ctl = bot.control || (defaults[bot.type] && defaults[bot.type].control) || {};
+    const deltaGain = (typeof ctl.deltaGain==='number') ? ctl.deltaGain : (bot.type===TYPE_A?0.26:0.30);
+
+    let delta = -grad * deltaGain;
+
+    if (a < state.darkThreshold){
+      const darkness = (state.darkThreshold - a) / (state.darkThreshold + 1e-9);
+      const flankBias = (L1>R1? +1 : (R1>L1? -1 : 0));
+      if (bot.type === TYPE_A){
+        const thr = (typeof ctl.contrastThreshold==='number') ? ctl.contrastThreshold : 0.08;
+        const dampWeak = (typeof ctl.dimSeekDampWeak==='number') ? ctl.dimSeekDampWeak : 0.35;
+        const dampStrong = (typeof ctl.dimSeekDampStrong==='number') ? ctl.dimSeekDampStrong : 0.75;
+        const damp = (Math.abs(grad) < thr) ? dampWeak : dampStrong;
+        delta *= damp; // push forward through dim until gradient strengthens
+        const nudge = (typeof ctl.flankNudge==='number') ? ctl.flankNudge : 0.08;
+        delta += nudge * flankBias * darkness;
+      } else {
+        const amp = (typeof ctl.darkAmplify==='number') ? ctl.darkAmplify : 1.2;
+        const nudge = (typeof ctl.flankNudge==='number') ? ctl.flankNudge : 0.15;
+        delta *= 1 + amp * darkness;
+        delta += nudge * flankBias * darkness;
+      }
+    }
+
+    // Asymmetry coupling for A — left easier, right harder
+    if(bot.type===TYPE_A && bot.wheelRatio<1){
+      const asym = (1 - bot.wheelRatio);
+      const resp = (typeof bot.asymResponse==='number') ? bot.asymResponse : 0.6;
+      if(delta > 0) delta *= (1 + resp*asym);
+      else if(delta < 0) delta *= (1 - resp*asym);
+    }
+
+    bot.samples = {ahead:a, L1, R1, L2, R2, speed:bot.speed, angVel:bot.angVel};
+    return delta;
+  }
+
+  // Social steering (optional)
+  function socialAdjust(bot){
+    const soc = bot.social || (defaults[bot.type] && defaults[bot.type].social) || {};
+    const gC = +soc.cohesionGain||0, gA = +soc.alignGain||0, gS = +soc.sepGain||0;
+    if(gC===0 && gA===0 && gS===0) return 0;
+    const rC = +soc.cohesionR||0, rA = +soc.alignR||0, rS = +soc.sepR||0;
+    const maxR = Math.max(rC,rA,rS); if(maxR<=0) return 0;
+    const maxR2 = maxR*maxR, rC2=rC*rC, rA2=rA*rA, rS2=rS*rS;
+    const sameOnly = (soc.sameTypeOnly!==false);
+    const cap = Math.max(1, soc.maxNeighbors||24);
+
+    let cntC=0, sumCx=0, sumCy=0;
+    let cntA=0, sumCos=0, sumSin=0;
+    let repX=0, repY=0;
+
+    let seen=0;
+    for(let i=0;i<bots.length;i++){
+      const o=bots[i]; if(o===bot) continue; if(sameOnly && o.type!==bot.type) continue;
+      const d2 = (o.x-bot.x)*(o.x-bot.x) + (o.y-bot.y)*(o.y-bot.y);
+      if(d2>maxR2) continue;
+      seen++; if(seen>cap) break;
+      if(d2<=rC2){ cntC++; sumCx+=o.x; sumCy+=o.y; }
+      if(d2<=rA2){ cntA++; sumCos+=Math.cos(o.heading); sumSin+=Math.sin(o.heading); }
+      if(d2<=rS2 && d2>1){ const inv = 1/Math.sqrt(d2); repX += (bot.x - o.x)*inv; repY += (bot.y - o.y)*inv; }
+    }
+
+    let delta=0;
+    if(gC!==0 && cntC>0){ const cx=sumCx/cntC, cy=sumCy/cntC; const ang=Math.atan2(cy-bot.y, cx-bot.x); delta += gC * wrapAngle(ang - bot.heading); }
+    if(gA!==0 && cntA>0){ const ang=Math.atan2(sumSin, sumCos); delta += gA * wrapAngle(ang - bot.heading); }
+    if(gS!==0 && (repX!==0 || repY!==0)){ const ang=Math.atan2(repY, repX); delta += gS * wrapAngle(ang - bot.heading); }
+    return delta;
+  }
+
+  function updateBot(bot, dt, t){
+    const rate = bot.fatigueRateScalar * 0.01; // global 1/100×
+
+    // Type A cannot be inside obstacles; escape outward at 10% speed
+    let escaping=false, ex=0, ey=0;
+    if(bot.type===TYPE_A){
+      for(const poly of obstacles){
+        if(polygonContainsPoint(poly, bot.x, bot.y)){
+          const [vx,vy]=escapeVectorFromPolygon(poly, bot.x, bot.y);
+          ex=vx; ey=vy; escaping=true; break;
+        }
+      }
+    }
+
+    if(bot.resting){
+      bot.restTimer -= dt * rate;
+      if(bot.restTimer <= 0){ bot.resting=false; bot.fatigue=0; }
+      return;
+    }
+
+    // Controller
+    const lightDelta = desiredHeadingDelta(bot);
+    const sDelta = socialAdjust(bot);
+    const delta = lightDelta + sDelta;
+    const desired = wrapAngle(bot.heading + delta);
+    const error = wrapAngle(desired - bot.heading);
+
+    const kp = bot.kp, kd = bot.kd;
+    const du = error - (bot.prevError||0);
+    bot.prevError = error;
+
+    let u = kp*error + kd*(du/dt);
+
+    // Additive terms
+    const limpTerm = (bot.limp.amp||0) * Math.sin(2*Math.PI*(bot.limp.freq||0)*t + (bot.limp.bias||0));
+    const steerNoise = rand(-bot.steerNoise, bot.steerNoise);
+    const asymBias = (1 - bot.wheelRatio) * (typeof bot.asymBiasConst==='number' ? bot.asymBiasConst : 1.2);
+
+    let angVel = u + limpTerm + steerNoise + asymBias;
+
+    // Speed model
+    const cap = (bot.model && typeof bot.model.turnSlowCap==='number') ? bot.model.turnSlowCap : (bot.type===TYPE_A ? 0.6 : 0.8);
+    const turnSlow = 1 - clamp(Math.abs(error)/Math.PI, 0, cap);
+    const here = bAt(bot.x, bot.y);
+    const sm = bot.speedMap || (defaults[bot.type] && defaults[bot.type].speedMap) || {darkBase:(bot.type===TYPE_A?0.85:0.60), brightAdd:(bot.type===TYPE_A?0.15:0.40)};
+    const darkSlow = sm.darkBase + sm.brightAdd * here;
+    const baseSpeed = bot.maxSpeed * turnSlow * darkSlow;
+    const speedNoise = 1 + rand(-bot.speedNoise, bot.speedNoise);
+    let speed = baseSpeed * speedNoise;
+
+    if(escaping){
+      const escapeSpeed = 0.10 * bot.maxSpeed;
+      bot.x += ex * escapeSpeed * dt;
+      bot.y += ey * escapeSpeed * dt;
+      reflectAtBounds(bot);
+      bot.speed = escapeSpeed; bot.angVel = 0;
+    } else {
+      bot.heading = wrapAngle(bot.heading + angVel * dt);
+      bot.x += Math.cos(bot.heading) * speed * dt;
+      bot.y += Math.sin(bot.heading) * speed * dt;
+      reflectAtBounds(bot);
+      bot.speed = speed; bot.angVel = angVel;
+    }
+
+    // Fatigue
+    const speedNorm = bot.maxSpeed>0 ? (bot.speed / bot.maxSpeed) : 0;
+    const effort = Math.min(1, Math.abs(angVel) / 10) * 0.6 + (1 - turnSlow) * 0.4;
+    const noise = 1 + rand(-bot.fatigueNoise, bot.fatigueNoise);
+    bot.fatigue = clamp(bot.fatigue + (effort * rate * (0.5 + 0.5*speedNorm) * dt * noise), 0, 1);
+
+    if(bot.fatigue >= 1){
+      bot.resting = true;
+      bot.restTimer = bot.restSeconds * rate;
+    }
+
+    // Trails
+    if(state.trailEnabled && !bot.resting && (trailACtx && trailBCtx)){
+      const ctx = bot.type===TYPE_A ? trailACtx : trailBCtx;
+      ctx.save();
+      ctx.globalAlpha = clamp(bot.trailOpacity, 0, 1);
+      ctx.strokeStyle = bot.trailColor;
+      ctx.lineWidth = bot.trailWidth;
+      ctx.beginPath();
+      const lx = bot.lastX ?? bot.x, ly = bot.lastY ?? bot.y;
+      ctx.moveTo(lx, ly);
+      ctx.lineTo(bot.x, bot.y);
+      ctx.stroke();
+      ctx.restore();
+    }
+    bot.lastX = bot.x; bot.lastY = bot.y;
+  }
+
+  // ==========================
+  // Rendering Views
+  // ==========================
+  const viewFollow = document.getElementById('viewFollow');
+  const viewMap = document.getElementById('viewMap');
+  const ctxFollow = viewFollow.getContext('2d');
+  const ctxMap = viewMap.getContext('2d');
+
+  function resizeCanvas(c){
+    const r = c.getBoundingClientRect();
+    c.width = Math.max(2, Math.floor(r.width * DPR));
+    c.height = Math.max(2, Math.floor(r.height * DPR));
+  }
+  function resizeAll(){ resizeCanvas(viewFollow); resizeCanvas(viewMap); resizeCanvas(chartCanvas); drawBrushSwatch(); }
+  window.addEventListener('resize', resizeAll);
+
+  function drawFollow(){
+    if(!bgCanvasA) return;
+    const cw = viewFollow.width, ch = viewFollow.height;
+
+    // Zoom mapping: t in [0..1] => camera width in world (doubled range)
+    const camW = lerp(300, 12000, clamp(state.zoomT,0,1));
+    const camH = camW / (cw/ch);
+
+    const fb = bots[focusIndex];
+    const cx = clamp((fb?.x)||WORLD_W/2, camW/2, WORLD_W - camW/2);
+    const cy = clamp((fb?.y)||WORLD_H/2, camH/2, WORLD_H - camH/2);
+
+    const sx = cx - camW/2;
+    const sy = cy - camH/2;
+
+    ctxFollow.save();
+    ctxFollow.clearRect(0,0,cw,ch);
+
+    // Background
+    ctxFollow.drawImage(bgCanvasA, sx, sy, camW, camH, 0, 0, cw, ch);
+
+    // Trails A then B
+    if(trailA) ctxFollow.drawImage(trailA, sx, sy, camW, camH, 0, 0, cw, ch);
+    if(trailB) ctxFollow.drawImage(trailB, sx, sy, camW, camH, 0, 0, cw, ch);
+
+    // Obstacles
+    ctxFollow.save();
+    const scaleX=cw/camW, scaleY=ch/camH; // uniform
+    const scale=scaleX; // aspect preserved by camH selection
+    drawObstacles(ctxFollow, sx, sy, scale);
+    ctxFollow.restore();
+
+    // Bots
+    if(bots.length){
+      for(let i=0;i<bots.length;i++) drawBotIcon(ctxFollow, bots[i], sx, sy, scaleX, scaleY, i===focusIndex);
+    }
+
+    // Optional label
+    if(state.showLabels){
+      ctxFollow.fillStyle='rgba(0,0,0,0.45)';
+      ctxFollow.fillRect(8,8,120,24);
+      ctxFollow.fillStyle='#fff';
+      ctxFollow.fillText('Follow Cam', 16, 24);
+    }
+
+    ctxFollow.restore();
+  }
+
+  function drawMap(){
+    if(!bgCanvasA) return;
+    const cw=viewMap.width, ch=viewMap.height;
+    ctxMap.save();
+    ctxMap.clearRect(0,0,cw,ch);
+
+    // Fit world into canvas with letterboxing
+    const scale = Math.min(cw/WORLD_W, ch/WORLD_H);
+    const vw = WORLD_W*scale, vh = WORLD_H*scale;
+    const ox = (cw - vw)/2, oy = (ch - vh)/2;
+
+    // Background
+    ctxMap.drawImage(bgCanvasA, 0,0,WORLD_W,WORLD_H, ox,oy, vw,vh);
+
+    // Trails
+    if(trailA) ctxMap.drawImage(trailA, 0,0,WORLD_W,WORLD_H, ox,oy, vw,vh);
+    if(trailB) ctxMap.drawImage(trailB, 0,0,WORLD_W,WORLD_H, ox,oy, vw,vh);
+
+    // Border stroke
+    ctxMap.save();
+    ctxMap.strokeStyle='rgba(255,255,255,0.35)';
+    ctxMap.lineWidth=2; ctxMap.strokeRect(ox,oy,vw,vh);
+    ctxMap.restore();
+
+    // Obstacles
+    ctxMap.save();
+    ctxMap.translate(ox,oy); ctxMap.scale(scale, scale);
+    drawObstacles(ctxMap, 0, 0, 1);
+    ctxMap.restore();
+
+    // Bots
+    for(let i=0;i<bots.length;i++){
+      const b=bots[i];
+      const bx = ox + b.x*scale; const by = oy + b.y*scale;
+      drawBotIconAbs(ctxMap, bx, by, b.heading, b.color, i===focusIndex, 'map');
+    }
+
+    // Brush overlay
+    drawBrushOverlay(ctxMap, ox, oy, scale);
+
+    if(state.showLabels){
+      ctxMap.fillStyle='rgba(0,0,0,0.45)';
+      ctxMap.fillRect(8,8,100,24);
+      ctxMap.fillStyle='#fff';
+      ctxMap.fillText('Map View', 16, 24);
+    }
+
+    ctxMap.restore();
+  }
+
+  function drawBotIcon(ctx, b, sx, sy, sxScale, syScale, focused){
+    const x=(b.x - sx)*sxScale, y=(b.y - sy)*syScale;
+    drawBotIconAbs(ctx, x, y, b.heading, b.color, focused, 'follow');
+  }
+  function drawBotIconAbs(ctx, x, y, heading, color, focused, mode){
+    ctx.save();
+    ctx.translate(x,y); ctx.rotate(heading);
+    ctx.fillStyle=color; ctx.strokeStyle='rgba(0,0,0,0.5)';
+    const s = (mode==='follow' ? 1.2 : 0.45) * DPR; // smaller, follow > map
+    ctx.lineWidth = Math.max(1, 0.8*DPR);
+    ctx.beginPath();
+    ctx.moveTo(12*s,0);
+    ctx.lineTo(-10*s, 7*s);
+    ctx.lineTo(-6*s, 0);
+    ctx.lineTo(-10*s,-7*s);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    if(focused){ ctx.strokeStyle='rgba(255,255,255,0.9)'; ctx.lineWidth=Math.max(1, 1.2*DPR); ctx.stroke(); }
+    ctx.restore();
+  }
+
+  // ==========================
+  // Fixed-step Loop
+  // ==========================
+  let lastTime=performance.now();
+  let simTime=0;
+  let acc=0; const DT=1/60; const MAX_SUBSTEPS=32;
+
+  function tick(now){
+    const elapsed = Math.min(0.25, (now-lastTime)/1000);
+    lastTime=now;
+    if(state.running || state.stepOnce){
+      acc += elapsed * state.speed;
+      let substeps=0;
+      while(acc >= DT && substeps<MAX_SUBSTEPS){
+        step(DT); acc -= DT; simTime+=DT; substeps++;
+      }
+      state.stepOnce=false;
+    }
+    render();
+    requestAnimationFrame(tick);
+  }
+
+  function step(dt){
+    for(let i=0;i<bots.length;i++) updateBot(bots[i], dt, simTime);
+    // Sensor sampling for chart (10 Hz)
+    sensorSampleAcc += dt;
+    if(sensorSampleAcc >= 0.1){ sensorSampleAcc -= 0.1; pushSensorSample(); }
+  }
+
+  function render(){
+    drawFollow();
+    drawMap();
+    updateStats();
+    drawChart();
+    updateHUD();
+  }
+
+  // ==========================
+  // HUD & Stats
+  // ==========================
+  const stateTag = document.getElementById('stateTag');
+  const fatigueBar = document.getElementById('fatigueBar');
+  function updateHUD(){
+    stateTag.textContent = state.running? 'Running':'Paused';
+    stateTag.className = 'tag '+(state.running?'ok':'stop');
+    const fb = bots[focusIndex];
+    if(fb){
+      const pct = Math.round(fb.fatigue*100);
+      fatigueBar.textContent = pct+'%';
+      fatigueBar.style.borderColor = fb.type===TYPE_A ? '#215a3c' : '#5a3b21';
+      fatigueBar.style.background = fb.type===TYPE_A ? '#0c1a14' : '#1a130c';
+      fatigueBar.style.color = '#d7eadd';
+    } else {
+      fatigueBar.textContent = '—';
+    }
+  }
+
+  const statsGrid = document.getElementById('statsGrid');
+  function updateStats(){
+    const b = bots[focusIndex];
+    if(!b){ statsGrid.innerHTML='<span class="sub">No bots.</span>'; return; }
+
+    const effRate = (b.fatigueRateScalar*0.01).toFixed(4);
+    const list = [
+      ['Index', focusIndex],
+      ['Type', b.type],
+      ['Pos', `${b.x.toFixed(1)}, ${b.y.toFixed(1)}`],
+      ['Heading°', (b.heading*180/Math.PI).toFixed(1)],
+      ['Wheel Ratio', b.wheelRatio.toFixed(2)],
+      ['Asym Bias Const', (b.asymBiasConst??1.2).toFixed(2)],
+      ['Asym Response', (b.asymResponse??0.6).toFixed(2)],
+      ['Sensors', `d1:${(b.sensors?.d1 ?? (defaults[b.type]?.sensors?.d1 ?? 220))|0}, d2:${(b.sensors?.d2 ?? (defaults[b.type]?.sensors?.d2 ?? 420))|0}, near:${(b.sensors?.nearOff ?? (defaults[b.type]?.sensors?.nearOff ?? 0.35)).toFixed(2)}, far:${(b.sensors?.farOff ?? (defaults[b.type]?.sensors?.farOff ?? 0.90)).toFixed(2)}`],
+      ['Control', `gain:${(b.control?.deltaGain ?? (defaults[b.type]?.control?.deltaGain ?? 0)).toFixed(2)}, nudge:${(b.control?.flankNudge ?? (defaults[b.type]?.control?.flankNudge ?? 0)).toFixed(2)}, darkAmp:${(b.control?.darkAmplify ?? (defaults[b.type]?.control?.darkAmplify ?? 0)).toFixed(2)}`],
+      ['Turn Cap', (b.model?.turnSlowCap ?? (defaults[b.type]?.model?.turnSlowCap ?? 0)).toFixed(2)],
+      ['Speed Map', `base:${(b.speedMap?.darkBase ?? (defaults[b.type]?.speedMap?.darkBase ?? 0)).toFixed(2)} + add:${(b.speedMap?.brightAdd ?? (defaults[b.type]?.speedMap?.brightAdd ?? 0)).toFixed(2)}*b`],
+      ['Social', `C:${(b.social?.cohesionR ?? (defaults[b.type]?.social?.cohesionR ?? 0))|0}/${(b.social?.cohesionGain ?? (defaults[b.type]?.social?.cohesionGain ?? 0)).toFixed(2)} A:${(b.social?.alignR ?? (defaults[b.type]?.social?.alignR ?? 0))|0}/${(b.social?.alignGain ?? (defaults[b.type]?.social?.alignGain ?? 0)).toFixed(2)} S:${(b.social?.sepR ?? (defaults[b.type]?.social?.sepR ?? 0))|0}/${(b.social?.sepGain ?? (defaults[b.type]?.social?.sepGain ?? 0)).toFixed(2)}`],
+      ['Limp Amp', (b.limp.amp||0).toFixed(2)],
+      ['Fatigue %', Math.round(b.fatigue*100)+'%'],
+      ['Eff Fatigue Rate', effRate+' /s'],
+      ['Rest Remaining', b.resting? (b.restTimer*(b.fatigueRateScalar*0.01)).toFixed(2)+' s' : '—'],
+      ['PD (kp,kd)', `${b.kp.toFixed(2)}, ${b.kd.toFixed(2)}`],
+      ['Max Speed', b.maxSpeed.toFixed(1)],
+      ['Trail', `${b.trailWidth}px @ ${(b.trailOpacity*100|0)}%`],
+      ['Colors', `${b.color} / ${b.trailColor}`],
+    ];
+    statsGrid.innerHTML = list.map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join('');
+  }
+
+  // ==========================
+  // Sensor Chart (minimal)
+  // ==========================
+  const chartCanvas = document.getElementById('chart');
+  const cctx = chartCanvas.getContext('2d');
+  let sensorSamples=[]; // ring buffer of {ahead,L1,R1,L2,R2,speed,angVel}
+  let sensorSampleAcc=0;
+
+  function pushSensorSample(){
+    const b = bots[focusIndex]; if(!b) return;
+    const s = {...b.samples};
+    sensorSamples.push(s);
+    if(sensorSamples.length>300) sensorSamples.shift(); // 30s @10Hz
+  }
+
+  function drawChart(){
+    const cw=chartCanvas.width, ch=chartCanvas.height;
+    cctx.save();
+    cctx.clearRect(0,0,cw,ch);
+    cctx.strokeStyle='rgba(255,255,255,0.08)'; cctx.lineWidth=1;
+    cctx.beginPath(); cctx.moveTo(30,5); cctx.lineTo(30,ch-18); cctx.lineTo(cw-5,ch-18); cctx.stroke();
+
+    const leftX=30, top=8, right=cw-8, bottom=ch-20;
+    const w=right-leftX, h=bottom-top;
+    const N=sensorSamples.length; if(N<2){ cctx.restore(); return; }
+
+    // right axis scale (speed & |ang|)
+    let maxR=1;
+    for(const s of sensorSamples){ maxR=Math.max(maxR, s.speed||0, Math.abs(s.angVel)||0); }
+
+    function plot(getY, dashed=false){
+      cctx.beginPath();
+      if(dashed) cctx.setLineDash([6,4]); else cctx.setLineDash([]);
+      for(let i=0;i<N;i++){
+        const x=leftX + (i/(N-1))*w;
+        const y=top + (1-getY(sensorSamples[i]))*h;
+        if(i===0) cctx.moveTo(x,y); else cctx.lineTo(x,y);
+      }
+      cctx.stroke();
+    }
+
+    // brightness 0..1
+    cctx.lineWidth=1;
+    cctx.strokeStyle='rgba(200,220,255,0.35)'; plot(s=>s.ahead??0);
+    cctx.strokeStyle='rgba(100,220,180,0.6)'; plot(s=>s.L1??0);
+    cctx.strokeStyle='rgba(220,180,100,0.6)'; plot(s=>s.R1??0);
+    cctx.strokeStyle='rgba(120,170,220,0.6)'; plot(s=>s.L2??0);
+    cctx.strokeStyle='rgba(220,120,170,0.6)'; plot(s=>s.R2??0);
+
+    // right axis
+    cctx.lineWidth=1.5;
+    cctx.strokeStyle='rgba(200,255,200,0.9)'; plot(s=> clamp((s.speed||0)/maxR,0,1));
+    cctx.strokeStyle='rgba(255,220,220,0.9)'; plot(s=> clamp((Math.abs(s.angVel)||0)/maxR,0,1), true);
+
+    // legend
+    cctx.setLineDash([]);
+    cctx.fillStyle='rgba(220,230,240,0.75)';
+    cctx.font='11px system-ui';
+    const labels=['ahead','L1','R1','L2','R2','speed','|ang|'];
+    const lx=leftX+6, ly=top+12;
+    for(let i=0;i<labels.length;i++){
+      cctx.fillText(labels[i], lx + i*48, ly);
+    }
+    cctx.restore();
+  }
+
+  // ==========================
+  // Brush (Map)
+  // ==========================
+  const brush = {on:false, size:600, val:0.85, soft:true, mode:'set', last:null, cursor:null};
+  const btnBrushToggle = document.getElementById('btnBrushToggle');
+  const brushSize = document.getElementById('brushSize');
+  const brushVal = document.getElementById('brushVal');
+  const brushSoft = document.getElementById('brushSoft');
+  const brushMode = document.getElementById('brushMode');
+  const brushSwatch = document.getElementById('brushSwatch');
+
+  function drawBrushSwatch(){
+    const v = clamp(parseFloat(brushVal.value)||0,0,1);
+    const g = (v < state.darkThreshold) ? 0 : Math.round(lerp(20,235,(v - state.darkThreshold)/(1 - state.darkThreshold + 1e-9)));
+    brushSwatch.style.background = `rgb(${g},${g},${g})`;
+  }
+
+  function toggleBrush(){ brush.on=!brush.on; btnBrushToggle.textContent = 'Brush: ' + (brush.on?'On':'Off'); }
+  btnBrushToggle.addEventListener('click', toggleBrush);
+  brushSize.addEventListener('input', ()=>brush.size=clamp(parseFloat(brushSize.value)||0,1,5000));
+  brushVal.addEventListener('input', ()=>{brush.val=clamp(parseFloat(brushVal.value)||0,0,1); drawBrushSwatch();});
+  brushSoft.addEventListener('change', ()=>brush.soft=brushSoft.checked);
+  brushMode.addEventListener('change', ()=>brush.mode=brushMode.value);
+
+  function mapCanvasToWorld(mx,my){
+    const cw=viewMap.width, ch=viewMap.height;
+    const scale = Math.min(cw/WORLD_W, ch/WORLD_H);
+    const vw = WORLD_W*scale, vh=WORLD_H*scale;
+    const ox = (cw - vw)/2, oy=(ch - vh)/2;
+    const wx = (mx - ox)/scale, wy = (my - oy)/scale;
+    return {wx, wy, inside: (mx>=ox && mx<=ox+vw && my>=oy && my<=oy+vh)};
+  }
+
+  function paintRectWorld(x,y,w,h,v){
+    const minGX=clamp(Math.floor(x/TILE),0,GRID_N-1);
+    const maxGX=clamp(Math.floor((x+w)/TILE),0,GRID_N-1);
+    const minGY=clamp(Math.floor(y/TILE),0,GRID_N-1);
+    const maxGY=clamp(Math.floor((y+h)/TILE),0,GRID_N-1);
+    for(let gy=minGY; gy<=maxGY; gy++){
+      for(let gx=minGX; gx<=maxGX; gx++){
+        grid[gy*GRID_N+gx]=clamp(v,0,1);
+      }
+    }
+  }
+
+  function paintCircleWorld(cx,cy,r,val, mode='set', soft=true){
+    const minGX = clamp(Math.floor((cx-r)/TILE), 0, GRID_N-1);
+    const maxGX = clamp(Math.floor((cx+r)/TILE), 0, GRID_N-1);
+    const minGY = clamp(Math.floor((cy-r)/TILE), 0, GRID_N-1);
+    const maxGY = clamp(Math.floor((cy+r)/TILE), 0, GRID_N-1);
+
+    for(let gy=minGY; gy<=maxGY; gy++){
+      for(let gx=minGX; gx<=maxGX; gx++){
+        const tx = gx*TILE + TILE/2, ty = gy*TILE + TILE/2;
+        const d = Math.hypot(tx-cx, ty-cy);
+        if(d>r) continue;
+        const idx = gy*GRID_N+gx;
+        let w = 1;
+        if(soft){ w = 1 - (d/r); }
+        const cur = grid[idx];
+        let target = cur;
+        if(mode==='set') target = lerp(cur, val, w);
+        else if(mode==='add') target = cur + val*w;
+        else if(mode==='sub') target = cur - val*w;
+        grid[idx] = clamp(target, 0, 1);
+      }
+    }
+    renderBackgroundBitmap();
+  }
+
+  function drawBrushOverlay(ctx, ox, oy, scale){
+    if(!brush.on || !brush.cursor) return;
+    ctx.save();
+    const r = brush.size*scale;
+    ctx.setLineDash([8,6]);
+    ctx.strokeStyle='rgba(255,255,255,0.6)';
+    ctx.lineWidth=1.2;
+    ctx.beginPath();
+    ctx.arc(ox + brush.cursor.x*scale, oy + brush.cursor.y*scale, r, 0, Math.PI*2);
+    ctx.stroke();
+
+    // Fill preview
+    let g = 0;
+    if(brush.mode!=='sub'){
+      g = (brush.val < state.darkThreshold) ? 0 : Math.round(lerp(20,235,(brush.val - state.darkThreshold)/(1 - state.darkThreshold + 1e-9)));
+    }
+    ctx.fillStyle = `rgba(${g},${g},${g},0.18)`;
+    ctx.beginPath();
+    ctx.arc(ox + brush.cursor.x*scale, oy + brush.cursor.y*scale, r, 0, Math.PI*2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  // Map mouse handlers
+  viewMap.addEventListener('mousemove', (e)=>{
+    const r=viewMap.getBoundingClientRect();
+    const mx=(e.clientX - r.left)*DPR, my=(e.clientY - r.top)*DPR;
+    const {wx,wy,inside} = mapCanvasToWorld(mx,my);
+    brush.cursor = inside? {x:clamp(wx,0,WORLD_W), y:clamp(wy,0,WORLD_H)} : null;
+  });
+  viewMap.addEventListener('mouseleave', ()=>brush.cursor=null);
+  viewMap.addEventListener('contextmenu', (e)=>{ if(brush.on){ e.preventDefault(); return false; } });
+
+  function handlePaintEvent(e){
+    if(!brush.on) return;
+    const r=viewMap.getBoundingClientRect();
+    const mx=(e.clientX - r.left)*DPR, my=(e.clientY - r.top)*DPR;
+    const {wx,wy,inside} = mapCanvasToWorld(mx,my);
+    if(!inside) return;
+    if(e.button===2){ // right click erase to black
+      paintCircleWorld(wx,wy, brush.size, 1, 'sub', brush.soft); // subtract => darken
+    } else {
+      paintCircleWorld(wx,wy, brush.size, brush.val, brush.mode, brush.soft);
+    }
+  }
+  let painting=false;
+  viewMap.addEventListener('mousedown', (e)=>{ painting=true; handlePaintEvent(e); });
+  window.addEventListener('mouseup', ()=>painting=false);
+  viewMap.addEventListener('mousemove', (e)=>{ if(painting) handlePaintEvent(e); });
+
+  // ==========================
+  // DSL
+  // ==========================
+  const dslArea = document.getElementById('dsl');
+  const dslError = document.getElementById('dslError');
+
+  function parseTokens(line){ return line.trim().split(/\s+/); }
+
+  function runDSL(pass=0){
+    dslError.textContent='';
+    try{
+      const lines = dslArea.value.split(/\n/);
+      let inMacro = null; const macros={}; let block = [];
+
+      // First pass: collect macros and raw lines
+      let program=[];
+      for(let raw of lines){
+        const line = raw.replace(/#.*$/,'').trim();
+        if(!line) continue;
+        const [cmd, ...rest] = parseTokens(line);
+        if(cmd==='macro') { inMacro = rest[0]; block=[]; continue; }
+        if(cmd==='end') { if(inMacro){ macros[inMacro]=block.slice(); inMacro=null; } else { program.push({cmd:'end'}); } continue; }
+        if(inMacro){ block.push(line); continue; }
+        if(cmd==='repeat'){ const n=parseInt(rest[0]||'1'); block=['__repeat ' + n]; inMacro='__repeat'; continue; }
+        if(cmd==='call'){ const name=rest[0]; const body=macros[name]||[]; program.push(...body.map(s=>({cmd:'__raw', line:s}))); continue; }
+        program.push({cmd:'__raw', line});
+      }
+
+      // Expand anonymous repeats captured as macro blocks
+      const expanded=[]; let i=0;
+      while(i<program.length){
+        const p=program[i];
+        if(p.cmd==='__raw' && p.line.startsWith('__repeat ')){
+          const n=parseInt(p.line.split(' ')[1]);
+          let j=i+1; const body=[]; let depth=1;
+          while(j<program.length){
+            const q=program[j];
+            if(q.cmd==='__raw' && q.line==='end') depth--;
+            else if(q.cmd==='__raw' && q.line.startsWith('__repeat ')) depth++;
+            if(depth===0) break; body.push(q); j++;
+          }
+          for(let k=0;k<n;k++) expanded.push(...body);
+          i=j+1; continue;
+        }
+        expanded.push(p); i++;
+      }
+
+      // Two-pass execution
+      const pass1=[]; const pass2=[];
+      for(const p of expanded){
+        if(p.cmd!=='__raw') continue;
+        const line=p.line; const [cmd,...args]=parseTokens(line);
+        const isPass1 = (cmd==='addObstacle' || cmd==='clearObstacles');
+        (isPass1?pass1:pass2).push({cmd,line,args});
+      }
+
+      function execList(list){
+        for(const {line, cmd, args} of list){
+          switch(cmd){
+            case 'clearObstacles': obstacles.length=0; break;
+            case 'addObstacle': {
+              const pts=[]; for(const token of args){ const [x,y]=token.split('/').map(parseFloat); if(isFinite(x)&&isFinite(y)) pts.push([clamp(x,0,WORLD_W), clamp(y,0,WORLD_H)]); }
+              if(pts.length>=3) obstacles.push(pts); else throw new Error('addObstacle requires ≥3 points');
+            } break;
+            case 'spawnA': spawn(TYPE_A, parseInt(args[0]||'1')); break;
+            case 'spawnB': spawn(TYPE_B, parseInt(args[0]||'1')); break;
+            case 'clearBots': bots.length=0; focusIndex=0; break;
+            case 'focus': { const i=parseInt(args[0]||'0'); if(i>=0 && i<bots.length) focusIndex=i; } break;
+            case 'paintRect': {
+              const [x,y,w,h,v] = args.map(parseFloat); if([x,y,w,h,v].every(isFinite)){
+                paintRectWorld(x,y,w,h,v); renderBackgroundBitmap();
+              }
+            } break;
+            case 'paintCircle': {
+              const [x,y,r,v] = args.map(parseFloat); if([x,y,r,v].every(isFinite)) paintCircleWorld(x,y,r,v,'set',true);
+            } break;
+            case 'setDarkThreshold': { const t=parseFloat(args[0]); if(isFinite(t)) setDark(t, true); } break;
+            case 'regenLight': regenLight(); if(!state._userDarkOverride) setDarkDefaultFromGrid(); break;
+            case 'pause': state.running = (parseInt(args[0]||'0')===0); break;
+            case 'trail': state.trailEnabled = (parseInt(args[0]||'1')===1); break;
+            case 'export': exportTrails(); break;
+            case 'teleport': { const [x,y]=args.map(parseFloat); const b=bots[focusIndex]; if(b && isFinite(x)&&isFinite(y)){ b.x=clamp(x,0,WORLD_W); b.y=clamp(y,0,WORLD_H); } } break;
+            case 'nudge': { const [dx,dy]=args.map(parseFloat); const b=bots[focusIndex]; if(b && isFinite(dx)&&isFinite(dy)){ b.x=clamp(b.x+dx,0,WORLD_W); b.y=clamp(b.y+dy,0,WORLD_H); } } break;
+            case 'setType': { const which=args[0]; const path=args[1]; const v=args.slice(2).join(' '); applySetType(which, path, v); } break;
+            case 'set': { const path=args[0]; const v=args.slice(1).join(' '); applySetFocused(path, v); } break;
+            default: throw new Error('Unknown command: '+cmd);
+          }
+        }
+      }
+
+      if(pass===1){ execList(pass1); }
+      else { execList(pass1); execList(pass2); }
+    }catch(err){ dslError.textContent = 'DSL error: '+err.message; }
+  }
+
+  function coerceValue(key, raw){
+    if(/^#/.test(raw) || /^#[0-9a-fA-F]{6}$/.test(raw)) return raw; // color string
+    const v = parseFloat(raw);
+    if(!isNaN(v)) return v;
+    if(raw==='true'||raw==='false') return raw==='true';
+    return raw;
+  }
+
+  function setDeep(obj, path, value){
+    const parts = path.replace(/^bot\./,'').split('.');
+    let o=obj; for(let i=0;i<parts.length-1;i++){ const k=parts[i]; if(typeof o[k] !== 'object' || o[k]===null) o[k]={}; o=o[k]; }
+    const last=parts[parts.length-1]; o[last] = value;
+  }
+
+  function applySetType(which, path, raw){
+    const type = (which==='A'||which==='B')?which:null; if(!type) throw new Error('setType needs A|B');
+    const value = coerceValue(path, raw);
+    setDeep(defaults[type], path, value);
+    for(const b of bots){
+      if(b.type===type){
+        setDeep(b, path, (typeof value==='string' && /^#/.test(value))? hexColorSafe(value, b.type===TYPE_A?'#2fe36e':'#ff9900') : value);
+      }
+    }
+  }
+  function applySetFocused(path, raw){
+    const b = bots[focusIndex]; if(!b) return;
+    const value = coerceValue(path, raw);
+    setDeep(b, path, (typeof value==='string' && /^#/.test(value))? hexColorSafe(value, b.type===TYPE_A?'#2fe36e':'#ff9900') : value);
+  }
+
+  // ==========================
+  // Export
+  // ==========================
+  function exportTrails(){
+    try{
+      const out = document.createElement('canvas');
+      out.width = WORLD_W; out.height = WORLD_H;
+      const ctx = out.getContext('2d');
+      if(trailA) ctx.drawImage(trailA, 0,0);
+      if(trailB) ctx.drawImage(trailB, 0,0);
+      out.toBlob((blob)=>{
+        if(!blob){ alert('Failed to create PNG.'); return; }
+        const a=document.createElement('a'); a.download='trails-10k.png'; a.href=URL.createObjectURL(blob); a.click(); setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+      }, 'image/png');
+    }catch(e){
+      alert('Export failed (memory?): '+e.message);
+    }
+  }
+
+  // ==========================
+  // UI Wiring
+  // ==========================
+  const btnPause = document.getElementById('btnPause');
+  const btnStep = document.getElementById('btnStep');
+  const zoom = document.getElementById('zoom');
+  const speed = document.getElementById('speed');
+  const speedTag = document.getElementById('speedTag');
+  const btnExport = document.getElementById('btnExport');
+  const btnRunDSL = document.createElement('button');
+  btnRunDSL.className='btn'; btnRunDSL.textContent='Run'; btnRunDSL.id='btnRunDSL';
+  const btnStepDSL = document.createElement('button');
+  btnStepDSL.className='btn secondary'; btnStepDSL.textContent='Pass 1 Only'; btnStepDSL.id='btnStepDSL'; btnStepDSL.title='Run only pass 1 (obstacles)';
+  const btnClearBots = document.createElement('button');
+  btnClearBots.className='btn secondary'; btnClearBots.textContent='Clear Bots'; btnClearBots.id='btnClearBots';
+  const btnRegenLight = document.createElement('button');
+  btnRegenLight.className='btn secondary'; btnRegenLight.textContent='Regen Light'; btnRegenLight.id='btnRegenLight';
+  const btnSetLabels = document.createElement('button');
+  btnSetLabels.className='btn secondary'; btnSetLabels.textContent='Toggle Labels'; btnSetLabels.id='btnSetLabels';
+
+  // Insert DSL buttons next to DSL title (no :contains()!)
+  (function injectDSLButtons(){
+    // Find the DSL panel robustly
+    const dslEl = document.getElementById('dsl');
+    if (!dslEl) return;
+    const parentPanel = dslEl.closest('.panel') || dslEl.parentElement;
+    if (!parentPanel) return;
+
+    const row = document.createElement('div');
+    row.className = 'flex';
+    row.style.cssText = 'gap:8px; margin-bottom:8px';
+    row.append(btnRunDSL, btnStepDSL, btnClearBots, btnRegenLight, btnSetLabels);
+
+    // Insert just under the panel's <h3>, or at top if missing
+    const h3 = parentPanel.querySelector('h3');
+    parentPanel.insertBefore(row, (h3 && h3.nextSibling) ? h3.nextSibling : parentPanel.firstChild);
+  })();
+
+  const darkSlider = document.getElementById('darkThreshold');
+  const darkTag = document.getElementById('darkTag');
+
+  function setDark(t, fromUI=false){
+    state.darkThreshold = clamp(parseFloat(t)||0, 0, 1);
+    if(fromUI) state._userDarkOverride = true;
+    if(darkSlider) darkSlider.value = state.darkThreshold.toFixed(2);
+    if(darkTag) darkTag.textContent = state.darkThreshold.toFixed(2);
+    renderBackgroundBitmap();
+    drawBrushSwatch();
+  }
+  function setDarkDefaultFromGrid(){
+    let maxB = 0; for(let i=0;i<grid.length;i++){ if(grid[i] > maxB) maxB = grid[i]; }
+    setDark(0.5 * maxB);
+  }
+
+  btnPause.addEventListener('click', ()=>{ state.running=!state.running; btnPause.textContent = state.running? 'Pause':'Resume'; });
+  btnStep.addEventListener('click', ()=>{ if(!state.running){ state.stepOnce=true; } });
+  zoom.addEventListener('input', ()=>{ state.zoomT=parseFloat(zoom.value)||0; });
+  speed.addEventListener('input', ()=>{ state.speed=parseFloat(speed.value)||1; speedTag.textContent = (Math.round(state.speed*100)/100).toFixed(2)+'×'; });
+  if(darkSlider) darkSlider.addEventListener('input', ()=> setDark(darkSlider.value, true));
+  btnExport.addEventListener('click', exportTrails);
+  btnRunDSL.addEventListener('click', ()=>runDSL(0));
+  btnStepDSL.addEventListener('click', ()=>runDSL(1));
+  btnClearBots.addEventListener('click', ()=>{ bots.length=0; focusIndex=0; });
+  btnRegenLight.addEventListener('click', ()=>{ regenLight(); if(!state._userDarkOverride) setDarkDefaultFromGrid(); });
+  btnSetLabels.addEventListener('click', ()=>{ state.showLabels=!state.showLabels; });
+
+  // ==========================
+  // Defaults & Boot
+  // ==========================
+  function boot(){
+    initOffscreens();
+    regenLight();
+    resizeAll();
+    // Default threshold = 50% of current max brightness (unless user overrides via slider/DSL)
+    setDarkDefaultFromGrid();
+    // Seed a basic world (from text already in the DSL box)
+    runDSL(0);
+    requestAnimationFrame(tick);
+  }
+
+  window.addEventListener('load', boot);
+  </script>
+</body>
+</html>
