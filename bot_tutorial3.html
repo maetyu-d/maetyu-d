@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Bots Simulation — Black Canvas</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: #000; overflow: hidden; }
+    canvas { display: block; margin: 0 auto; background: #000; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.3/lib/p5.min.js"></script>
+</head>
+<body>
+<script>
+let startTime;
+let showIntro = true;
+let showOutro = false;
+let outroStartTime;
+let showJoke = false;
+let jokeText = "";
+let showButton = false;
+
+// Button geometry
+const btnW = 500;
+const btnH = 150;
+
+// Timings (ms)
+const INTRO_WAIT = 15000;
+const OUTRO_WAIT = 15000;
+const OUTRO_FADE_MS = 2000;
+
+function setup() {
+  createCanvas(1000, 500);
+  resetSim();
+  noFill();
+  startTime = millis();
+  textFont('sans-serif');
+}
+
+function mousePressed() {
+  if (showButton) {
+    const x1 = width / 2 - btnW / 2;
+    const y1 = height / 2 - btnH / 2;
+    if (mouseX > x1 && mouseX < x1 + btnW && mouseY > y1 && mouseY < y1 + btnH) {
+      jokeText = random(jokes);
+      showJoke = true;
+      showButton = false;
+    }
+  }
+}
+
+const worldSize = 6000;
+const grade = 1.0;
+const slopeAngle = Math.PI / 2;
+const g = 19.62;
+const drag = 0.25;
+const turnGain = 2.0;
+const motionScale = 4.0;
+
+const bodyR = 28;
+const track = 48;
+
+let wheelRRight = 10;
+let wheelRLeft  = wheelRRight * 0.95;
+
+let pos1, vel1, heading1, trailGfx1;
+let pos2, vel2, heading2, trailGfx2;
+
+function resetSim() {
+  const startY = -worldSize / 2 + 100;
+  const spacing = 50;
+  pos1 = createVector(-spacing / 2, startY);
+  vel1 = createVector(0, 0);
+  heading1 = Math.PI / 2;
+  trailGfx1 = createGraphics(worldSize, worldSize);
+  trailGfx1.clear();
+  trailGfx1.stroke(0, 255, 100);
+  trailGfx1.strokeCap(ROUND);
+
+  pos2 = createVector(spacing / 2, startY);
+  vel2 = createVector(0, 0);
+  heading2 = Math.PI / 2;
+  trailGfx2 = createGraphics(worldSize, worldSize);
+  trailGfx2.clear();
+  trailGfx2.stroke(255, 165, 0);
+  trailGfx2.strokeWeight(25);
+  trailGfx2.strokeCap(ROUND);
+}
+
+// --- TEXT HELPERS ---
+function drawCenteredText(msg, alpha = 255, tsMax = 300) {
+  fill(255, alpha);
+  noStroke();
+  textAlign(CENTER, CENTER);
+  let maxTextWidth = width * 0.9;
+  let ts = tsMax;
+  let lines = [];
+  while (ts > 10) {
+    textSize(ts);
+    lines = wrapText(msg, maxTextWidth);
+    let totalHeight = lines.length * ts * 1.2;
+    if (totalHeight <= height * 0.9) break;
+    ts -= 2;
+  }
+  textSize(ts);
+  let totalHeight = lines.length * ts * 1.2;
+  let startY = height / 2 - totalHeight / 2 + ts / 2;
+  for (let i = 0; i < lines.length; i++) {
+    text(lines[i], width / 2, startY + i * ts * 1.2);
+  }
+}
+
+function wrapText(msg, maxWidth) {
+  let words = msg.split(' ');
+  let lineBuf = '';
+  let lines = [];
+  for (let w of words) {
+    let testLine = lineBuf + w + ' ';
+    if (textWidth(testLine) > maxWidth && lineBuf !== '') {
+      lines.push(lineBuf.trim());
+      lineBuf = w + ' ';
+    } else {
+      lineBuf = testLine;
+    }
+  }
+  lines.push(lineBuf.trim());
+  return lines;
+}
+
+function drawButton() {
+  push();
+  translate(width / 2, height / 2);
+  let pulse = 1 + 0.05 * sin(frameCount * 0.1);
+  let rot = radians(5 * sin(frameCount * 0.05));
+  scale(pulse);
+  rotate(rot);
+
+  noStroke();
+  for (let r = 0; r < 1; r += 0.05) {
+    let col = lerpColor(color('#ff0000'), color('#ffff00'), r);
+    fill(red(col), green(col), blue(col), 180);
+    rectMode(CENTER);
+    rect(0, 0, btnW * (1 - r * 0.2), btnH * (1 - r * 0.2), 75);
+  }
+
+  fill(255);
+  textAlign(CENTER, CENTER);
+  textSize(40);
+  textStyle(BOLD);
+  text("I'M SO READY!!! 🚀✨🍕", 0, 0);
+  pop();
+}
+
+function draw() {
+  if (showJoke) {
+    background(0);
+    drawCenteredText(jokeText, 255, 200);
+    return;
+  }
+
+  if (showIntro) {
+    background(0);
+    drawCenteredText("Now, let’s imagine our orange bot also has slightly reduced stability in its shorter left side, and head back to our previous gentle slope...");
+    if (millis() - startTime > INTRO_WAIT) {
+      showIntro = false;
+    }
+    return;
+  }
+
+  if (showOutro) {
+    const t = millis() - outroStartTime;
+    background(0);
+    let alpha = 255;
+    if (t > OUTRO_WAIT - OUTRO_FADE_MS) {
+      alpha = map(t, OUTRO_WAIT - OUTRO_FADE_MS, OUTRO_WAIT, 255, 0, true);
+    }
+    drawCenteredText("Whoa! But as I said before, no space is neutral. And this seemingly simple space is no exception. Are you ready to continue?", alpha);
+    if (t > OUTRO_WAIT) {
+      showButton = true;
+      drawButton();
+    } else {
+      showButton = false;
+    }
+    return;
+  }
+
+  // --- SIMULATION ---
+  background(0);
+  const dt = 1 / 60;
+  updateBot(pos1, vel1, heading1, wheelRLeft, wheelRRight, trailGfx1, dt, true, 80.0, true);
+  heading1 = updatedHeading;
+  updateBot(pos2, vel2, heading2, 10, 10, trailGfx2, dt, false, 0.0, false);
+  heading2 = updatedHeading;
+
+  if (pos1.y >= worldSize / 2) {
+    showOutro = true;
+    outroStartTime = millis();
+    return;
+  }
+
+  // LEFT PANEL
+  push();
+  drawingContext.save();
+  drawingContext.beginPath();
+  drawingContext.rect(0, 0, width / 2, height);
+  drawingContext.clip();
+  translate(width / 4 - pos1.x, height / 2 - pos1.y);
+  image(trailGfx1, -worldSize / 2, -worldSize / 2);
+  image(trailGfx2, -worldSize / 2, -worldSize / 2);
+  drawBot(pos1.x, pos1.y, heading1, color(0, 255, 100));
+  drawBot(pos2.x, pos2.y, heading2, color(255, 165, 0));
+  drawingContext.restore();
+  pop();
+
+  // RIGHT PANEL (minimap)
+  push();
+  drawingContext.save();
+  drawingContext.beginPath();
+  drawingContext.rect(width / 2, 0, width / 2, height);
+  drawingContext.clip();
+  let scaleFactor = (width / 2) / worldSize;
+  translate(width * 0.75, height / 2);
+  scale(scaleFactor);
+  translate(-worldSize / 2, -worldSize / 2);
+  image(trailGfx1, 0, 0);
+  image(trailGfx2, 0, 0);
+  drawBot(pos1.x + worldSize / 2, pos1.y + worldSize / 2, heading1, color(0, 255, 100));
+  drawBot(pos2.x + worldSize / 2, pos2.y + worldSize / 2, heading2, color(255, 165, 0));
+  drawingContext.restore();
+  pop();
+
+  stroke(100);
+  strokeWeight(2);
+  noFill();
+  rect(0, 0, width, height);
+  line(width / 2, 0, width / 2, height);
+}
+
+let updatedHeading;
+function updateBot(pos, vel, heading, wheelL, wheelR, gfx, dt, wonky=false, wonkyStrength=0, velTrail=false) {
+  const downslope = p5.Vector.fromAngle(slopeAngle);
+  const forward   = p5.Vector.fromAngle(heading);
+  const gSlope = g * Math.sin(Math.atan(grade));
+  const gForward = gSlope * forward.dot(downslope);
+
+  let acc = forward.copy().mult(gForward).add(vel.copy().mult(-drag));
+  vel.add(acc.mult(dt));
+
+  const rAvg = (wheelR + wheelL) / 2;
+  const dR = wheelR - wheelL;
+  const kappa = (2 * dR) / (max(track, 1) * max(rAvg, 1e-6));
+  const speed = vel.mag();
+
+  let yaw = turnGain * kappa * speed * dt;
+  if (wonky && wonkyStrength > 0) {
+    const noiseYaw = randomGaussian(0, 1) * (wonkyStrength * 0.0005) * (1 + 0.5 * noise(frameCount * 0.01));
+    yaw += noiseYaw;
+  }
+
+  vel.rotate(yaw);
+  heading += yaw;
+  const prev = pos.copy();
+  pos.add(vel.copy().mult(dt * motionScale));
+
+  if (pos.x <= -worldSize/2 || pos.x >= worldSize/2) {
+    vel.x *= -0.7;
+    pos.x = constrain(pos.x, -worldSize/2, worldSize/2);
+  }
+  if (pos.y <= -worldSize/2 || pos.y >= worldSize/2) {
+    vel.y *= -0.7;
+    pos.y = constrain(pos.y, -worldSize/2, worldSize/2);
+  }
+
+  if (velTrail) {
+    const sw = map(speed, 0, 30, 8, 40, true);
+    gfx.strokeWeight(sw);
+  }
+  gfx.line(prev.x + worldSize / 2, prev.y + worldSize / 2,
+           pos.x + worldSize / 2, pos.y + worldSize / 2);
+
+  updatedHeading = heading;
+}
+
+function drawBot(x, y, angle, col) {
+  push();
+  translate(x, y);
+  rotate(angle);
+  stroke(0);
+  strokeWeight(1);
+  fill(col);
+  circle(0, 0, bodyR * 2);
+  stroke(255);
+  strokeWeight(3);
+  line(0, 0, bodyR - 4, 0);
+  pop();
+}
+
+const jokes = [
+  "You click the button. Nothing happens. It’s just shy.",
+  "You click the button. Nothing happens. You click again — now it’s awkward.",
+  "You click the button. Nothing happens. That’s its entire feature set.",
+  "You click the button. Nothing happens. It’s on vacation.",
+  "You click the button. Nothing happens. It’s a decorative button.",
+  "You click the button. Nothing happens. That’s the tutorial.",
+  "You click the button. Nothing happens. Try blowing on it like an old cartridge.",
+  "You click the button. Nothing happens. You’re just giving it attention.",
+  "You click the button. Nothing happens. Somewhere, the code is laughing.",
+  "You click the button. Nothing happens. Achievement unlocked: Patience.",
+  "You click the button. Nothing happens. Maybe it’s buffering… in spirit.",
+  "You click the button. Nothing happens. It’s unionized.",
+  "You click the button. Nothing happens. That was a trust exercise.",
+  "You click the button. Nothing happens. The button clicks you.",
+  "You click the button. Nothing happens. It’s judging your click technique.",
+  "You click the button. Nothing happens. It’s a placebo button.",
+  "You click the button. Nothing happens. Somewhere, a server sighs.",
+  "You click the button. Nothing happens. The suspense is the point.",
+  "You click the button. Nothing happens. That’s what makes it premium.",
+  "You click the button. Nothing happens. It’s practicing mindfulness.",
+  "You click the button. Nothing happens. You just enabled hard mode.",
+  "You click the button. Nothing happens. Your click has been sent to HR.",
+  "You click the button. Nothing happens. It’s on strike.",
+  "You click the button. Nothing happens. Welcome to performance art.",
+  "You click the button. Nothing happens. It’s waiting for the sequel.",
+  "You click the button. Nothing happens. This is your punishment for 2020.",
+  "You click the button. Nothing happens. It’s thinking about its ex.",
+  "You click the button. Nothing happens. You’re the thousandth customer — still nothing.",
+  "You click the button. Nothing happens. It’s the introvert of UI elements.",
+  "You click the button. Nothing happens. You’ve just reset the clock on “Days Since Last Incident.”",
+  "You click the button. Nothing happens. The nothing was intentional.",
+  "You click the button. Nothing happens. Somewhere, Schrödinger is proud.",
+  "You click the button. Nothing happens. You’ve been clicking the demo version.",
+  "You click the button. Nothing happens. You’ve triggered the secret anti-feature.",
+  "You click the button. Nothing happens. It’s in airplane mode.",
+  "You click the button. Nothing happens. It’s locked until you find the DLC.",
+  "You click the button. Nothing happens. It’s allergic to input.",
+  "You click the button. Nothing happens. You’ve been Rickrolled — just silently.",
+  "You click the button. Nothing happens. It’s emotionally unavailable.",
+  "You click the button. Nothing happens. That’s why it’s called the Null Button.",
+  "You click the button. Nothing happens. Its contract doesn’t include Tuesdays.",
+  "You click the button. Nothing happens. It’s written in existentialist JavaScript.",
+  "You click the button. Nothing happens. It’s in stealth mode.",
+  "You click the button. Nothing happens. It’s powered by your imagination.",
+  "You click the button. Nothing happens. It’s waiting for a plot twist.",
+  "You click the button. Nothing happens. It’s in a long-distance relationship with the database.",
+  "You click the button. Nothing happens. Its purpose is to teach patience.",
+  "You click the button. Nothing happens. Somewhere, an intern is updating their résumé.",
+  "You click the button. Nothing happens. You’ve just participated in modern art.",
+  "You click the button. Nothing happens. Congratulations — you’ve reached enlightenment."
+];
+</script>
+</body>
+</html>
