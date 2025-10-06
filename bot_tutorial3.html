@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Bots Simulation — Black Canvas</title>
+  <title>Bots Simulation — Fullscreen Black</title>
   <style>
     html, body { margin: 0; padding: 0; background: #000; overflow: hidden; }
-    canvas { display: block; margin: 0 auto; background: #000; }
+    canvas { display: block; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/p5@1.9.3/lib/p5.min.js"></script>
 </head>
@@ -30,11 +30,15 @@ const OUTRO_WAIT = 15000;
 const OUTRO_FADE_MS = 2000;
 
 function setup() {
-  createCanvas(1000, 500);
+  createCanvas(windowWidth, windowHeight);
   resetSim();
   noFill();
   startTime = millis();
   textFont('sans-serif');
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
 }
 
 function mousePressed() {
@@ -152,40 +156,33 @@ function drawButton() {
 }
 
 function draw() {
+  background(0);
+
   if (showJoke) {
-    background(0);
     drawCenteredText(jokeText, 255, 200);
     return;
   }
 
   if (showIntro) {
-    background(0);
     drawCenteredText("Now, let’s imagine our orange bot also has slightly reduced stability in its shorter left side, and head back to our previous gentle slope...");
-    if (millis() - startTime > INTRO_WAIT) {
-      showIntro = false;
-    }
+    if (millis() - startTime > INTRO_WAIT) showIntro = false;
     return;
   }
 
   if (showOutro) {
     const t = millis() - outroStartTime;
-    background(0);
     let alpha = 255;
-    if (t > OUTRO_WAIT - OUTRO_FADE_MS) {
+    if (t > OUTRO_WAIT - OUTRO_FADE_MS)
       alpha = map(t, OUTRO_WAIT - OUTRO_FADE_MS, OUTRO_WAIT, 255, 0, true);
-    }
     drawCenteredText("Whoa! But as I said before, no space is neutral. And this seemingly simple space is no exception. Are you ready to continue?", alpha);
     if (t > OUTRO_WAIT) {
       showButton = true;
       drawButton();
-    } else {
-      showButton = false;
-    }
+    } else showButton = false;
     return;
   }
 
   // --- SIMULATION ---
-  background(0);
   const dt = 1 / 60;
   updateBot(pos1, vel1, heading1, wheelRLeft, wheelRRight, trailGfx1, dt, true, 80.0, true);
   heading1 = updatedHeading;
@@ -350,3 +347,4 @@ const jokes = [
 </script>
 </body>
 </html>
+
