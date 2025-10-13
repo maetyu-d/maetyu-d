@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Asanoha Cloud Chamber Visualization</title>
+  <style>
+    body { background: #000; margin: 0; }
+    canvas { display: block; margin: 0 auto; }
+  </style>
+</head>
+<body>
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+  <script>
+let canvasSize = 1000; // Use 5000 for print
+let patternSize = 50; // Asanoha cell size
+let asanohaSegments = [];
+let particles = [];
+let nParticles = 200;
+let B = 0.004;
+
+let trackWeight = 10;
+let gridWeight = 2;
+
+let centerX, centerY, bigR, smallR;
+let emissionX, emissionY; // emission point
+
+function setup() {
+  createCanvas(canvasSize, canvasSize);
+  background(0);
+
+  // Precompute centers/radii
+  centerX = width / 2;
+  centerY = height / 2;
+  bigR = width * 0.48;
+  smallR = width * 0.12;
+
+  // Draw Asanoha grid
+  drawAsanohaGrid();
+
+  // Draw small dark pink circle in the center (target)
+  fill(160, 32, 80);
+  stroke(160, 32, 80);
+  strokeWeight(18);
+  ellipse(centerX, centerY, smallR * 2, smallR * 2);
+
+  // Emission point is always top left corner
+  emissionX = 0;
+  emissionY = 0;
+
+  // Particle generation and rays
+  for (let i = 0; i < nParticles; i++) {
+    // Target a random point within small pink circle (±10% of smallR)
+    let rTarget = random(0, smallR * 1.1);
+    let angTarget = random(TWO_PI);
+    let tx = centerX + rTarget * cos(angTarget);
+    let ty = centerY + rTarget * sin(angTarget);
+
+    // Compute launch angle from emission point to target
+    let launchAngle = atan2(ty - emissionY, tx - emissionX);
+
+    // Show green ray (thickness 10)
+    let rayLen = dist(emissionX, emissionY, tx, ty);
+    stroke(60, 255, 120, 90); // green, alpha
+    strokeWeight(10);
+    line(emissionX, emissionY, emissionX + rayLen * cos(launchAngle), emissionY + rayLen * sin(launchAngle));
+
+    // Mark emission point (once for all)
+    if (i === 0) {
+      noStroke();
+      fill(255, 120, 180);
+      ellipse(emissionX, emissionY, 24, 24);
+    }
+
+    // Find intersection with big pink circle
+    let entry = lineCircleIntersection(emissionX, emissionY, launchAngle, centerX, centerY, bigR);
+    if (entry) {
+      // Launch from just inside boundary
+      let q = random() < 0.3 ? 0 : (random() < 0.5 ? 1 : -1);
+      let v = random(2, 8);
+      let m = random([0.8, 1, 1.2]);
+      let insideX = entry.x + 1.5 * cos(launchAngle);
+      let insideY = entry.y + 1.5 * sin(launchAngle);
+      particles.push({ x: insideX, y: insideY, v, angle: launchAngle, q, m });
+    }
+  }
+
+  // Simulate tracks from inside the big circle
+  for (let p of particles) {
+    simulateTrack(p);
+  }
+
+  // Draw large (flesh) pink circle LAST so it is the topmost layer
+  noFill();
+  stroke(255, 192, 203); // flesh pink
+  strokeWeight(320); // 10x thicker
+  ellipse(centerX, centerY, canvasSize * 0.96, canvasSize * 0.96);
+
+  noLoop();
+}
+
+// --- Asanoha (Hemp Leaf) Pattern as a lattice of interlocking hexagons/triangles ---
+function drawAsanohaGrid() {
+  asanohaSegments = [];
+  let s = patternSize;
+  let h = s * Math.sqrt(3) / 2;
+  let yStep = h;
+  let xStep = s * 3;
+  stroke(40, 40, 40, 220); // dark grey
+  strokeWeight(gridWeight);
+  noFill();
+
+  for (let row = -2; row < height / yStep + 2; row++) {
+    for (let col = -2; col < width / xStep + 2; col++) {
+      let baseX = col * xStep + ((row % 2) * 1.5 * s);
+      let baseY = row * yStep;
+      // Draw hexagon
+      let hex = [];
+      for (let i = 0; i < 6; i++) {
+        let angle = PI / 6 + i * PI / 3;
+        let x = baseX + s * cos(angle);
+        let y = baseY + s * sin(angle);
+        hex.push([x, y]);
+      }
+      for (let i = 0; i < 6; i++) {
+        let x1 = hex[i][0], y1 = hex[i][1];
+        let x2 = hex[(i + 1) % 6][0], y2 = hex[(i + 1) % 6][1];
+        line(x1, y1, x2, y2);
+        asanohaSegments.push([x1, y1, x2, y2]);
+      }
+      // Draw star lines (asanoha rays)
+      for (let i = 0; i < 6; i++) {
+        let x1 = baseX, y1 = baseY;
+        let x2 = hex[i][0], y2 = hex[i][1];
+        line(x1, y1, x2, y2);
+        asanohaSegments.push([x1, y1, x2, y2]);
+      }
+    }
+  }
+}
+
+// --- Compute intersection of ray from (x, y) at angle, with circle ---
+function lineCircleIntersection(x, y, angle, cx, cy, r) {
+  let vx = cos(angle);
+  let vy = sin(angle);
+  let dx = x - cx;
+  let dy = y - cy;
+  let a = vx * vx + vy * vy;
+  let b = 2 * (dx * vx + dy * vy);
+  let c = dx * dx + dy * dy - r * r;
+  let disc = b * b - 4 * a * c;
+  if (disc < 0) return null;
+  let sqrtDisc = sqrt(disc);
+  let t1 = (-b - sqrtDisc) / (2 * a);
+  let t2 = (-b + sqrtDisc) / (2 * a);
+  let t = (t1 > 0) ? t1 : ((t2 > 0) ? t2 : null);
+  if (t === null) return null;
+  return { x: x + t * vx, y: y + t * vy };
+}
+
+// ----- Cloud chamber simulation -----
+function simulateTrack(p) {
+  let N = 1400;
+  let cx = centerX;
+  let cy = centerY;
+  let rad = bigR;
+  let px = p.x, py = p.y;
+  let vx = p.v * cos(p.angle);
+  let vy = p.v * sin(p.angle);
+  let q = p.q, m = p.m;
+  let prevx = px, prevy = py;
+  let escapedForever = false;
+
+  for (let i = 0; i < N; i++) {
+    if (q !== 0) {
+      let speed = sqrt(vx * vx + vy * vy);
+      let perp = createVector(-vy, vx).normalize().mult(q * B * speed / m);
+      vx += perp.x;
+      vy += perp.y;
+    }
+    let wobble = randomGaussian(0, 0.006);
+    let vmag = sqrt(vx * vx + vy * vy);
+    let vtheta = atan2(vy, vx) + wobble;
+    vx = vmag * cos(vtheta);
+    vy = vmag * sin(vtheta);
+
+    px += vx;
+    py += vy;
+
+    if (!escapedForever) {
+      let bounced = false;
+      for (let s = 0; s < asanohaSegments.length; s++) {
+        let seg = asanohaSegments[s];
+        if (intersect(prevx, prevy, px, py, seg[0], seg[1], seg[2], seg[3])) {
+          if (random() < 0.5) {
+            let edgeAngle = atan2(seg[3] - seg[1], seg[2] - seg[0]);
+            let vAngle = atan2(vy, vx);
+            let reflect = PI + 2 * edgeAngle - vAngle;
+            let speed = sqrt(vx * vx + vy * vy);
+            vx = speed * cos(reflect);
+            vy = speed * sin(reflect);
+            px = seg[0] + 0.92 * (px - seg[0]);
+            py = seg[1] + 0.92 * (py - seg[1]);
+          }
+          bounced = true;
+          break;
+        }
+      }
+
+      // --- Circular edge: 90% reflect, else escape forever
+      let fromCenter = dist(px, py, cx, cy);
+      if (fromCenter > rad) {
+        if (random() < 0.9) {
+          let nx = (px - cx) / fromCenter;
+          let ny = (py - cy) / fromCenter;
+          let vdotn = vx * nx + vy * ny;
+          vx = vx - 2 * vdotn * nx;
+          vy = vy - 2 * vdotn * ny;
+          vx *= 0.5;
+          vy *= 0.5;
+          px = cx + nx * rad * 0.98;
+          py = cy + ny * rad * 0.98;
+        } else {
+          escapedForever = true;
+        }
+      }
+    }
+    if (escapedForever) {
+      stroke(255, 240, 60, 220); // yellow
+      strokeWeight(trackWeight);
+    } else {
+      stroke(255, 255, 255, 220); // white
+      strokeWeight(trackWeight);
+    }
+    line(prevx, prevy, px, py);
+    prevx = px;
+    prevy = py;
+  }
+}
+
+function intersect(ax, ay, bx, by, cx, cy, dx, dy) {
+  let det = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx);
+  if (det === 0) return false;
+  let t = ((cx - ax) * (dy - cy) - (cy - ay) * (dx - cx)) / det;
+  let u = ((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / det;
+  return t > 0 && t < 1 && u > 0 && u < 1;
+}
+  </script>
+</body>
+</html>
