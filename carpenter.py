@@ -9,6 +9,7 @@ BARS = 16
 SPB  = SR * 60 / BPM
 EIGHTH    = int(SPB / 2)
 SIXTEENTH = int(SPB / 4)
+TRIPLET   = int(SPB / 3)  # quarter-note triplet step
 
 # =========================
 # Safe DSP helpers
@@ -148,7 +149,84 @@ A2, G2, F2, E2 = 110.0, 98.0, 87.31, 82.41
 A3, D4, E4, G4, A4 = 220.0, 293.66, 329.63, 392.0, 440.0
 
 # =========================
-# STAGE 1 — Minimal Dread (very sparse)
+# Triplet synth generator (Stages 1 & 2)
+# =========================
+def render_triplet_synth(L, scale_notes=(E4, G4, A4), fc=1600.0, gain=0.12, stereo_offset=8):
+    """Light triplet arpeggio: subtle Carpenter pulse with gentle LP and tiny stereo delay."""
+    outL = np.zeros(L); outR = np.zeros(L)
+    gate = int(TRIPLET * 0.85)
+    idx = 0
+    step = TRIPLET
+    trip_seq = list(scale_notes)
+    s_i = 0
+    while idx < L:
+        n0 = idx
+        n1 = min(L, n0 + step)
+        seg = n1 - n0
+        f  = trip_seq[s_i % len(trip_seq)]
+        s_i += 1
+        o = 0.5 * saw(f, seg) + 0.5 * sine(f, seg)
+        e = env(seg, min(gate, seg), a=5, d=80, s=0.6, r=120)
+        v = one_pole_lp(o, fc) * e * gain
+        v = fit1d(v, seg)
+        outL[n0:n1] += v
+        # tiny inter-channel offset for width
+        if seg > stereo_offset:
+            outR[n0+stereo_offset:n1] += v[:-stereo_offset]
+        else:
+            outR[n0:n1] += v
+        idx += step
+    return np.column_stack([outL, outR])
+
+# =========================
+# MBV-style generators
+# =========================
+def mbv_drone_distant(L, base_freq=E4, fc=1600.0, gain=0.10):
+    """
+    Distant MBV drone: detuned saw stack, gentle vibrato, filtered, slow tremolo, long fade-in.
+    """
+    t = np.arange(L)/SR
+    vibr = 2 ** ( (np.sin(2*np.pi*0.3*t) * 5.0) / 1200.0 )  # ~5 cents vibrato
+    voices = []
+    detunes = [1.0, 0.997, 1.003]
+    for d in detunes:
+        v = saw(base_freq*d*vibr, L, ph=np.random.rand()*np.pi*2)
+        voices.append(v)
+    s = sum(voices) / len(voices)
+    s = one_pole_lp(s, fc)
+    trem = 0.5 + 0.5*np.sin(2*np.pi*0.15*t + 1.0)  # slow amp trem
+    fade = np.linspace(0, 1, L) ** 2
+    mono = s * trem * fade * gain
+    # mild stereo smear
+    right = np.concatenate([np.zeros(20), mono[:-20]]) if L > 20 else mono
+    return np.column_stack([mono*0.9, right])
+
+def mbv_wall_huge(L, base_freq=A4, fc=1800.0, gain=0.35):
+    """
+    Huge MBV wall: more detuned voices, asymmetric channel detune, extra saturation and width.
+    """
+    t = np.arange(L)/SR
+    vibrL = 2 ** ( (np.sin(2*np.pi*0.35*t) * 9.0) / 1200.0 )
+    vibrR = 2 ** ( (np.sin(2*np.pi*0.31*t + 0.7) * 9.0) / 1200.0 )
+    detunes = [0.988, 0.995, 1.0, 1.005, 1.012]
+    left = np.zeros(L); right = np.zeros(L)
+    for d in detunes:
+        left  += saw(base_freq*d*vibrL, L, ph=np.random.rand()*np.pi*2)
+        right += saw(base_freq*d*vibrR, L, ph=np.random.rand()*np.pi*2)
+    left  = one_pole_lp(left/len(detunes),  fc)
+    right = one_pole_lp(right/len(detunes), fc)
+    # subtle channel delays for width
+    dL, dR = 18, 26
+    leftD  = left
+    rightD = np.concatenate([np.zeros(dR), right[:-dR]]) if L > dR else right
+    # gentle tilt EQ via HP/LP pair
+    leftD  = one_pole_hp(leftD, 120.0);  rightD = one_pole_hp(rightD, 120.0)
+    wall = np.column_stack([leftD, rightD]) * gain
+    wall = softclip(wall, 1.3)
+    return wall
+
+# =========================
+# STAGE 1 — Minimal Dread (+ light triplet)
 # =========================
 def render_stage1():
     pattern = [A2, A2, G2, F2, E2, E2, F2, G2]
@@ -157,9 +235,10 @@ def render_stage1():
     out_dir = "stems_stage1"; os.makedirs(out_dir, exist_ok=True)
 
     # Stems
-    st_kick = np.zeros((L, 2))
-    st_bass = np.zeros((L, 2))
-    st_pad  = np.zeros((L, 2))
+    st_kick   = np.zeros((L, 2))
+    st_bass   = np.zeros((L, 2))
+    st_pad    = np.zeros((L, 2))
+    st_trip   = np.zeros((L, 2))  # NEW: triplet synth
 
     # Kick only on downbeats (beats 1 & 3 each bar)
     for b in range(0, beats_total, 2):
@@ -180,7 +259,7 @@ def render_stage1():
         s  = softclip(one_pole_lp(o, 800.0) * e, 1.2) * 0.55
         s  = fit1d(s, seg)
         st_bass[n0:n1, 0] += s * 0.9
-        st_bass[n0:n1, 1] += s * 0.85  # almost mono
+        st_bass[n0:n1, 1] += s * 0.85
 
     # Soft pad (low)
     pad = 0.5 * (saw(A3, L) + saw(A3 * 0.995, L, np.pi/3))
@@ -188,20 +267,24 @@ def render_stage1():
     padR = np.concatenate([np.zeros(12), pad[:-12]])
     st_pad += np.column_stack([pad*0.9, padR*0.8])
 
+    # NEW: light triplet arpeggio (very subtle)
+    st_trip += render_triplet_synth(L, scale_notes=(E4, G4, A4), fc=1500.0, gain=0.10, stereo_offset=8)
+
     # Mix
-    mix = st_kick + st_bass + st_pad
+    mix = st_kick + st_bass + st_pad + st_trip
     mix = softclip(mix, 1.08); mix = norm(mix, 0.90)
 
     # Write stems + mix
-    write_wav(os.path.join(out_dir, "kick.wav"), st_kick)
-    write_wav(os.path.join(out_dir, "bass.wav"), st_bass)
-    write_wav(os.path.join(out_dir, "pad.wav"),  st_pad)
+    write_wav(os.path.join(out_dir, "kick.wav"),   st_kick)
+    write_wav(os.path.join(out_dir, "bass.wav"),   st_bass)
+    write_wav(os.path.join(out_dir, "pad.wav"),    st_pad)
+    write_wav(os.path.join(out_dir, "triplet.wav"),st_trip)
     write_wav("carpenter_stage1.wav", mix)
     write_wav(os.path.join(out_dir, "FULL_mix.wav"), mix)
     print("Stage 1 done →", out_dir)
 
 # =========================
-# STAGE 2 — Tension Rise (groove + light shimmer)
+# STAGE 2 — Tension Rise (+ light triplet, distant MBV drone)
 # =========================
 def render_stage2():
     pattern = [A2,A2,A2,A2, G2,G2,A2,A2, F2,F2,F2,F2, E2,E2,E2,E2]
@@ -216,6 +299,8 @@ def render_stage2():
     st_bass = np.zeros((L, 2))
     st_pad  = np.zeros((L, 2))
     st_lead = np.zeros((L, 2))
+    st_trip = np.zeros((L, 2))  # NEW
+    st_mbv  = np.zeros((L, 2))  # NEW distant drone
     st_shim = np.zeros((L, 2))
 
     # Kick every beat
@@ -282,28 +367,36 @@ def render_stage2():
         st_lead[n0:n1, 0] += s
         st_lead[n0:n1, 1] += s * 0.92
 
+    # NEW: light triplet arpeggio
+    st_trip += render_triplet_synth(L, scale_notes=(E4, G4, A4), fc=1700.0, gain=0.13, stereo_offset=10)
+
+    # NEW: distant MBV drone (fades in, very low)
+    st_mbv += mbv_drone_distant(L, base_freq=E4, fc=1600.0, gain=0.08)
+
     # Shimmer bus (pad + lead)
     send = st_pad + st_lead
     st_shim += shimmer_light(send, amount=0.15)
 
     # Mix
-    mix = st_kick + st_snare + st_hats + st_bass + st_pad + st_lead + st_shim
+    mix = st_kick + st_snare + st_hats + st_bass + st_pad + st_lead + st_trip + st_mbv + st_shim
     mix = softclip(mix, 1.15); mix = norm(mix, 0.97)
 
     # Write stems + mix
-    write_wav(os.path.join(out_dir, "kick.wav"),  st_kick)
-    write_wav(os.path.join(out_dir, "snare.wav"), st_snare)
-    write_wav(os.path.join(out_dir, "hats.wav"),  st_hats)
-    write_wav(os.path.join(out_dir, "bass.wav"),  st_bass)
-    write_wav(os.path.join(out_dir, "pad.wav"),   st_pad)
-    write_wav(os.path.join(out_dir, "lead.wav"),  st_lead)
+    write_wav(os.path.join(out_dir, "kick.wav"),   st_kick)
+    write_wav(os.path.join(out_dir, "snare.wav"),  st_snare)
+    write_wav(os.path.join(out_dir, "hats.wav"),   st_hats)
+    write_wav(os.path.join(out_dir, "bass.wav"),   st_bass)
+    write_wav(os.path.join(out_dir, "pad.wav"),    st_pad)
+    write_wav(os.path.join(out_dir, "lead.wav"),   st_lead)
+    write_wav(os.path.join(out_dir, "triplet.wav"),st_trip)
+    write_wav(os.path.join(out_dir, "mbv_distant.wav"), st_mbv)
     write_wav(os.path.join(out_dir, "shimmer.wav"), st_shim)
     write_wav("carpenter_stage2.wav", mix)
     write_wav(os.path.join(out_dir, "FULL_mix.wav"), mix)
     print("Stage 2 done →", out_dir)
 
 # =========================
-# STAGE 3 — Cathedral of Panic (huge)
+# STAGE 3 — Cathedral of Panic (huge MBV wall)
 # =========================
 def render_stage3():
     pattern = [A2,A2,A2,A2, G2,G2,A2,A2, F2,F2,F2,F2, E2,E2,E2,E2]
@@ -321,6 +414,7 @@ def render_stage3():
     st_pad   = np.zeros((L, 2))
     st_lead  = np.zeros((L, 2))
     st_rise  = np.zeros((L, 2))
+    st_mbv   = np.zeros((L, 2))  # NEW: huge MBV wall
     st_shim  = np.zeros((L, 2))
 
     # Sub drop at start
@@ -432,13 +526,16 @@ def render_stage3():
     s  = fit1d(s, seg) * 0.18
     st_rise[start:L] += np.column_stack([s*0.9, s])
 
-    # Shimmer bus (pad + lead)
-    send = st_pad + st_lead
+    # NEW: Huge MBV wall of sound (foreground)
+    st_mbv += mbv_wall_huge(L, base_freq=A4, fc=1800.0, gain=0.35)
+
+    # Shimmer bus (pad + lead + MBV wall a bit)
+    send = st_pad + st_lead + st_mbv * 0.35
     st_shim += shimmer_long(send, amount=0.50, detune_cents=9.0, hp_hz=1200.0)
 
     # Mix
     mix = (st_kick + st_snare + st_hats + st_bass + st_sub +
-           st_stabs + st_pad + st_lead + st_rise + st_shim)
+           st_stabs + st_pad + st_lead + st_rise + st_mbv + st_shim)
     mix = softclip(mix, 1.30); mix = norm(mix, 0.97)
 
     # Write stems + mix
@@ -451,6 +548,7 @@ def render_stage3():
     write_wav(os.path.join(out_dir, "pad.wav"),       st_pad)
     write_wav(os.path.join(out_dir, "lead.wav"),      st_lead)
     write_wav(os.path.join(out_dir, "riser.wav"),     st_rise)
+    write_wav(os.path.join(out_dir, "mbv_wall.wav"),  st_mbv)
     write_wav(os.path.join(out_dir, "shimmer.wav"),   st_shim)
     write_wav("carpenter_stage3.wav", mix)
     write_wav(os.path.join(out_dir, "FULL_mix.wav"), mix)
@@ -463,4 +561,5 @@ if __name__ == "__main__":
     render_stage1()
     render_stage2()
     render_stage3()
-    print("All stages rendered with stems.")
+    print("All stages rendered with stems (triplet synth + MBV drone/wall added).")
+
