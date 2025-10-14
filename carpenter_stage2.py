@@ -14,23 +14,33 @@ def norm(x, p=0.98):
     m = np.max(np.abs(x))
     return x * (p/m) if m > 0 else x
 
-def lpf_ma(x, taps):
-    """Length-stable moving-average low-pass. Always returns len(x)."""
+def taps_from_hz(cutoff_hz, seg_len):
+    """
+    Map a 'cutoff-like' frequency to a moving-average taps count,
+    clamped safely to the segment length so convolution stays length-stable.
+    """
+    if cutoff_hz <= 0: 
+        return 3
+    rough = int(max(3, SR // cutoff_hz))  # small taps for high cutoff, larger for low
+    return int(max(3, min(rough, max(3, seg_len - 1))))
+
+def lp_ma_stable(x, taps):
+    """Moving-average LPF that ALWAYS returns len(x)."""
     x = np.asarray(x)
     n = x.shape[0]
-    t = int(max(1, min(int(taps), n)))   # clamp taps to <= len(x)
-    if t == 1:
+    t = int(max(1, min(int(taps), n)))
+    if t <= 1:
         return x
     k = np.ones(t, dtype=float) / t
     pad = t // 2
     xp = np.pad(x, (pad, pad), mode='edge')
-    y = np.convolve(xp, k, mode='valid')  # length n
+    y  = np.convolve(xp, k, mode='valid')  # exact length n
     return y
 
-def hpf_ma(x, taps):
-    """High-pass via LP complement, length-stable."""
+def hp_ma_stable(x, taps):
+    """HPF via complement of the length-stable MA LPF."""
     x = np.asarray(x)
-    return x - lpf_ma(x, taps)
+    return x - lp_ma_stable(x, taps)
 
 def env(L, g, a=5, d=120, s=0.6, r=200):
     A, D, R = int(a*SR/1000), int(d*SR/1000), int(r*SR/1000)
@@ -72,8 +82,7 @@ def mtap_cloud(x, del_ms=(90,140,200,260,340), gains=(.28,.23,.19,.16,.12), mix=
     acc = np.zeros_like(x)
     for d_ms, g in zip(del_ms, gains):
         d = pre + int(d_ms * SR / 1000)
-        if d >= N: 
-            continue
+        if d >= N: continue
         pad = np.zeros((d,2))
         acc += g * np.vstack([pad, x[:-d]])
     return out + mix * acc
@@ -99,16 +108,17 @@ def pitch_up_ps(sig, semitones=12.0):
 
 def shimmer2(x, amt=0.16):
     x  = ensure_stereo(x)
-    th = max(3, int(SR/1200))                   # ~1.2kHz HP proxy
-    hp = np.column_stack([hpf_ma(x[:,0], th), hpf_ma(x[:,1], th)])
+    N  = x.shape[0]
+    th = taps_from_hz(1200, N)  # ~1.2 kHz high-pass proxy
+    hp = np.column_stack([hp_ma_stable(x[:,0], th), hp_ma_stable(x[:,1], th)])
     up = pitch_up_ps(hp, 12.0)
     return mtap_cloud(up, mix=0.6) * amt
 
 # ---------- arrangement ----------
 A2,G2,F2,E2,E4,A4 = 110.0,98.0,87.31,82.41,329.63,440.0
 pattern = [A2,A2,A2,A2, G2,G2,A2,A2, F2,F2,F2,F2, E2,E2,E2,E2]
-gate = int(0.9 * eighth)
 L = int(SPB * 4 * BARS)
+gate = int(0.9 * eighth)
 
 audio = np.zeros((L, 2))
 
@@ -121,7 +131,8 @@ for b in range(beats_total):
     t  = np.arange(N) / SR
     f  = 80 * np.exp(-t*14) + 40
     s  = np.sin(2*np.pi*np.cumsum(f)/SR)
-    s  = lpf_ma(s * np.linspace(1,0,N), max(3, int(SR/3000)))
+    taps = taps_from_hz(3000, N)
+    s  = lp_ma_stable(s * np.linspace(1,0,N), taps)
     s  = softclip(s, 2.0) * 0.56
     audio[n0:n1] += s[:, None]
 
@@ -146,7 +157,8 @@ for b in range(0, beats_total, 4):
     N  = n1 - n0
     nz = np.random.uniform(-1, 1, N) * np.linspace(1, 0, N)
     bd = sine(190, N) * np.linspace(1, 0, N)
-    s  = 0.8 * hpf_ma(nz, 2000) + 0.5 * bd
+    taps = taps_from_hz(1800, N)
+    s  = 0.8 * hp_ma_stable(nz, taps) + 0.5 * bd
     s  = softclip(s, 1.4) * 0.50
     audio[n0:n1, 0] += s * 0.9
     audio[n0:n1, 1] += (np.concatenate([np.zeros(2), s[:-2]]) if N > 2 else s) * 1.1
@@ -159,24 +171,25 @@ for i in range(beats_total * 2):
     n1 = min(L, n0 + int(0.05 * SR))
     N  = n1 - n0
     nz = np.random.uniform(-1, 1, N)
-    s  = hpf_ma(nz, 6000) * np.linspace(1, 0, N)
+    taps = taps_from_hz(6000, N)  # was "6000 taps" before — now converts safely
+    s  = hp_ma_stable(nz, taps) * np.linspace(1, 0, N)
     s  = softclip(s, 1.1) * 0.17
     audio[n0:n1] += s[:, None] * np.array([0.7, 1.0])
 
 # Pad
 pad  = 0.6 * (saw(E4, L) + saw(E4 * 0.993, L, np.pi/3))
-pad  = lpf_ma(pad, 24) * np.linspace(0, 1, L) * 0.25
+pad  = lp_ma_stable(pad, taps_from_hz(1200, L)) * np.linspace(0, 1, L) * 0.25
 padR = np.concatenate([np.zeros(10), pad[:-10]])
 P    = np.column_stack([pad, padR])
 audio += P
 
-# Lead (short motif to build tension)
+# Lead (tension motif)
 motif = [
-    (1.0, E4, 0.75), (2.0, F2*4, 0.5), (3.0, A4, 0.5),
-    (5.0, 392.0, 0.5), (5.5, 440.0, 0.5), (6.0, E4, 0.75),
-    (9.0, 293.66, 0.5), (10.0, E4, 0.5),
+    (1.0, 329.63, 0.75), (2.0, 87.31*4, 0.5), (3.0, 440.0, 0.5),
+    (5.0, 392.0, 0.5), (5.5, 440.0, 0.5), (6.0, 329.63, 0.75),
+    (9.0, 293.66, 0.5), (10.0, 329.63, 0.5),
     (11.0, 392.0, 0.5), (11.5, 440.0, 0.5),
-    (13.0, E4, 0.75), (14.0, F2*4, 0.5), (15.0, A4, 0.5),
+    (13.0, 329.63, 0.75), (14.0, 87.31*4, 0.5), (15.0, 440.0, 0.5),
 ]
 lead = np.zeros((L, 2))
 for beat, fq, dur in motif:
@@ -186,9 +199,8 @@ for beat, fq, dur in motif:
     N  = n1 - n0
     base = 0.55 * sqr(fq, N, 0.48) + 0.45 * saw(fq * 0.997, N)
     e    = env(N, int(0.85 * seg), 8, 120, 0.7, 200)
-    s    = lpf_ma(base, 14) * e
+    s    = lp_ma_stable(base, 14) * e
     s    = softclip(s, 1.2) * 0.30
-    # slight ping-pong
     lead[n0:n1, 0] += s
     lead[n0:n1, 1] += s * 0.92
 audio += lead
@@ -206,3 +218,4 @@ with wave.open("carpenter_stage2.wav", "wb") as wf:
     wf.writeframes(np.int16(np.clip(audio, -1, 1) * 32767).tobytes())
 
 print("wrote carpenter_stage2.wav")
+
