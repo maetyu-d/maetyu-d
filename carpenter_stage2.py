@@ -11,11 +11,26 @@ def softclip(x, d=1.0): return np.tanh(x * d)
 def norm(x, p=0.98): m = np.max(np.abs(x)); return x * (p/m) if m > 0 else x
 
 def lpf_ma(x, taps):
-    if taps <= 1: return x
-    k = np.ones(taps) / taps
-    return np.convolve(x, k, mode="same")
+    """Moving-average low-pass that ALWAYS returns len(x)."""
+    x = np.asarray(x)
+    n = x.shape[0]
+    t = int(max(1, taps))
+    if t <= 1: 
+        return x
+    k = np.ones(t, dtype=float) / t
+    full = np.convolve(x, k, mode="full")              # length n+t-1
+    start = (t - 1) // 2                                # center-crop
+    y = full[start:start + n]
+    if y.shape[0] != n:  # pad or trim if odd/even mismatch
+        if y.shape[0] < n:
+            y = np.pad(y, (0, n - y.shape[0]))
+        else:
+            y = y[:n]
+    return y
 
-def hpf_ma(x, taps): return x - lpf_ma(x, taps)
+def hpf_ma(x, taps):
+    """High-pass via LP complement, length-stable."""
+    return np.asarray(x) - lpf_ma(x, taps)
 
 def env(L, g, a=5, d=120, s=0.6, r=200):
     A, D, R = int(a*SR/1000), int(d*SR/1000), int(r*SR/1000)
@@ -178,5 +193,3 @@ with wave.open("carpenter_stage2.wav", "wb") as wf:
     wf.writeframes(np.int16(np.clip(audio, -1, 1) * 32767).tobytes())
 
 print("wrote carpenter_stage2.wav")
-
-
