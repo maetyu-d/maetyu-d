@@ -7,30 +7,30 @@ SPB = SR * 60 / BPM
 eighth = int(SPB / 2)
 
 # ---------- utilities ----------
-def softclip(x, d=1.0): return np.tanh(x * d)
-def norm(x, p=0.98): m = np.max(np.abs(x)); return x * (p/m) if m > 0 else x
+def softclip(x, d=1.0): 
+    return np.tanh(x * d)
+
+def norm(x, p=0.98):
+    m = np.max(np.abs(x))
+    return x * (p/m) if m > 0 else x
 
 def lpf_ma(x, taps):
-    """Moving-average low-pass that ALWAYS returns len(x)."""
+    """Length-stable moving-average low-pass. Always returns len(x)."""
     x = np.asarray(x)
     n = x.shape[0]
-    t = int(max(1, taps))
-    if t <= 1: 
+    t = int(max(1, min(int(taps), n)))   # clamp taps to <= len(x)
+    if t == 1:
         return x
     k = np.ones(t, dtype=float) / t
-    full = np.convolve(x, k, mode="full")              # length n+t-1
-    start = (t - 1) // 2                                # center-crop
-    y = full[start:start + n]
-    if y.shape[0] != n:  # pad or trim if odd/even mismatch
-        if y.shape[0] < n:
-            y = np.pad(y, (0, n - y.shape[0]))
-        else:
-            y = y[:n]
+    pad = t // 2
+    xp = np.pad(x, (pad, pad), mode='edge')
+    y = np.convolve(xp, k, mode='valid')  # length n
     return y
 
 def hpf_ma(x, taps):
     """High-pass via LP complement, length-stable."""
-    return np.asarray(x) - lpf_ma(x, taps)
+    x = np.asarray(x)
+    return x - lpf_ma(x, taps)
 
 def env(L, g, a=5, d=120, s=0.6, r=200):
     A, D, R = int(a*SR/1000), int(d*SR/1000), int(r*SR/1000)
@@ -46,11 +46,19 @@ def env(L, g, a=5, d=120, s=0.6, r=200):
         e[on:on+R] = np.linspace(e[on-1] if on>0 else 0, 0, min(R, L - on))
     return e
 
-def saw(f,N,ph=0): t=np.arange(N)/SR; return 2*((f*t+ph/(2*np.pi))%1-0.5)
-def sqr(f,N,d=0.5,ph=0): t=np.arange(N)/SR; return np.where(np.sin(2*np.pi*f*t+ph)>=np.cos(np.pi*(1-d)),1,-1)
-def sine(f,N,ph=0): t=np.arange(N)/SR; return np.sin(2*np.pi*f*t+ph)
+def saw(f,N,ph=0): 
+    t=np.arange(N)/SR
+    return 2*((f*t+ph/(2*np.pi))%1-0.5)
 
-# ---------- shimmer pieces (bulletproof) ----------
+def sqr(f,N,d=0.5,ph=0): 
+    t=np.arange(N)/SR
+    return np.where(np.sin(2*np.pi*f*t+ph)>=np.cos(np.pi*(1-d)),1,-1)
+
+def sine(f,N,ph=0): 
+    t=np.arange(N)/SR
+    return np.sin(2*np.pi*f*t+ph)
+
+# ---------- shimmer pieces (hardened) ----------
 def ensure_stereo(x):
     x = np.asarray(x)
     if x.ndim == 1: x = np.column_stack([x, x])
@@ -64,7 +72,8 @@ def mtap_cloud(x, del_ms=(90,140,200,260,340), gains=(.28,.23,.19,.16,.12), mix=
     acc = np.zeros_like(x)
     for d_ms, g in zip(del_ms, gains):
         d = pre + int(d_ms * SR / 1000)
-        if d >= N: continue
+        if d >= N: 
+            continue
         pad = np.zeros((d,2))
         acc += g * np.vstack([pad, x[:-d]])
     return out + mix * acc
@@ -161,10 +170,13 @@ padR = np.concatenate([np.zeros(10), pad[:-10]])
 P    = np.column_stack([pad, padR])
 audio += P
 
-# Lead (short motif)
+# Lead (short motif to build tension)
 motif = [
     (1.0, E4, 0.75), (2.0, F2*4, 0.5), (3.0, A4, 0.5),
     (5.0, 392.0, 0.5), (5.5, 440.0, 0.5), (6.0, E4, 0.75),
+    (9.0, 293.66, 0.5), (10.0, E4, 0.5),
+    (11.0, 392.0, 0.5), (11.5, 440.0, 0.5),
+    (13.0, E4, 0.75), (14.0, F2*4, 0.5), (15.0, A4, 0.5),
 ]
 lead = np.zeros((L, 2))
 for beat, fq, dur in motif:
@@ -176,6 +188,7 @@ for beat, fq, dur in motif:
     e    = env(N, int(0.85 * seg), 8, 120, 0.7, 200)
     s    = lpf_ma(base, 14) * e
     s    = softclip(s, 1.2) * 0.30
+    # slight ping-pong
     lead[n0:n1, 0] += s
     lead[n0:n1, 1] += s * 0.92
 audio += lead
