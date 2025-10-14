@@ -15,10 +15,21 @@ def norm(x, peak=0.98):
     m = np.max(np.abs(x))
     return x * (peak/m) if m > 0 else x
 
+def fit1d(sig, seg_len):
+    """Trim or pad a 1D array to seg_len samples."""
+    sig = np.asarray(sig, dtype=float)
+    n = sig.shape[0]
+    if n == seg_len:
+        return sig
+    if n > seg_len:
+        return sig[:seg_len]
+    # pad with zeros
+    return np.pad(sig, (0, seg_len - n))
+
 def one_pole_lp(x, fc_hz, sr=SR):
-    """First-order low-pass (stable, always returns len(x))."""
+    """First-order low-pass (stable, len-preserving)."""
     if fc_hz <= 0: 
-        return np.zeros_like(x)
+        return np.zeros_like(x, dtype=float)
     a = np.exp(-2.0 * np.pi * fc_hz / sr)
     b = 1.0 - a
     y = 0.0
@@ -29,11 +40,11 @@ def one_pole_lp(x, fc_hz, sr=SR):
     return out
 
 def one_pole_hp(x, fc_hz, sr=SR):
-    """First-order high-pass derived from the complementary LP part."""
+    """First-order high-pass via complement (len-preserving)."""
     if fc_hz <= 0:
-        return np.array(x, dtype=float)
-    # HP = x - LP(x)
-    return np.asarray(x, dtype=float) - one_pole_lp(np.asarray(x, dtype=float), fc_hz, sr)
+        return np.asarray(x, dtype=float)
+    x = np.asarray(x, dtype=float)
+    return x - one_pole_lp(x, fc_hz, sr)
 
 def env(L, g, a=5, d=120, s=0.6, r=200):
     A, D, R = int(a*SR/1000), int(d*SR/1000), int(r*SR/1000)
@@ -67,7 +78,7 @@ def ensure_stereo(x):
         return np.column_stack([x, x])
     return x
 
-# ====== Shimmer (no MA lengths involved) ======
+# ====== Shimmer (stable) ======
 def multitap_cloud(x, delays_ms=(90,140,200,260,340), gains=(.28,.23,.19,.16,.12), mix=0.6, pre_ms=28):
     x = ensure_stereo(x)
     N = x.shape[0]
@@ -102,9 +113,7 @@ def pitch_up_resample(sig, semitones=12.0):
     return up
 
 def shimmer(send_stereo, amount=0.15):
-    """Vintage shimmer: HP ~1.2kHz -> +12st -> multi-tap cloud."""
     s = ensure_stereo(send_stereo)
-    # High-pass with one-pole (stable)
     hpL = one_pole_hp(s[:,0], 1200.0, SR)
     hpR = one_pole_hp(s[:,1], 1200.0, SR)
     hp  = np.column_stack([hpL, hpR])
@@ -120,15 +129,16 @@ L       = int(SPB * 4 * BARS)
 
 audio = np.zeros((L,2))
 
-# Kick (quarters)
+# Kick (quarters) — guard length before mixing
 beats_total = int(L / SPB)
 for b in range(beats_total):
-    n0 = int(b * SPB); n1 = min(L, n0 + int(0.20*SR)); N = n1-n0
-    t = np.arange(N)/SR
-    f = 80*np.exp(-t*14) + 40
-    s = np.sin(2*np.pi*np.cumsum(f)/SR)
-    s = one_pole_lp(s * np.linspace(1,0,N), 3000.0, SR)  # gentle sweeten
-    s = softclip(s, 2.0) * 0.56
+    n0 = int(b * SPB); n1 = min(L, n0 + int(0.20*SR)); seg = n1-n0
+    t  = np.arange(seg)/SR
+    f  = 80*np.exp(-t*14) + 40
+    s  = np.sin(2*np.pi*np.cumsum(f)/SR)
+    s  = one_pole_lp(s * np.linspace(1,0,seg), 3000.0, SR)
+    s  = fit1d(s, seg)   # <-- force exact length
+    s  = softclip(s, 2.0) * 0.56
     audio[n0:n1] += s[:,None]
 
 # Bass ostinato
@@ -140,27 +150,30 @@ for step in range(L // eighth):
     e = env(seg, g, 5, 80, 0.7, 60)
     l = softclip(o*e, 1.7)
     r = l if seg <= 24 else np.concatenate([np.zeros(12), l[:-12]])
+    # guard lengths
+    l = fit1d(l, seg); r = fit1d(r, seg)
     audio[n0:n1,0] += l*0.80
     audio[n0:n1,1] += r*0.80
 
-# Snare on 3 (HP one-pole to keep it crisp, no MA sizes)
+# Snare on 3
 for b in range(0, beats_total, 4):
-    n0 = int((b+2) * SPB); n1 = min(L, n0 + int(0.22*SR)); N = n1-n0
-    nz = np.random.uniform(-1,1,N) * np.linspace(1,0,N)
-    bd = sine(190, N) * np.linspace(1,0,N)
+    n0 = int((b+2) * SPB); n1 = min(L, n0 + int(0.22*SR)); seg = n1-n0
+    nz = np.random.uniform(-1,1,seg) * np.linspace(1,0,seg)
+    bd = sine(190, seg) * np.linspace(1,0,seg)
     s  = 0.8 * one_pole_hp(nz, 1800.0, SR) + 0.5 * bd
+    s  = fit1d(s, seg)
     s  = softclip(s, 1.4) * 0.50
     audio[n0:n1,0] += s*0.9
-    # tiny stereo skew
-    audio[n0:n1,1] += (np.concatenate([np.zeros(2), s[:-2]]) if N>2 else s) * 1.1
+    audio[n0:n1,1] += (np.concatenate([np.zeros(2), s[:-2]]) if seg>2 else s) * 1.1
 
-# Hats (8ths, randomized density; HP one-pole)
+# Hats (8ths, randomized density)
 for i in range(beats_total * 2):
     if np.random.rand() > 0.95: 
         continue
-    n0 = int(i * eighth); n1 = min(L, n0 + int(0.05*SR)); N = n1-n0
-    nz = np.random.uniform(-1,1,N)
-    s  = one_pole_hp(nz, 6000.0, SR) * np.linspace(1,0,N)
+    n0 = int(i * eighth); n1 = min(L, n0 + int(0.05*SR)); seg = n1-n0
+    nz = np.random.uniform(-1,1,seg)
+    s  = one_pole_hp(nz, 6000.0, SR) * np.linspace(1,0,seg)
+    s  = fit1d(s, seg)
     s  = softclip(s, 1.1) * 0.17
     audio[n0:n1] += s[:,None] * np.array([0.7, 1.0])
 
@@ -171,7 +184,7 @@ padR = np.concatenate([np.zeros(10), pad[:-10]])
 P = np.column_stack([pad, padR])
 audio += P
 
-# Lead motif to raise tension
+# Lead motif
 motif = [
     (1.0, E4, 0.75), (2.0, F2*4, 0.5), (3.0, A4, 0.5),
     (5.0, 392.0, 0.5), (5.5, 440.0, 0.5), (6.0, E4, 0.75),
@@ -181,10 +194,11 @@ motif = [
 ]
 lead = np.zeros((L,2))
 for beat, fq, dur in motif:
-    n0 = int(beat*SPB); seg = int(dur*SPB); n1 = min(L, n0+seg); N = n1-n0
-    base = 0.55*sqr(fq, N, 0.48) + 0.45*saw(fq*0.997, N)
-    e    = env(N, int(0.85*seg), 8, 120, 0.7, 200)
+    n0 = int(beat*SPB); seg = int(dur*SPB); n1 = min(L, n0+seg)
+    base = 0.55*sqr(fq, seg, 0.48) + 0.45*saw(fq*0.997, seg)
+    e    = env(seg, int(0.85*seg), 8, 120, 0.7, 200)
     s    = one_pole_lp(base, 1400.0, SR) * e
+    s    = fit1d(s, seg)
     s    = softclip(s, 1.2) * 0.30
     lead[n0:n1,0] += s
     lead[n0:n1,1] += s * 0.92
@@ -203,5 +217,4 @@ with wave.open("carpenter_stage2.wav", "wb") as wf:
     wf.writeframes(np.int16(np.clip(audio, -1, 1) * 32767).tobytes())
 
 print("wrote carpenter_stage2.wav")
-
 
