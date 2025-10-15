@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TinyLLD Bot Playground · p5.js</title>
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.2/lib/p5.min.js"></script>
+  <style>
+    :root{
+      --bg:#000000; --panel:#0b0b0b; --panel-2:#000000; --ink:#ffffff; --muted:#cccccc;
+      --accent:#33FF33; --accent-2:#a0b6ff; --warn:#ffcc66; --danger:#ff7a90;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Inter, sans-serif}
+    .wrap{max-width:1200px;margin:24px auto;padding:0 16px}
+    h1{font-size:22px;margin:0 0 12px;letter-spacing:0.2px}
+    .sub{color:var(--muted);font-size:13px;margin-left:6px}
+    .grid{display:grid;grid-template-columns:1.1fr 0.9fr;gap:16px}
+    .card{background:linear-gradient(180deg,var(--panel),var(--panel-2));border:1px solid #222;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.35);overflow:hidden}
+    .card h2{font-size:16px;margin:0;padding:14px 16px;border-bottom:1px solid #1c2230;background:rgba(255,255,255,0.03)}
+    .card-body{padding:12px 12px 14px}
+    .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 12px}
+    button, .pill{
+      appearance:none; border:1px solid #2a2a2a; background:rgba(255,255,255,0.03); color:var(--ink);
+      padding:10px 14px; border-radius:12px; cursor:pointer; font-weight:600; letter-spacing:.1px;
+      transition:transform .08s ease, background .15s ease, border .2s ease; user-select:none; outline:none
+    }
+    button:hover{background:rgba(255,255,255,0.06)}
+    button:active{transform:translateY(1px)}
+    .primary{border-color:#2d6f5b;background:linear-gradient(180deg,rgba(51, 255, 51, 0.12),rgba(51, 255, 51, 0.05))}
+    .ghost{border-color:#2a2a2a}
+    .danger{border-color:#503043;color:var(--danger)}
+    .ok{color:var(--accent)}
+    .muted{color:var(--muted)}
+    .row{display:flex;align-items:center;gap:8px}
+    .row.spread{justify-content:space-between}
+    textarea{width:100%;min-height:440px;background:#000;color:var(--ink);border:1px solid #2a2a2a;border-radius:12px;padding:12px 12px 12px 14px;font:13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}
+    .status{font:12px/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;color:var(--muted);white-space:pre-wrap;background:#000;border:1px dashed #333;border-radius:12px;padding:8px 10px;margin-top:10px}
+    .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+    .legend span{display:inline-flex;align-items:center;gap:6px;padding:6px 8px;background:#000;border:1px solid #2a2a2a;border-radius:999px}
+    .dot{width:8px;height:8px;border-radius:50%}
+    .footer{color:#7f8aa3;font-size:12px;margin-top:10px}
+    @media (max-width: 1000px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="wrap"><div class="grid">
+      <!-- Simulation card -->
+      <section class="card" id="sim-card">
+        <h2>TinyLLD Bot Playground</h2>
+        <div class="card-body">
+          <div class="toolbar">
+            <button id="btnRun" class="primary">▶ Run</button>
+            <button id="btnPause" class="ghost">⏸ Pause</button>
+            <button id="btnReset" class="danger">↺ Reset</button>
+            <span class="pill muted" id="tickInfo">t = 0.0 s</span>
+            <span class="pill ok" id="spikeInfoL">L: 0.0 a.u.</span>
+            <span class="pill ok" id="spikeInfoR">R: 0.0 a.u.</span>
+          </div>
+          <div id="sketch-holder"></div>
+          <div class="legend" style="margin-top:10px">
+            <span><span class="dot" style="background:var(--accent)"></span>forward speed</span>
+            <span><span class="dot" style="background:var(--accent-2)"></span>membrane potential (per tube)</span>
+            <span><span class="dot" style="background:var(--warn)"></span>spike flashes</span>
+            <span><span class="dot" style="background:#ff9e9e"></span>IR beams</span>
+          </div>
+          <div class="footer">Tip: Toggle ir_on. Adjust parameters, e.g. gain_L/R, to change bot behaviour. Camera follows the bot.</div>
+        </div>
+      </section>
+
+      <!-- DSL editor card -->
+      <section class="card" id="dsl-card">
+        <h2>DSL - Reprogram the Bot Parameters</h2>
+        <div class="card-body">
+          <div class="row spread" style="margin-bottom:8px">
+            <div class="row" style="gap:6px">
+              <button id="btnApply" class="primary">Apply DSL</button>
+              <button id="btnDefault" class="ghost">Reset to Defaults</button>
+              <button id="btnRandom" class="ghost">Randomise Asymmetry</button>
+            </div>
+            <span class="muted"># comments ok · format: <code>key = value</code> (units optional; angles accept <em>deg</em> or radians)</span>
+          </div>
+          <textarea id="dslText" spellcheck="false"></textarea>
+          <div id="status" class="status">Ready.</div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+  // --- Default DSL ---
+  const DEFAULT_DSL = `# LIF (per side)
+ tau_L = 120 ms
+ tau_R = 120 ms
+ v_rest_L = -65 mV
+ v_rest_R = -65 mV
+ v_th_L = -50 mV
+ v_th_R = -50 mV
+ v_reset_L = -70 mV
+ v_reset_R = -70 mV
+ refractory_L = 8 ms
+ refractory_R = 8 ms
+ noise_L = 0.02
+ noise_R = 0.02
+
+# Drive
+ gain_L = 0.9
+ gain_R = 1.0
+ bias_L = 1.0
+ bias_R = 1.0
+
+# Robot
+ base_speed = 55
+ wheel_base = 44
+ mech_asym = 0.00
+ friction = 0.04
+
+# World
+ radius = 320
+ trail = 1
+ obstacles = 3
+ obstacle_seed = 42
+
+# IR
+ ir_on = 1
+ ir_show = 1
+ ir_range = 180
+ ir_angle_L = -30 deg
+ ir_angle_R = 30 deg
+ ir_noise = 0.05
+
+# IR mapping
+ ir_use_matrix = 0
+ ir_gain = 0.9
+ ir_cross = 0.9
+ mix_LL = -0.9
+ mix_LR = +0.9
+ mix_RL = +0.9
+ mix_RR = -0.9
+`;
+
+  // --- DSL parser ---
+  function parseDSL(text){
+    const cfg = {
+      tau_L:120, tau_R:120,
+      v_rest_L:-65, v_rest_R:-65,
+      v_th_L:-50, v_th_R:-50,
+      v_reset_L:-70, v_reset_R:-70,
+      refractory_L:8, refractory_R:8,
+      noise_L:0.02, noise_R:0.02,
+      gain_L:0.9, gain_R:1.0, bias_L:1.0, bias_R:1.0,
+      base_speed:55, wheel_base:44, mech_asym:0.0, asymmetry:undefined, friction:0.04,
+      radius:320, trail:1, obstacles:3, obstacle_seed:42,
+      ir_on:1, ir_show:1, ir_range:180, ir_angle_L:-30, ir_angle_R:30, ir_noise:0.05,
+      ir_use_matrix:0, ir_gain:0.9, ir_cross:0.9,
+      mix_LL:-0.9, mix_LR:+0.9, mix_RL:+0.9, mix_RR:-0.9,
+    };
+    const known = new Set(Object.keys(cfg));
+    const errors = [];
+    const lines = text.split(/\r?\n/);
+    for(let i=0;i<lines.length;i++){
+      const raw = lines[i];
+      const line = raw.trim();
+      if(!line || line.startsWith('#')) continue;
+      const m = line.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)$/);
+      if(!m){ errors.push(`Line ${i+1}: cannot parse → ${raw}`); continue; }
+      const key = m[1];
+      let val = m[2].trim().replace(/\s+#.*$/, '');
+      if(key.startsWith('ir_angle')){
+        if(/deg$/i.test(val)){
+          const num = parseFloat(val);
+          if(Number.isNaN(num)) { errors.push(`Line ${i+1}: '${key}' needs a number`); continue; }
+          cfg[key] = num; // deg
+        } else {
+          const num = parseFloat(val.replace(/[^\-0-9\.eE+]/g,''));
+          if(Number.isNaN(num)) { errors.push(`Line ${i+1}: '${key}' needs a number`); continue; }
+          cfg[key] = num * 180/Math.PI; // rad -> deg
+        }
+        continue;
+      }
+      const num = parseFloat(val.replace(/[^\-0-9\.eE+]/g,''));
+      if(!known.has(key)){ errors.push(`Line ${i+1}: unknown key '${key}'`); continue; }
+      if(Number.isNaN(num)){ errors.push(`Line ${i+1}: '${key}' needs a number`); continue; }
+      cfg[key] = num;
+    }
+    if(typeof cfg.asymmetry === 'number' && !Number.isNaN(cfg.asymmetry)) cfg.mech_asym = cfg.asymmetry;
+    // clamp/coerce
+    cfg.mech_asym = Math.max(-1, Math.min(1, cfg.mech_asym));
+    cfg.trail = cfg.trail ? 1 : 0;
+    cfg.ir_on = cfg.ir_on ? 1 : 0;
+    cfg.ir_show = cfg.ir_show ? 1 : 0;
+    cfg.ir_use_matrix = cfg.ir_use_matrix ? 1 : 0;
+    cfg.friction = Math.max(0, Math.min(0.4, cfg.friction));
+    cfg.wheel_base = Math.max(10, cfg.wheel_base);
+    cfg.radius = Math.max(120, Math.min(1400, cfg.radius));
+    cfg.obstacles = Math.max(0, Math.min(16, Math.round(cfg.obstacles||0)));
+    cfg.obstacle_seed = Math.max(0, Math.min(999999, Math.round(cfg.obstacle_seed||0)));
+    cfg.ir_range = Math.max(20, Math.min(900, cfg.ir_range));
+    cfg.ir_noise = Math.max(0, Math.min(1, cfg.ir_noise));
+    cfg.gain_L = Math.max(0, cfg.gain_L); cfg.gain_R = Math.max(0, cfg.gain_R);
+    ['mix_LL','mix_LR','mix_RL','mix_RR'].forEach(k=>{ cfg[k] = Math.max(-3, Math.min(3, cfg[k])); });
+    return {cfg, errors};
+  }
+
+  // seeded rng for obstacles
+  function rng(seed){ let s = seed>>>0; return ()=>{ s = (1664525*s + 1013904223)>>>0; return s/0xffffffff; }; }
+
+  // --- State ---
+  const State = { running:false, started:false, startTimer:0, t:0, dt:1/60, neuronL:null, neuronR:null, bot:null, world:null };
+
+  // LIF neuron (per side)
+  function makeNeuron(cfg, side){
+    return {
+      v: cfg[`v_rest_${side}`], refLeft:0, rate:0,
+      update(I, dt){
+        if(this.refLeft>0){ this.refLeft -= dt*1000; this.v = cfg[`v_reset_${side}`]; I = 0; }
+        const dv = (-(this.v - cfg[`v_rest_${side}`]) + I*10)/cfg[`tau_${side}`] * dt*1000 + (cfg[`noise_${side}`]||0)*(Math.random()*2-1);
+        this.v += dv;
+        let spiked = false;
+        if(this.v >= cfg[`v_th_${side}`] && this.refLeft<=0){ spiked = true; this.v = cfg[`v_reset_${side}`]; this.refLeft = cfg[`refractory_${side}`]; this.rate += 15; }
+        this.rate += (-this.rate)*dt*1.5; // low-pass
+        return spiked;
+      }
+    };
+  }
+
+  // Ray-circle hits for IR
+  function senseIR(bot, cfg, world, angDeg){
+    const a = bot.a + (angDeg*Math.PI/180);
+    const dx = Math.cos(a), dy = Math.sin(a);
+    const ox = bot.x, oy = bot.y;
+    let bestT = Infinity;
+    // dish boundary
+    const mcx = ox - world.cx, mcy = oy - world.cy;
+    const b = dx*mcx + dy*mcy; const c = mcx*mcx + mcy*mcy - world.radius*world.radius; const disc = b*b - c;
+    if(disc>=0){ const t = -b + Math.sqrt(disc); if(t>0) bestT = Math.min(bestT, t); }
+    // obstacles
+    for(const ob of world.obstacles){
+      const mx = ox - ob.x, my = oy - ob.y; const bb = dx*mx + dy*my; const cc = mx*mx + my*my - ob.r*ob.r; const dd = bb*bb - cc;
+      if(dd>=0){ const t = -bb + Math.sqrt(dd); if(t>0) bestT = Math.min(bestT, t); }
+    }
+    const dist = Math.min(bestT, cfg.ir_range);
+    let reading = 1 - dist/cfg.ir_range; // 1 near, 0 far
+    if(cfg.ir_noise>0) reading += (Math.random()*2-1)*cfg.ir_noise;
+    return Math.max(0, Math.min(1, reading));
+  }
+
+  // Bot
+  function makeBot(cfg, world){
+    return {
+      x: world.cx + 0.5*cfg.radius, y: world.cy, a: -Math.PI/2, vx:0, vy:0, va:0, trail:[], lastIRL:0, lastIRR:0,
+      update(neuronL, neuronR, dt){
+        let IbaseL = cfg.bias_L + Math.max(0, 0.6*Math.sin(State.t*1.1));
+        let IbaseR = cfg.bias_R + Math.max(0, 0.6*Math.sin(State.t*1.3 + 0.4));
+        if(cfg.ir_on){
+          const sL = senseIR(this, cfg, world, cfg.ir_angle_L);
+          const sR = senseIR(this, cfg, world, cfg.ir_angle_R);
+          this.lastIRL = sL; this.lastIRR = sR;
+          if(cfg.ir_use_matrix){ IbaseL += cfg.mix_LL*sL + cfg.mix_LR*sR; IbaseR += cfg.mix_RL*sL + cfg.mix_RR*sR; }
+          else { IbaseL += -cfg.ir_gain*sL + cfg.ir_cross*sR; IbaseR += -cfg.ir_gain*sR + cfg.ir_cross*sL; }
+        } else { this.lastIRL = this.lastIRR = 0; }
+
+        neuronL.update(IbaseL, dt); neuronR.update(IbaseR, dt);
+
+        const boostL = Math.max(0, neuronL.rate*cfg.gain_L*0.02);
+        const boostR = Math.max(0, neuronR.rate*cfg.gain_R*0.02);
+        const base = Math.max(0, cfg.base_speed);
+        let vL = base * (1 + boostL) * (1 - cfg.mech_asym*0.5);
+        let vR = base * (1 + boostR) * (1 + cfg.mech_asym*0.5);
+        const v = 0.5*(vR+vL);
+        const omega = (vR - vL) / cfg.wheel_base;
+        this.a += omega*dt;
+        const fx = Math.cos(this.a)*v, fy = Math.sin(this.a)*v;
+        this.vx = this.vx*(1-cfg.friction) + fx*dt; this.vy = this.vy*(1-cfg.friction) + fy*dt;
+        this.x += this.vx*dt; this.y += this.vy*dt;
+        const dx = this.x - world.cx, dy = this.y - world.cy, r = Math.hypot(dx,dy);
+        const maxR = cfg.radius-8; if(r>maxR){ const nX = dx/r, nY = dy/r; this.x = world.cx + nX*maxR; this.y = world.cy + nY*maxR; this.a += (Math.random()<0.5?1:-1)*0.7; this.vx *= 0.5; this.vy *= 0.5; }
+        if(world.trail){ this.trail.push([this.x, this.y]); if(this.trail.length>2600) this.trail.shift(); } else { this.trail.length = 0; }
+      }
+    };
+  }
+
+  // World
+  function placeObstacles(cfg, world){
+    const rnd = rng(cfg.obstacle_seed); const obs = [];
+    for(let i=0;i<cfg.obstacles;i++){
+      const rr = 14 + Math.floor(rnd()*20);
+      const rad = (cfg.radius - rr - 30) * (0.3 + 0.65*rnd());
+      const ang = rnd()*Math.PI*2;
+      obs.push({x:world.cx + Math.cos(ang)*rad, y:world.cy + Math.sin(ang)*rad, r:rr});
+    }
+    world.obstacles = obs;
+  }
+  function makeWorld(cfg){
+    const holder = document.getElementById('sketch-holder');
+    const W = holder.clientWidth || 600; const H = 520;
+    const world = {W,H,cx:W/2, cy:H/2, trail:!!cfg.trail, radius:cfg.radius, obstacles:[]};
+    placeObstacles(cfg, world);
+    return world;
+  }
+
+  // --- p5 Sketch ---
+  let sketchP5 = null;
+  function createSketch(cfg){
+    const world = makeWorld(cfg);
+    const neuronL = makeNeuron(cfg, 'L');
+    const neuronR = makeNeuron(cfg, 'R');
+    const bot = makeBot(cfg, world);
+    State.world = world; State.neuronL = neuronL; State.neuronR = neuronR; State.bot = bot; State.t=0;
+
+    const s = (p)=>{
+      let tubePulseL = 0, tubePulseR = 0; let flashL = 0, flashR = 0;
+      p.setup = ()=>{
+        const c = p.createCanvas(world.W, world.H);
+        c.parent('sketch-holder'); p.pixelDensity(1); p.noStroke();
+      };
+      p.windowResized = ()=>{
+        const holder = document.getElementById('sketch-holder');
+        const W = holder.clientWidth || 600; const H = 520;
+        p.resizeCanvas(W, H); world.W=W; world.H=H; world.cx=W/2; world.cy=H/2;
+      };
+      // start screen input
+      p.keyPressed = ()=>{ if(!State.started && (p.key===' ' || p.keyCode===32)) { State.started = true; } };
+      p.mousePressed = ()=>{ if(!State.started) { State.started = true; } };
+      p.draw = ()=>{
+        const dt = State.dt;
+        if(State.running && State.started){ bot.update(neuronL, neuronR, dt); State.t += dt; } else { State.t += 0; }
+
+        p.background(0);
+        p.push();
+        // Camera centered on bot
+        const camX = State.bot.x - State.world.W/2;
+        const camY = State.bot.y - State.world.H/2;
+        p.translate(-camX, -camY);
+
+        // World dish
+        p.fill(16); p.stroke(80); p.strokeWeight(2); p.circle(world.cx, world.cy, world.radius*2); p.noStroke();
+
+        // Obstacles
+        for(const ob of world.obstacles){ p.fill(24); p.stroke(120); p.strokeWeight(1.5); p.circle(ob.x, ob.y, ob.r*2); }
+
+        // Trail
+        if(world.trail && bot.trail.length>1){ p.stroke( 51, 255, 51, 160); p.strokeWeight(2); p.noFill(); p.beginShape(); for(const [tx,ty] of bot.trail){ p.vertex(tx, ty); } p.endShape(); }
+
+        // Bot (same green as trail)
+        p.push(); p.translate(bot.x, bot.y); p.rotate(bot.a);
+        p.fill( 51, 255, 51); p.stroke(60,72,100); p.strokeWeight(1.5); p.rectMode(p.CENTER); p.rect(0,0, 24, 16, 6);
+        const wl = 8*(1-0.35*cfg.mech_asym), wr = 8*(1+0.35*cfg.mech_asym);
+        p.fill(20,22,30); p.stroke(90,110,160); p.rect(0, -10, wl, 4, 2); p.rect(0, 10, wr, 4, 2);
+        p.noStroke(); p.fill( 51, 255, 51); p.circle(10,0, 4);
+        // IR emitters visualization
+        if(cfg.ir_on && cfg.ir_show){
+          function beam(angleDeg, strength){
+            const a = angleDeg*Math.PI/180; const ax = Math.cos(a), ay = Math.sin(a);
+            const ex = 10, ey = 0; // from heading tip
+            const bx = ex + ax*cfg.ir_range, by = ey + ay*cfg.ir_range;
+            p.stroke(255, 120, 120, 128); p.strokeWeight(2);
+            p.line(ex, ey, bx, by);
+            // intensity dot
+            // brightness tied to strength, alpha capped at 50%
+            const r = 160 + 95*strength;
+            const g = 70 + 110*strength;
+            const b = 70 + 110*strength;
+            p.noStroke();
+            p.fill(r, g, b, 128);
+            p.circle(bx, by, 6);
+          }
+          beam(cfg.ir_angle_L, State.bot.lastIRL);
+          beam(cfg.ir_angle_R, State.bot.lastIRR);
+        }
+        p.pop();
+        p.pop();
+
+        // HUD tubes (small & semi-transparent)
+        // HUD tubes (top-right, side-by-side)
+        const tubeY = 70;
+        const tubeXRight = State.world.W - 70;
+        const tubeXLeft  = tubeXRight - 70;
+        const normVL = p.map(State.neuronL.v, cfg.v_reset_L, cfg.v_th_L, 0, 1, true);
+        const normVR = p.map(State.neuronR.v, cfg.v_reset_R, cfg.v_th_R, 0, 1, true);
+        tubePulseL = 0.85* tubePulseL + 0.15*normVL; tubePulseR = 0.85* tubePulseR + 0.15*normVR;
+        if(flashL>0) flashL *= 0.88; if(flashR>0) flashR *= 0.88;
+        function drawTube(x,y,pulse,flash,activity){
+          const scale = 0.5;
+          const glow = 40 + 80*pulse + 60*flash;
+          p.push();
+          p.translate(x, y);
+          p.scale(scale);
+          // soft outer glow halo (semi‑transparent)
+          p.noStroke();
+          p.fill(120, 200, 255, glow * 0.5);
+          p.circle(0, 0, 120 + 20*pulse + 20*flash);
+          // simple glass body
+          p.fill(20,24,34, 80);
+          p.stroke(110,130,190, 90);
+          p.strokeWeight(2);
+          p.rectMode(p.CENTER);
+          p.rect(0,0, 60, 96, 12);
+          // filament base
+          p.noStroke();
+          p.fill(255, 210, 120, 60 + 40*pulse);
+          p.rect(0, 18, 32, 8, 4);
+          // minimal activity bar (no text)
+          const aNorm = p.constrain(activity/20, 0, 1);
+          p.fill( 51, 255, 51, 120);
+          p.rect(0, 0, 16, 60*aNorm + 4, 6);
+          p.pop();
+        }
+        drawTube(tubeXLeft, tubeY, tubePulseL, flashL, State.neuronL.rate);
+        drawTube(tubeXRight, tubeY, tubePulseR, flashR, State.neuronR.rate);
+
+        // UI text badges
+        document.getElementById('tickInfo').textContent = `t = ${State.t.toFixed(1)} s`;
+        document.getElementById('spikeInfoL').textContent = `L: ${State.neuronL.rate.toFixed(1)} a.u.`;
+        document.getElementById('spikeInfoR').textContent = `R: ${State.neuronR.rate.toFixed(1)} a.u.`;
+        // Start screen overlay
+        if(!State.started){
+          State.startTimer += dt;
+          p.push();
+          p.noStroke();
+          p.fill(0, 230);
+          p.rect(0,0, State.world.W, State.world.H);
+          p.fill(235);
+          // Wrap intro text inside a centered text box so it fits any window
+          const intro = "You have explored how asymmetry affects the movement through space of a simple toy car. We've now moved onto a simple, self-navigating bot, similar to those developed at the dawn of AI in the 1950s. While the toy car let you adjust wheel asymmetry, here you can reprogram almost any parameter.";
+          if(State.startTimer < 10){
+            const pad = 24;
+            const boxW = Math.min(760, State.world.W - pad*2);
+            const boxX = (State.world.W - boxW)/2;
+            const boxY = State.world.H * 0.22;
+            p.textAlign(p.LEFT, p.TOP);
+            const introSize = p.constrain(State.world.W * 0.035, 18, 36);
+            p.textSize(introSize);
+            // Intro text in yellow
+            p.fill(51, 255, 51);
+            p.text(intro, boxX, boxY, boxW, State.world.H * 0.6);
+          } else {
+            p.textAlign(p.CENTER, p.CENTER);
+            const promptSize = p.constrain(State.world.W * 0.05, 22, 48);
+            p.textSize(promptSize);
+            // Prompt text in yellow
+            p.fill(51, 255, 51);
+            p.text("Click or press Space to start.", State.world.W/2, State.world.H/2);
+          }
+          p.pop();
+        }
+      };
+    };
+    if(sketchP5){ sketchP5.remove(); }
+    sketchP5 = new p5(s);
+  }
+
+  // --- Wiring UI ---
+  const $ = (id)=>document.getElementById(id);
+  function applyFromText(){
+    const txt = $('dslText').value; const {cfg, errors} = parseDSL(txt);
+    if(errors.length){ $('status').textContent = 'Errors (no changes applied):\n' + errors.join('\n'); return; }
+    $('status').textContent = 'Applied successfully. Running with new parameters.'; State.running = true; createSketch(cfg);
+  }
+  function resetDefaults(){ $('dslText').value = DEFAULT_DSL; $('status').textContent = 'Defaults loaded. Click "Apply DSL" to run.'; }
+  function randomizeAsym(){
+    const lines = $('dslText').value.split(/\r?\n/);
+    const out = lines.map(l=>{
+      if(/^\s*gain_L\s*=/.test(l)) return l.replace(/=.*/, `= ${(0.7+Math.random()*0.8).toFixed(2)}`);
+      if(/^\s*gain_R\s*=/.test(l)) return l.replace(/=.*/, `= ${(0.7+Math.random()*0.8).toFixed(2)}`);
+      if(/^\s*bias_L\s*=/.test(l)) return l.replace(/=.*/, `= ${(0.8+Math.random()*0.6).toFixed(2)}`);
+      if(/^\s*bias_R\s*=/.test(l)) return l.replace(/=.*/, `= ${(0.8+Math.random()*0.6).toFixed(2)}`);
+      if(/^\s*mech_asym\s*=/.test(l)) return l.replace(/=.*/, `= ${(+(-0.2+Math.random()*0.4)).toFixed(2)}`);
+      return l;
+    }).join('\n');
+    $('dslText').value = out; $('status').textContent = 'Asymmetry randomised. Press Apply to try it!';
+  }
+
+  $('btnApply').onclick = applyFromText; $('btnDefault').onclick = resetDefaults; $('btnRandom').onclick = randomizeAsym;
+  $('btnRun').onclick = ()=>{ State.started = true; State.running = true; $('status').textContent = 'Running.'; };
+  $('btnPause').onclick = ()=>{ State.running = false; $('status').textContent = 'Paused.'; };
+  $('btnReset').onclick = ()=>{ applyFromText(); $('status').textContent = 'Reset & running.' };
+
+  // Init
+  resetDefaults(); applyFromText();
+  </script>
+</body>
+</html>
