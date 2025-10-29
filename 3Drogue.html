@@ -1,15 +1,15 @@
------ PART 1 START -----
+----- PART 1 OF 5 START -----
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CONCRETE MEAT ∞ — Full v1 (Static Brutalist Build)</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CONCRETE MEAT ∞ v2</title>
 <style>
 :root{
   --bg:#0b0b0b;
   --fg:#e6e6e6;
-  --dim:#7a7a7a;
+  --dim:#808080;
   --mono:ui-monospace,Menlo,Monaco,Consolas,"Courier New",monospace;
 }
 html,body{
@@ -57,7 +57,10 @@ header.map-legend,header.mode-label{
   margin:0 1ch;
   padding:.5ch 0;
 }
-main{display:grid;grid-template-columns:66.666% 16.666% 16.666%;}
+main{
+  display:grid;
+  grid-template-columns:66.666% 16.666% 16.666%;
+}
 .world-wrap{
   border-right:2px solid var(--fg);
   display:flex;
@@ -82,7 +85,11 @@ main{display:grid;grid-template-columns:66.666% 16.666% 16.666%;}
   background:#0e0e0e;
   border-right:2px solid var(--fg);
 }
-.profile header{border:none;border-bottom:2px solid var(--fg);padding:.5ch 1ch;}
+.profile header{
+  border:none;
+  border-bottom:2px solid var(--fg);
+  padding:.5ch 1ch;
+}
 .profile pre{
   white-space:pre;
   line-height:1.1;
@@ -90,8 +97,16 @@ main{display:grid;grid-template-columns:66.666% 16.666% 16.666%;}
   padding:1ch 0;
   border-top:2px solid var(--fg);
 }
-.sidebar{display:grid;grid-template-rows:auto auto 1fr;background:#0f0f0f;}
-.blk{border-bottom:2px solid var(--fg);margin:0 1ch;padding:1ch 0;}
+.sidebar{
+  display:grid;
+  grid-template-rows:auto auto 1fr;
+  background:#0f0f0f;
+}
+.blk{
+  border-bottom:2px solid var(--fg);
+  margin:0 1ch;
+  padding:1ch 0;
+}
 .blk h2{
   margin:0 0 .5ch 1ch;
   border-bottom:1px solid var(--fg);
@@ -103,7 +118,10 @@ footer{
   grid-template-rows:auto 1fr;
   border-top:2px solid var(--fg);
 }
-.cmd{border-bottom:1px solid var(--fg);padding:.25ch 1ch;}
+.cmd{
+  border-bottom:1px solid var(--fg);
+  padding:.25ch 1ch;
+}
 .log{
   overflow:hidden;
   user-select:none;
@@ -125,7 +143,12 @@ footer{
   opacity:1;
   pointer-events:none;
 }
-.kbd{background:#000;border:1px solid var(--fg);padding:0 4px;margin-right:3px;}
+.kbd{
+  background:#000;
+  border:1px solid var(--fg);
+  padding:0 4px;
+  margin-right:3px;
+}
 .dim{color:var(--dim);}
 </style>
 </head>
@@ -133,7 +156,7 @@ footer{
 <div class="frame">
 <header>
   <div>CONCRETE MEAT ∞ / DEPTH <span id="depth">0</span> m / ZONE <span id="zone">Surface</span> (BIOME <span id="biome">I</span>)</div>
-  <div class="dim">@: you | ♥ organ | ☠ corpse | █ concrete | ░ soil | ≈ fluid</div>
+  <div class="dim">@ you | ♥ organ | ☠ corpse | █ concrete | ░ soil | ≈ fluid</div>
 </header>
 <main>
   <section class="world-wrap"><pre id="world" class="world" tabindex="0"></pre></section>
@@ -148,267 +171,407 @@ footer{
   </aside>
 </main>
 <footer>
-  <div class="cmd"><span class="kbd">↑↓←→</span>move <span class="kbd">d</span>dig <span class="kbd">u</span>ascend <span class="kbd">x</span>examine <span class="kbd">g</span>gather <span class="kbd">b</span>build <span class="kbd">r</span>repair <span class="kbd">s</span>surgery <span class="kbd">i</span>inventory <span class="kbd">m</span>map <span class="kbd">q</span>rest</div>
-  <div id="log" class="log">You stand beneath a humming concrete sky.</div>
+  <div class="cmd">
+    <span class="kbd">↑↓←→</span>move 
+    <span class="kbd">d</span>dig 
+    <span class="kbd">u</span>ascend 
+    <span class="kbd">x</span>examine 
+    <span class="kbd">g</span>gather 
+    <span class="kbd">b</span>build 
+    <span class="kbd">r</span>repair 
+    <span class="kbd">s</span>surgery 
+    <span class="kbd">i</span>inventory 
+    <span class="kbd">m</span>map 
+    <span class="kbd">q</span>rest
+  </div>
+  <div id="log" class="log">YOU STAND BENEATH A HUMMING CONCRETE SKY.</div>
 </footer>
 </div>
 <script>
-// === Core constants ===
-const elWorld=document.getElementById('world'),
-  elDepth=document.getElementById('depth'),
-  elZone=document.getElementById('zone'),
-  elBiome=document.getElementById('biome'),
-  elStats=document.getElementById('stats'),
-  elBody=document.getElementById('body'),
-  elTools=document.getElementById('tools'),
-  elLog=document.getElementById('log'),
-  elSide=document.getElementById('sideview');
+----- PART 1 OF 5 END -----
+
+  ----- PART 2 OF 5 START -----
+/* === CORE VARIABLES AND INITIAL SETUP === */
+const elWorld=document.getElementById('world');
+const elDepth=document.getElementById('depth');
+const elZone=document.getElementById('zone');
+const elBiome=document.getElementById('biome');
+const elStats=document.getElementById('stats');
+const elBody=document.getElementById('body');
+const elTools=document.getElementById('tools');
+const elLog=document.getElementById('log');
+const elSide=document.getElementById('sideview');
 
 const VIEW_W=110, VIEW_H=34;
-const tiles={wall:'█',soil:'░',soil2:'▒',soil3:'▓',fluid:'≈',empty:' ',corpse:'☠',organ:'♥',player:'@',tunnel:'▒',cover:'▧',shelter5:'▣',bed:'╬',woodFrag:'▥'};
+const tiles={
+  wall:'█',soil:'░',soil2:'▒',soil3:'▓',fluid:'≈',empty:' ',
+  corpse:'☠',organ:'♥',player:'@',tunnel:'▒',
+  cover:'▧',shelter5:'▣',bed:'╬',woodFrag:'▥'
+};
 const beamGlyphs=['║','╫','╬'];
-let player={x:0,y:0,depth:0,innate:0.1+Math.random()*0.1,stats:{hp:96,blood:88,o2:94,inf:7,mind:86,fatigue:10},body:{extra:{arms:0,legs:0,lung:0,kidney:0},arms:{L:true,R:true},legs:{L:true,R:true}},resources:{concrete:0,metal:0,fabric:0,organic:0,wood:0},biome:'I'};
-const memory=new Map(), revealed=new Set();
+
+let player={
+  x:0,y:0,depth:0,
+  innate:0.1+Math.random()*0.1,
+  stats:{hp:100,blood:100,o2:100,inf:0,mind:100,fatigue:0},
+  body:{extra:{arms:0,legs:0,lung:0,kidney:0},arms:{L:true,R:true},legs:{L:true,R:true}},
+  resources:{concrete:0,metal:0,fabric:0,organic:0,wood:0},
+  biome:'I'
+};
+const memory=new Map(),revealed=new Set();
 let uiMode='world';
 
-// RNG noise
 const noiseSeed=Math.random()*10000;
 function rnd(n){return Math.sin(n*43758.5453+noiseSeed)%1;}
-function vnoise(x,y,z){const nx=Math.floor(x*0.12),ny=Math.floor(y*0.12),nz=Math.floor(z*0.18);return (rnd(nx*12.9898+ny*78.233+nz*37.719)+1)/2;}
+function vnoise(x,y,z){
+  const nx=Math.floor(x*0.12),ny=Math.floor(y*0.12),nz=Math.floor(z*0.18);
+  return (rnd(nx*12.9898+ny*78.233+nz*37.719)+1)/2;
+}
 
-// === World / terrain ===
+/* === WORLD GENERATION === */
 function key(x,y,z){return`${x},${y},${z}`;}
 function setTile(x,y,z,v){memory.set(key(x,y,z),v);}
-function getTile(x,y,z){const k=key(x,y,z);return memory.has(k)?memory.get(k):terrainTile(x,y,z);}
+function getTile(x,y,z){
+  const k=key(x,y,z);
+  return memory.has(k)?memory.get(k):terrainTile(x,y,z);
+}
 function terrainTile(x,y,z){
- const n=vnoise(x,y,z),bias=Math.min(0.45,z*0.003),t=n+bias;
- if(z>15&&t>0.56&&t<0.62&&Math.random()<0.015)return beamGlyphs[Math.floor(Math.random()*beamGlyphs.length)];
- if(z>20&&t<0.58&&Math.random()<0.03)return tiles.woodFrag;
- if(t<0.06)return tiles.wall;
- if(t<0.12)return tiles.fluid;
- if(t<0.48)return tiles.soil;
- if(t<0.51)return tiles.corpse;
- if(t<0.54)return tiles.organ;
- if(t<0.565&&Math.random()<0.02)return {tile:'⊠',ruin:true};
- return tiles.empty;
+  const n=vnoise(x,y,z),bias=Math.min(0.45,z*0.003),t=n+bias;
+  if(z>15&&t>0.56&&t<0.62&&Math.random()<0.015)return beamGlyphs[Math.floor(Math.random()*beamGlyphs.length)];
+  if(z>20&&t<0.58&&Math.random()<0.03)return tiles.woodFrag;
+  if(t<0.06)return tiles.wall;
+  if(t<0.12)return tiles.fluid;
+  if(t<0.48)return tiles.soil;
+  if(t<0.51)return tiles.corpse;
+  if(t<0.54)return tiles.organ;
+  if(t<0.565&&Math.random()<0.02)return {tile:'⊠',ruin:true};
+  return tiles.empty;
 }
 
-// === Zones & biomes ===
+/* === ZONES & BIOMES === */
 function getZoneName(d){
- if(d<10)return'Surface';
- if(d<30)return'Sub-Concrete';
- if(d<60)return'Ossuary';
- if(d<120)return'Reservoir';
- return'Vault';
+  if(d<10)return'Surface';
+  if(d<30)return'Sub-Concrete';
+  if(d<60)return'Ossuary';
+  if(d<120)return'Reservoir';
+  return'Vault';
 }
 function getBiomeRoman(x,y,z){
- const regionSize=200;
- const rx=Math.floor(x/regionSize),ry=Math.floor(y/regionSize);
- const r=Math.abs(rnd(rx*31.4+ry*47.2+137.9));
- const idx=Math.floor(r*5)%5;
- return['I','II','III','IV','V'][idx];
+  const regionSize=200;
+  const rx=Math.floor(x/regionSize),ry=Math.floor(y/regionSize);
+  const r=Math.abs(rnd(rx*31.4+ry*47.2+137.9));
+  const idx=Math.floor(r*5)%5;
+  return['I','II','III','IV','V'][idx];
 }
 
+/* === LOGGING === */
+function log(msg){
+  const d=document.createElement('div');
+  d.textContent=msg;
+  elLog.prepend(d);
+  while(elLog.children.length>80)elLog.removeChild(elLog.lastChild);
+}
+
+/* === STATE EVENTS === */
 let lastZone='',lastBiome='';
 function onDepthChange(p,n){
- const pz=getZoneName(p),nz=getZoneName(n);
- if(pz!==nz){
-  const lines={'Surface':'Dust. Static hum.','Sub-Concrete':'Condensation on rebar.','Ossuary':'Hollow air. Bone underfoot.','Reservoir':'Pipes pulse. Fluid echoes.','Vault':'Warm fog. Breathing walls.'};
-  log(` [ZONE] ${nz}. ${lines[nz]||''}`);
- }
+  const pz=getZoneName(p),nz=getZoneName(n);
+  if(pz!==nz){
+    const lines={
+      'Surface':'DUST. STATIC HUM.',
+      'Sub-Concrete':'CONDENSATION ON REBAR.',
+      'Ossuary':'HOLLOW AIR. BONE UNDERFOOT.',
+      'Reservoir':'PIPES PULSE. FLUID ECHOES.',
+      'Vault':'WARM FOG. BREATHING WALLS.'
+    };
+    log(`[ZONE] ${nz}. ${lines[nz]||''}`);
+  }
 }
 function onBiomeChange(p,n){
- if(p!==n){
-  const lines={'I':'Ash plains, quiet and sterile.','II':'Fragments of bone glint in dust.','III':'Residues pulse faintly, half-alive.','IV':'Fluids circulate through fractured channels.','V':'Organic concrete breathes in the dark.'};
-  log(` [BIOME] ${n}. ${lines[n]||''}`);
- }
-}
-
-// === Log system ===
-function log(msg){
- const d=document.createElement('div');
- d.textContent=msg;
- elLog.prepend(d);
- while(elLog.children.length>80)elLog.removeChild(elLog.lastChild);
-}
-
-// === Rendering (continues in Part 2) ===
-
------ PART 2 START -----
-function renderWorld(){
- let out='';
- for(let j=0;j<VIEW_H;j++){
-  for(let i=0;i<VIEW_W;i++){
-   const gx=player.x+i-Math.floor(VIEW_W/2),
-         gy=player.y+j-Math.floor(VIEW_H/2);
-   const k=key(gx,gy,player.depth);
-   revealed.add(k);
-   let t=getTile(gx,gy,player.depth);
-   if(typeof t==='object')t=t.tile;
-   if(gx===player.x&&gy===player.y)t=tiles.player;
-   out+=t;
+  if(p!==n){
+    const lines={
+      'I':'ASH PLAINS, QUIET AND STERILE.',
+      'II':'FRAGMENTS OF BONE GLINT IN DUST.',
+      'III':'RESIDUES PULSE FAINTLY, HALF-ALIVE.',
+      'IV':'FLUIDS CIRCULATE THROUGH FRACTURED CHANNELS.',
+      'V':'ORGANIC CONCRETE BREATHES IN THE DARK.'
+    };
+    log(`[BIOME] ${n}. ${lines[n]||''}`);
   }
-  out+="\n";
- }
- elWorld.textContent=out;
- elDepth.textContent=player.depth;
- const z=getZoneName(player.depth);
- if(z!==lastZone){elZone.textContent=z;lastZone=z;}
- const b=getBiomeRoman(player.x,player.y,player.depth);
- if(b!==lastBiome){onBiomeChange(lastBiome,b);lastBiome=b;player.biome=b;elBiome.textContent=b;}
 }
 
+/* === RENDERING === */
+function renderWorld(){
+  let out='';
+  for(let j=0;j<VIEW_H;j++){
+    for(let i=0;i<VIEW_W;i++){
+      const gx=player.x+i-Math.floor(VIEW_W/2),
+            gy=player.y+j-Math.floor(VIEW_H/2);
+      const k=key(gx,gy,player.depth);
+      revealed.add(k);
+      let t=getTile(gx,gy,player.depth);
+      if(typeof t==='object')t=t.tile;
+      if(gx===player.x&&gy===player.y)t=tiles.player;
+      out+=t;
+    }
+    out+="\n";
+  }
+  elWorld.textContent=out;
+  elDepth.textContent=player.depth;
+  const z=getZoneName(player.depth);
+  if(z!==lastZone){elZone.textContent=z;lastZone=z;}
+  const b=getBiomeRoman(player.x,player.y,player.depth);
+  if(b!==lastBiome){onBiomeChange(lastBiome,b);lastBiome=b;player.biome=b;elBiome.textContent=b;}
+}
+----- PART 2 OF 5 END -----
+
+  ----- PART 3 OF 5 START -----
+/* === SIDE PROFILE AND HUD === */
 function renderSideView(){
- let out='';
- for(let d=0;d<50;d++){
-  const z=getZoneName(d);
-  out+=`${d.toString().padStart(3,' ')}m ${(d===Math.floor(player.depth)?'@':' ')} ${z}\n`;
- }
- elSide.textContent=out;
+  let out='';
+  for(let d=0;d<50;d++){
+    const z=getZoneName(d);
+    out+=`${d.toString().padStart(3,' ')}m ${(d===Math.floor(player.depth)?'@':' ')} ${z}\n`;
+  }
+  elSide.textContent=out;
 }
 
 function drawHUD(){
- const s=player.stats,r=player.resources;
- elStats.innerHTML='<h2>Vitals</h2>'+
-   `HP ${Math.round(s.hp)}% BLOOD ${Math.round(s.blood)}% O2 ${Math.round(s.o2)}% INF ${Math.round(s.inf)}% MIND ${Math.round(s.mind)}% FAT ${Math.round(s.fatigue)}%`;
- elBody.innerHTML='<h2>Body</h2>'+
-   `ARMS+${player.body.extra.arms} LEGS+${player.body.extra.legs} LUNGS+${player.body.extra.lung} KIDNEYS+${player.body.extra.kidney}`;
- elTools.innerHTML='<h2>Equipment</h2>'+
-   `TOOLS scalpel / pump / clamp<br>RES █${r.concrete} ⊠${r.metal} ≈${r.fabric} ♥${r.organic} ▥${r.wood}`;
+  const s=player.stats,r=player.resources;
+  elStats.innerHTML='<h2>Vitals</h2>'+
+    `HP ${Math.round(s.hp)}% BLOOD ${Math.round(s.blood)}% O2 ${Math.round(s.o2)}% INF ${Math.round(s.inf)}% MIND ${Math.round(s.mind)}% FAT ${Math.round(s.fatigue)}%`;
+  elBody.innerHTML='<h2>Body</h2>'+
+    `ARMS+${player.body.extra.arms} LEGS+${player.body.extra.legs} LUNGS+${player.body.extra.lung} KIDNEYS+${player.body.extra.kidney}`;
+  elTools.innerHTML='<h2>Equipment</h2>'+
+    `TOOLS scalpel / pump / clamp<br>RES █${r.concrete} ⊠${r.metal} ≈${r.fabric} ♥${r.organic} ▥${r.wood}`;
 }
 
-// === Movement & digging ===
-function solidAt(t){if(typeof t==='object')t=t.tile;return[tiles.wall,tiles.soil,tiles.soil2,tiles.soil3,tiles.fluid].includes(t)||beamGlyphs.includes(t);}
-function tunnelize(x,y,z){setTile(x,y,z,tiles.tunnel);}
+/* === TERRAIN & TUNNELLING === */
+function solidAt(t){
+  if(typeof t==='object')t=t.tile;
+  return [tiles.wall,tiles.soil,tiles.soil2,tiles.soil3,tiles.fluid].includes(t)||beamGlyphs.includes(t);
+}
+function tunnelize(x,y,z){
+  setTile(x,y,z,tiles.tunnel);
+}
+
+/* === MOVEMENT === */
 function move(dx,dy){
- const tx=player.x+dx,ty=player.y+dy;
- let t=getTile(tx,ty,player.depth);
- if(solidAt(t)){
-  if(player.depth<=0){log('Surface concrete is immovable.');return;}
-  const k=key(tx,ty,player.depth);
-  let val=memory.get(k);
-  if(!val||typeof val!=='object'||!val.solid){
-   val={tile:(typeof t==='object'?t.tile:t),solid:true,damage:0,stageGlyph:'*'};
+  const tx=player.x+dx,ty=player.y+dy;
+  let t=getTile(tx,ty,player.depth);
+  if(solidAt(t)){
+    if(player.depth<=0){log('SURFACE CONCRETE IS IMMOVABLE.');return;}
+    const k=key(tx,ty,player.depth);
+    let val=memory.get(k);
+    if(!val||typeof val!=='object'||!val.solid){
+      val={tile:(typeof t==='object'?t.tile:t),solid:true,damage:0,stageGlyph:'*'};
+    }
+    let digPower=1+player.body.extra.arms*0.5+player.body.extra.legs*0.2;
+    val.damage+=digPower;
+    val.stageGlyph=['·','+','#'][Math.min(2,Math.floor(val.damage))]||'#';
+    memory.set(k,val);
+    player.stats.fatigue=Math.min(100,player.stats.fatigue+0.8);
+    player.stats.o2=Math.max(0,player.stats.o2-0.15);
+    if(val.damage>=3){
+      tunnelize(tx,ty,player.depth);
+      log('THE WALL YIELDS. DUST BLOOMS.');
+      player.x=tx;player.y=ty;
+    }
+    drawHUD();renderWorld();return;
   }
-  const baseRes=3;
-  let digPower=1+player.body.extra.arms*0.5+player.body.extra.legs*0.2;
-  val.damage+=digPower;
-  val.stageGlyph=['·','+','#'][Math.min(2,Math.floor(val.damage))]||'#';
-  memory.set(k,val);
-  player.stats.fatigue=Math.min(100,player.stats.fatigue+0.8);
-  player.stats.o2=Math.max(0,player.stats.o2-0.15);
-  if(val.damage>=baseRes){tunnelize(tx,ty,player.depth);log('The wall yields. Dust blooms.');player.x=tx;player.y=ty;}
-  drawHUD();renderWorld();return;
- }
- player.x=tx;player.y=ty;
- player.stats.fatigue=Math.min(100,player.stats.fatigue+0.05);
- player.stats.o2=Math.max(0,player.stats.o2-0.03);
- renderWorld();renderSideView();drawHUD();
+  player.x=tx;player.y=ty;
+  player.stats.fatigue=Math.min(100,player.stats.fatigue+0.05);
+  player.stats.o2=Math.max(0,player.stats.o2-0.03);
+  renderWorld();renderSideView();drawHUD();
 }
 
+/* === DIGGING AND ASCENT === */
 function dig(){
- const prev=player.depth;player.depth++;
- onDepthChange(prev,player.depth);
- renderWorld();renderSideView();drawHUD();
- log('You descend through ash and organs...');
+  const prev=player.depth;player.depth++;
+  onDepthChange(prev,player.depth);
+  renderWorld();renderSideView();drawHUD();
+  log('YOU DESCEND THROUGH ASH AND ORGANS...');
 }
 function ascend(){
- if(player.depth<=0){log('Surface pressure holds you here.');return;}
- const prev=player.depth;player.depth--;
- onDepthChange(prev,player.depth);
- renderWorld();renderSideView();drawHUD();
- log('You climb towards thinner air.');
+  if(player.depth<=0){log('SURFACE PRESSURE HOLDS YOU HERE.');return;}
+  const prev=player.depth;player.depth--;
+  onDepthChange(prev,player.depth);
+  renderWorld();renderSideView();drawHUD();
+  log('YOU CLIMB TOWARD THINNER AIR.');
 }
 
-// === Gather & examine ===
-function examine(){
- const t=getTile(player.x,player.y,player.depth);
- const disp=(typeof t==='object')?t.tile:t;
- if(beamGlyphs.includes(disp)){log('[EXAMINE] A preserved beam.');return;}
- if(disp===tiles.corpse){log('[EXAMINE] A body, partially preserved.');return;}
- if(disp===tiles.organ){log('[EXAMINE] A loose organ.');return;}
- if(disp===tiles.wall){log('[EXAMINE] Reinforced concrete: hairline cracks.');return;}
- if(disp===tiles.soil||disp===tiles.soil2||disp===tiles.soil3){log('[EXAMINE] Packed soil and ash.');return;}
- if(disp==='⊠'){log('[EXAMINE] Twisted metal remains.');return;}
- if(disp===tiles.woodFrag){log('[EXAMINE] Timber splinters caught in the strata.');return;}
- log('[EXAMINE] Nothing of use.');
-}
-
-function gather(){
- const k=key(player.x,player.y,player.depth);
- let t=getTile(player.x,player.y,player.depth);
- let disp=(typeof t==='object')?t.tile:t;
- if(player.stats.fatigue>=100){log('Too exhausted to gather.');return;}
- if(beamGlyphs.includes(disp)){
-  const gained=1+Math.floor(Math.random()*2);
-  player.resources.wood+=gained;
-  player.stats.fatigue=Math.min(100,player.stats.fatigue+0.5);
-  setTile(player.x,player.y,player.depth,Math.random()<0.5?tiles.soil:tiles.tunnel);
-  log(`[GATHER] Splinters of ancient timber. (+${gained} ▥)`);drawHUD();renderWorld();return;
- }
- if(disp===tiles.wall){
-  const got=1+Math.floor(Math.random()*3);
-  player.resources.concrete+=got;
-  player.stats.fatigue=Math.min(100,player.stats.fatigue+0.5);
-  log(`[GATHER] Concrete shards extracted. (+${got} █)`);drawHUD();return;
- }
- if(disp==='⊠'){
-  player.resources.metal+=1;
-  player.stats.fatigue=Math.min(100,player.stats.fatigue+0.5);
-  setTile(player.x,player.y,player.depth,tiles.tunnel);
-  log('[GATHER] Metal fragments pried loose. (+1 ⊠)');renderWorld();drawHUD();return;
- }
- if(disp===tiles.soil||disp===tiles.soil2){
-  if(Math.random()<0.25){player.resources.fabric+=1;log('[GATHER] Fibrous scrap. (+1 ≈)');}
-  else{log('[GATHER] The material disintegrates.');}
-  player.stats.fatigue=Math.min(100,player.stats.fatigue+0.3);drawHUD();return;
- }
- if(disp===tiles.corpse){
-  const roll=Math.random();
-  if(roll<0.34){player.resources.metal+=1;log('[GATHER] Fasteners and wire. (+1 ⊠)');}
-  else if(roll<0.67){player.resources.organic+=1;log('[GATHER] Tissue sample retained. (+1 ♥)');}
-  else{player.resources.fabric+=1;log('[GATHER] Cloth remnants salvaged. (+1 ≈)');}
-  player.stats.fatigue=Math.min(100,player.stats.fatigue+0.6);drawHUD();return;
- }
- if(disp===tiles.organ){
-  player.resources.organic+=1;
-  setTile(player.x,player.y,player.depth,tiles.tunnel);
-  log('[GATHER] The organ hums once, then stills. (+1 ♥)');
-  renderWorld();drawHUD();return;
- }
- if(disp===tiles.woodFrag){
-  player.resources.wood+=1;
-  setTile(player.x,player.y,player.depth,tiles.tunnel);
-  log('[GATHER] Splinters of timber recovered. (+1 ▥)');
-  renderWorld();drawHUD();return;
- }
- log('No usable material here.');
-}
-
-// === Rest ===
+/* === RESTING === */
 function rest(){
- const s=player.stats;
- s.o2=Math.min(100,s.o2+10);
- s.fatigue=Math.max(0,s.fatigue-5);
- s.hp=Math.min(100,s.hp+1);
- log('You rest. Air thickens, then steadies.');
- drawHUD();
+  const s=player.stats;
+  s.o2=Math.min(100,s.o2+10);
+  s.fatigue=Math.max(0,s.fatigue-5);
+  s.hp=Math.min(100,s.hp+1);
+  log('YOU REST. AIR THICKENS, THEN STEADIES.');
+  drawHUD();
 }
 
-// === Input ===
-window.addEventListener('keydown',e=>{
- if(e.key==='ArrowUp')move(0,-1);
- else if(e.key==='ArrowDown')move(0,1);
- else if(e.key==='ArrowLeft')move(-1,0);
- else if(e.key==='ArrowRight')move(1,0);
- else if(e.key==='d')dig();
- else if(e.key==='u')ascend();
- else if(e.key==='x')examine();
- else if(e.key==='g')gather();
- else if(e.key==='q')rest();
-});
+/* === FATIGUE SYSTEM === */
+function fatigueTick(){
+  const s=player.stats;
+  if(s.fatigue>90){s.mind=Math.max(0,s.mind-0.02);}
+  if(s.o2<20){s.hp=Math.max(0,s.hp-0.05);}
+  if(s.hp<=0){log('SYSTEM FAILURE.');}
+}
 
-// === Fit monospace view ===
+/* === ENVIRONMENT INTERACTION === */
+function examine(){
+  const t=getTile(player.x,player.y,player.depth);
+  const disp=(typeof t==='object')?t.tile:t;
+  if(beamGlyphs.includes(disp)){log('[EXAMINE] A PRESERVED BEAM.');return;}
+  if(disp===tiles.corpse){log('[EXAMINE] A BODY, PARTIALLY PRESERVED.');return;}
+  if(disp===tiles.organ){log('[EXAMINE] A LOOSE ORGAN.');return;}
+  if(disp===tiles.wall){log('[EXAMINE] REINFORCED CONCRETE: HAIRLINE CRACKS.');return;}
+  if(disp===tiles.soil||disp===tiles.soil2||disp===tiles.soil3){log('[EXAMINE] PACKED SOIL AND ASH.');return;}
+  if(disp==='⊠'){log('[EXAMINE] TWISTED METAL REMAINS.');return;}
+  if(disp===tiles.woodFrag){log('[EXAMINE] TIMBER SPLINTERS CAUGHT IN STRATA.');return;}
+  log('[EXAMINE] NOTHING OF USE.');
+}
+----- PART 3 OF 5 END -----
+
+----- PART 4 OF 5 START -----
+/* === GATHERING === */
+function gather(){
+  const k=key(player.x,player.y,player.depth);
+  let t=getTile(player.x,player.y,player.depth);
+  let disp=(typeof t==='object')?t.tile:t;
+  if(player.stats.fatigue>=100){log('TOO EXHAUSTED TO GATHER.');return;}
+  if(beamGlyphs.includes(disp)){
+    const gained=1+Math.floor(Math.random()*2);
+    player.resources.wood+=gained;
+    player.stats.fatigue=Math.min(100,player.stats.fatigue+0.5);
+    setTile(player.x,player.y,player.depth,Math.random()<0.5?tiles.soil:tiles.tunnel);
+    log(`[GATHER] SPLINTERS OF ANCIENT TIMBER. (+${gained} ▥)`);drawHUD();renderWorld();return;
+  }
+  if(disp===tiles.wall){
+    const got=1+Math.floor(Math.random()*3);
+    player.resources.concrete+=got;
+    player.stats.fatigue=Math.min(100,player.stats.fatigue+0.5);
+    log(`[GATHER] CONCRETE SHARDS EXTRACTED. (+${got} █)`);drawHUD();return;
+  }
+  if(disp==='⊠'){
+    player.resources.metal+=1;
+    player.stats.fatigue=Math.min(100,player.stats.fatigue+0.5);
+    setTile(player.x,player.y,player.depth,tiles.tunnel);
+    log('[GATHER] METAL FRAGMENTS PRIED LOOSE. (+1 ⊠)');renderWorld();drawHUD();return;
+  }
+  if(disp===tiles.soil||disp===tiles.soil2){
+    if(Math.random()<0.25){player.resources.fabric+=1;log('[GATHER] FIBROUS SCRAP. (+1 ≈)');}
+    else{log('[GATHER] THE MATERIAL DISINTEGRATES.');}
+    player.stats.fatigue=Math.min(100,player.stats.fatigue+0.3);drawHUD();return;
+  }
+  if(disp===tiles.corpse){
+    const roll=Math.random();
+    if(roll<0.34){player.resources.metal+=1;log('[GATHER] FASTENERS AND WIRE. (+1 ⊠)');}
+    else if(roll<0.67){player.resources.organic+=1;log('[GATHER] TISSUE SAMPLE RETAINED. (+1 ♥)');}
+    else{player.resources.fabric+=1;log('[GATHER] CLOTH REMNANTS SALVAGED. (+1 ≈)');}
+    player.stats.fatigue=Math.min(100,player.stats.fatigue+0.6);drawHUD();return;
+  }
+  if(disp===tiles.organ){
+    player.resources.organic+=1;
+    setTile(player.x,player.y,player.depth,tiles.tunnel);
+    log('[GATHER] THE ORGAN HUMS ONCE, THEN STILLS. (+1 ♥)');
+    renderWorld();drawHUD();return;
+  }
+  if(disp===tiles.woodFrag){
+    player.resources.wood+=1;
+    setTile(player.x,player.y,player.depth,tiles.tunnel);
+    log('[GATHER] SPLINTERS OF TIMBER RECOVERED. (+1 ▥)');
+    renderWorld();drawHUD();return;
+  }
+  log('NO USABLE MATERIAL HERE.');
+}
+
+/* === BUILDING === */
+function buildMenu(){
+  log('[BUILD] SELECT STRUCTURE: 1=▣ SHELTER, 2=▧ COVER, 3=╬ BED');
+  uiMode='build';
+}
+function buildChoice(choice){
+  if(uiMode!=='build')return;
+  const posKey=key(player.x,player.y,player.depth);
+  if(choice==='1'){if(player.resources.concrete>=3){setTile(player.x,player.y,player.depth,tiles.shelter5);player.resources.concrete-=3;log('[BUILD] SHELTER CONSTRUCTED.');}else{log('[BUILD] INSUFFICIENT CONCRETE.');}}
+  if(choice==='2'){if(player.resources.metal>=2){setTile(player.x,player.y,player.depth,tiles.cover);player.resources.metal-=2;log('[BUILD] COVER ASSEMBLED.');}else{log('[BUILD] INSUFFICIENT METAL.');}}
+  if(choice==='3'){if(player.resources.fabric>=2&&player.resources.wood>=1){setTile(player.x,player.y,player.depth,tiles.bed);player.resources.fabric-=2;player.resources.wood-=1;log('[BUILD] BED LAID.');}else{log('[BUILD] MATERIALS LACKING.');}}
+  uiMode='world';
+  renderWorld();drawHUD();
+}
+
+/* === REPAIR === */
+function repair(){
+  const chance=player.innate*100;
+  if(Math.random()<(chance/1000)){log('[REPAIR] STRUCTURE REINFORCED.');}
+  else{log('[REPAIR] ATTEMPT FAILS.');}
+}
+
+/* === ARTEFACTS AND TEXT FRAGMENTS === */
+const artefactTexts=[
+  'FRAGMENT OF A MAINTENANCE ORDER.',
+  'HANDWRITTEN FORM REQUESTING BODY STORAGE.',
+  'INSTRUCTION: DO NOT REMOVE TAGGED PARTS.',
+  'NOTE: THE LIGHT NEVER CEASES HERE.',
+  'REGISTER: CONCRETE REINFORCEMENT UNIT 12-C.'
+];
+function maybeArtefact(){
+  if(Math.random()<0.05){
+    const frag=artefactTexts[Math.floor(Math.random()*artefactTexts.length)];
+    log(`[ARTEFACT] ${frag}`);
+  }
+}
+
+/* === INPUT HANDLING === */
+window.addEventListener('keydown',e=>{
+  if(uiMode==='world'){
+    if(e.key==='ArrowUp')move(0,-1);
+    else if(e.key==='ArrowDown')move(0,1);
+    else if(e.key==='ArrowLeft')move(-1,0);
+    else if(e.key==='ArrowRight')move(1,0);
+    else if(e.key==='d')dig();
+    else if(e.key==='u')ascend();
+    else if(e.key==='x')examine();
+    else if(e.key==='g')gather();
+    else if(e.key==='b')buildMenu();
+    else if(e.key==='r')repair();
+    else if(e.key==='q')rest();
+  }else if(uiMode==='build'){
+    if(['1','2','3'].includes(e.key))buildChoice(e.key);
+  }
+});
+----- PART 4 OF 5 END -----
+
+----- PART 5 OF 5 START -----
+/* === MAP OVERLAY (STATIC) === */
+let mapVisible=false;
+function renderMap(){
+  let out='';
+  for(let j=-20;j<20;j++){
+    for(let i=-40;i<40;i++){
+      const gx=player.x+i,gy=player.y+j;
+      const k=key(gx,gy,player.depth);
+      if(!revealed.has(k)){out+='░';continue;}
+      let t=getTile(gx,gy,player.depth);
+      if(typeof t==='object')t=t.tile;
+      if(gx===player.x&&gy===player.y)t='@';
+      out+=t;
+    }
+    out+="\n";
+  }
+  return out;
+}
+function toggleMap(){
+  if(mapVisible){mapVisible=false;renderWorld();return;}
+  mapVisible=true;
+  let mapData=renderMap();
+  elWorld.textContent=mapData;
+  elWorld.classList.add('overlay-mode');
+  log(`[MAP] DEPTH ${player.depth}m — ${getZoneName(player.depth)} (${player.biome})`);
+}
+
+/* === FONT FIT === */
 const __probe=document.createElement('span');
 __probe.textContent='█';
 __probe.style.visibility='hidden';
@@ -417,30 +580,34 @@ __probe.style.whiteSpace='pre';
 __probe.style.fontFamily=getComputedStyle(elWorld).fontFamily;
 document.body.appendChild(__probe);
 function __charMetrics(px){
- __probe.style.fontSize=px+'px';
- __probe.style.lineHeight='1';
- const r=__probe.getBoundingClientRect();
- return{w:r.width,h:r.height};
+  __probe.style.fontSize=px+'px';
+  __probe.style.lineHeight='1';
+  const r=__probe.getBoundingClientRect();
+  return {w:r.width,h:r.height};
 }
 const __BASE=14;
 function fitWorld(){
- const r=elWorld.getBoundingClientRect();
- const m=__charMetrics(__BASE);
- const scaleW=r.width/(VIEW_W*m.w);
- const scaleH=r.height/(VIEW_H*m.h);
- const px=Math.max(9,Math.floor(Math.min(scaleW,scaleH)*__BASE));
- elWorld.style.fontSize=px+'px';
- elWorld.style.lineHeight='1';
+  const r=elWorld.getBoundingClientRect();
+  const m=__charMetrics(__BASE);
+  const scaleW=r.width/(VIEW_W*m.w);
+  const scaleH=r.height/(VIEW_H*m.h);
+  const px=Math.max(9,Math.floor(Math.min(scaleW,scaleH)*__BASE));
+  elWorld.style.fontSize=px+'px';
+  elWorld.style.lineHeight='1';
 }
 window.addEventListener('resize',fitWorld);
 
-// === Init ===
+/* === INITIALIZATION === */
 function init(){
- drawHUD();renderWorld();renderSideView();fitWorld();
- log('The hum of subterranean lights follows you down.');
+  drawHUD();
+  renderWorld();
+  renderSideView();
+  fitWorld();
+  log('THE HUM OF SUBTERRANEAN LIGHTS FOLLOWS YOU DOWN.');
 }
 init();
+----- PART 5 OF 5 END -----
 </script>
 </body>
 </html>
------ PART 2 END -----
+
