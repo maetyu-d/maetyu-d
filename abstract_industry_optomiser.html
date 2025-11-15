@@ -342,7 +342,15 @@ let oreRichness = Array.from({length: WORLD_H},()=> Array(WORLD_W).fill(1)); // 
 let oreReserve  = Array.from({length: WORLD_H},()=> Array(WORLD_W).fill(1)); // 0..1
 let faultMask   = Array.from({length: WORLD_H},()=> Array(WORLD_W).fill(false));
 let pollution   = Array.from({length: WORLD_H},()=> Array(WORLD_W).fill(0)); // 0..~1.5
-let overlayMode = 0; // 0:none, 1:hardness, 2:richness, 3:pollution, 4:stress
+let overlayMode = 0; // 0:none, 1:hardness, 2:richness, 3:pollution, 4:stress, 5:weather
+
+// WEATHER FIELDS ---------------------------------------------------------
+// weatherTime drives the noise; arrays hold current conditions per tile
+let weatherTime = 0;
+let weatherRain  = Array.from({length: WORLD_H},()=> Array(WORLD_W).fill(0));   // 0..1
+let weatherWindX = Array.from({length: WORLD_H},()=> Array(WORLD_W).fill(0));   // -1..1-ish
+let weatherWindY = Array.from({length: WORLD_H},()=> Array(WORLD_W).fill(0));
+let weatherTemp  = Array.from({length: WORLD_H},()=> Array(WORLD_W).fill(0.5)); // 0..1
 
 // POLICIES / INDICES / MARKET / POWER -----------------------------------
 let paused=false, eff=0, thruSmooth=0, idxA=0, idxB=1, avgPollution=0;
@@ -505,11 +513,20 @@ class Node{
     let powerMult = 1;
     if(def.pUse) powerMult = Pfactor;
 
-    // residential sensitivity
+    // residential sensitivity (pollution + weather)
     let envMult = 1;
     if(this.key==='Cr'){
       const pLevel = pollution[this.y][this.x] || 0;
+      const t = weatherTemp[this.y]?.[this.x] || 0.5;
+      const rain = weatherRain[this.y]?.[this.x] || 0;
+
       envMult = clamp(1 - 0.5*pLevel, 0.3, 1.1);
+
+      const tempComfort = 1 - Math.abs(t - 0.55)*1.4;
+      const rainComfort = 1 - Math.abs(rain - 0.25)*2.0;
+      const comfort = clamp(0.4*tempComfort + 0.6*rainComfort, 0, 1);
+
+      envMult *= clamp(0.7 + 0.4*comfort, 0.6, 1.2);
     }
 
     const baseRate = this.r*dt*policyProdMult(this.key,this.x,this.y)*powerMult*envMult;
@@ -663,6 +680,15 @@ class Transit{
         if(!inBounds(nx,ny) || grid[ny][nx]===T0) continue;
         const nb=getNode(nx,ny);
         let cap=(this.tt===T_ROAD?0.8:this.tt===T_RAIL?2.0:this.tt===T_PIPE?1.5:1.0)*dt*policyMoveMult(this.tt)*moveBonusAt(nx,ny);
+
+        // weather slowdown
+        const rain = weatherRain[this.y]?.[this.x] || 0;
+        if(this.tt===T_ROAD){
+          cap *= (1 - 0.45*rain);
+        } else if(this.tt===T_RAIL){
+          cap *= (1 - 0.18*rain);
+        }
+
         if(this.tt===T_PIPE && !(res===R.u || res===R.c)) cap*=0.35;
         if(nb && nb.wants(res, (d+2)&3)){
           const take=Math.min(available,cap);
@@ -778,6 +804,33 @@ function screenToWorld(mx, my){
   };
 }
 
+// WEATHER UPDATE ---------------------------------------------------------
+function updateWeather(dt){
+  weatherTime += dt * 0.05;
+  const s = 0.04;
+
+  for(let y=0;y<WORLD_H;y++){
+    for(let x=0;x<WORLD_W;x++){
+      const nR = noise(x*s, y*s, weatherTime);
+      const rain = nR > 0.6 ? (nR - 0.6) / 0.4 : 0;
+      weatherRain[y][x] = clamp(rain, 0, 1);
+
+      const nDir = noise(x*s+200, y*s+200, weatherTime*0.7);
+      const angle = nDir * TWO_PI;
+      const nSpd = noise(x*s-150, y*s+320, weatherTime*0.5);
+      const speed = 0.1 + 0.5*nSpd;
+      weatherWindX[y][x] = Math.cos(angle) * speed;
+      weatherWindY[y][x] = Math.sin(angle) * speed;
+
+      const lat = (y / WORLD_H) - 0.5;
+      const nT = noise(x*s+400, y*s-400, weatherTime*0.03);
+      const baseT = 0.5 - lat*0.4;
+      const t = clamp(baseT + (nT-0.5)*0.4, 0, 1);
+      weatherTemp[y][x] = t;
+    }
+  }
+}
+
 // MARKET / VALUE + GEO UPDATE -------------------------------------------
 function regionalBasePrice(x,y){
   const fx = (x / WORLD_W) - 0.5; const fy = (y / WORLD_H) - 0.5;
@@ -796,21 +849,33 @@ function connectivityScore(x,y){
 }
 
 function pollutionStep(dt){
-  const decay = 0.02*dt;
-  const diff  = 0.18*dt;
+  const baseDecay = 0.02*dt;
+  const diff      = 0.18*dt;
   let sum=0, count=0;
   const next = Array.from({length: WORLD_H},()=> Array(WORLD_W).fill(0));
+
   for(let y=0;y<WORLD_H;y++){
     for(let x=0;x<WORLD_W;x++){
       const base = pollution[y][x] || 0;
+
       let acc=0, n=0;
       if(y>0){ acc+=pollution[y-1][x]; n++; }
       if(y<WORLD_H-1){ acc+=pollution[y+1][x]; n++; }
       if(x>0){ acc+=pollution[y][x-1]; n++; }
       if(x<WORLD_W-1){ acc+=pollution[y][x+1]; n++; }
       const neigh = n? acc/n : base;
-      let val = base + diff*(neigh-base);
-      val *= (1-decay);
+
+      const wx = weatherWindX[y][x] || 0;
+      const wy = weatherWindY[y][x] || 0;
+      const windMag = Math.sqrt(wx*wx + wy*wy);
+      const windMix = 0.08 * windMag;
+
+      let val = base + (diff + windMix)*(neigh-base);
+
+      const rain = weatherRain[y][x] || 0;
+      const localDecay = baseDecay * (1 + 0.9*rain);
+      val *= (1 - localDecay);
+
       val = clamp(val,0,1.5);
       next[y][x]=val;
       sum += val; count++;
@@ -966,7 +1031,7 @@ function draw(){
     }
   }
 
-  // GEO / ORE / POLLUTION / STRESS OVERLAYS ------------------------------
+  // GEO / ORE / POLLUTION / STRESS / WEATHER OVERLAYS --------------------
   if(overlayMode!==0){
     noStroke();
     for(let y=vy0; y<vy1; y++){
@@ -1007,6 +1072,16 @@ function draw(){
           const g = lerp(80, 40,  stress);
           const b = lerp(30, 90,  stress);
           fill(r,g,b,130);
+          rect(sx,sy,tileSize,tileSize);
+        } else if(overlayMode===5){
+          const rain = weatherRain[y][x] || 0;
+          const ttemp = weatherTemp[y][x] || 0.5;
+          const coldWet  = color(60,120,220);
+          const warmDry  = color(230,160,90);
+          const mix      = clamp(0.4*rain + 0.4*ttemp, 0, 1);
+          const c = lerpColor(coldWet, warmDry, mix);
+          c.setAlpha(130);
+          fill(c);
           rect(sx,sy,tileSize,tileSize);
         }
         if(faultMask[y][x]){
@@ -1073,14 +1148,28 @@ function draw(){
   camY=constrain(camY,0,WORLD_H-effViewH2);
 
   if(!paused){
-    // POWER BUDGET
+    // WEATHER FIRST
+    updateWeather(dt);
+
+    // POWER BUDGET (weather-sensitive)
     Pcap = 0;
     Puse = 0;
     for(const p of parts){
       if(!(p instanceof Node)) continue;
       const def = nodeDefs[p.key];
       if(!def) continue;
-      if(def.pGen) Pcap += def.pGen;
+
+      if(def.pGen){
+        let mult = 1;
+        if(p.key === 'Gh'){
+          const rain = weatherRain[p.y]?.[p.x] || 0;
+          mult = 0.6 + 1.4*rain;
+        } else if(p.key === 'Gc'){
+          const rain = weatherRain[p.y]?.[p.x] || 0;
+          mult = 1.05 - 0.2*rain;
+        }
+        Pcap += def.pGen * mult;
+      }
       if(def.pUse) Puse += def.pUse;
     }
     Pfactor = Pcap>0 ? clamp(Pcap / Math.max(Puse,0.0001), 0, 1) : 0;
@@ -1117,11 +1206,13 @@ function draw(){
 
   const ov = document.getElementById('overlayTag');
   if(ov){
-    ov.textContent =
-      overlayMode===0 ? '·' :
-      overlayMode===1 ? 'H' :
-      overlayMode===2 ? 'R' :
-      overlayMode===3 ? 'P' : 'S';
+    let sym='·';
+    if(overlayMode===1) sym='H';
+    else if(overlayMode===2) sym='R';
+    else if(overlayMode===3) sym='P';
+    else if(overlayMode===4) sym='S';
+    else if(overlayMode===5) sym='W';
+    ov.textContent = sym;
     ov.style.opacity = overlayMode===0 ? '0.4' : '0.9';
   }
   const bt = document.getElementById('beautyTag');
@@ -1194,7 +1285,7 @@ function keyPressed(){
   }
 
   if(key==='o' || key==='O'){ 
-    overlayMode = (overlayMode+1)%5;
+    overlayMode = (overlayMode+1)%6; // 0..5 (adds weather)
   }
 }
 
@@ -1479,3 +1570,4 @@ addEventListener('contextmenu', e=>e.preventDefault());
 </script>
 </body>
 </html>
+
