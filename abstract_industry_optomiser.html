@@ -1,0 +1,1481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Abstract Industry Optimizer</title>
+<style>
+:root {
+  --bg:#0b0c0e;
+  --panel:#111317;
+  --grid:#1c1e23;
+  --ink:#e6e7ea;
+  --muted:#a9adb5;
+  --accent:#cfd2d8;
+  --edge:#363a41;
+  --chip:#161a20;
+}
+
+*{box-sizing:border-box}
+html,body{
+  margin:0;
+  padding:0;
+  background:var(--bg);
+  color:var(--ink);
+  font:14px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Inter,Arial;
+}
+
+/* TOP STATUS BAR -------------------------------------------------------*/
+#topbar{
+  position:fixed;
+  top:0;
+  left:0;
+  right:0;
+  height:40px;
+  padding:6px 12px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  background:linear-gradient(180deg,rgba(10,12,14,.95),rgba(10,12,14,.6),rgba(10,12,14,0));
+  backdrop-filter:blur(5px);
+  border-bottom:1px solid rgba(255,255,255,0.04);
+  z-index:20;
+}
+#gameTitle{
+  font-size:13px;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  color:var(--muted);
+}
+.status-row{
+  display:flex;
+  gap:8px;
+  align-items:center;
+}
+.tag{
+  border:1px solid var(--edge);
+  border-radius:999px;
+  padding:2px 8px;
+  background:#0e1116;
+  color:var(--muted);
+  font-size:12px;
+}
+
+/* LEFT BUILD PALETTE ---------------------------------------------------*/
+#leftbar{
+  position:fixed;
+  top:40px;
+  bottom:32px;
+  left:0;
+  width:220px;
+  padding:8px 8px 12px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  background:var(--panel);
+  border-right:1px solid var(--edge);
+  z-index:15;
+  overflow-y:auto;
+}
+.group{
+  background:#0f1115;
+  border-radius:10px;
+  border:1px solid var(--edge);
+  padding:6px 6px 8px;
+}
+.group-title{
+  font-size:11px;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  color:var(--muted);
+  margin:0 2px 4px;
+}
+.group-row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:4px;
+}
+
+/* BUTTONS --------------------------------------------------------------*/
+.btn{
+  position:relative;
+  cursor:pointer;
+  border:1px solid var(--edge);
+  border-radius:8px;
+  padding:4px 6px;
+  background:var(--chip);
+  color:var(--ink);
+  min-width:30px;
+  text-align:center;
+  font-size:11px;
+}
+.btn[aria-pressed="true"]{
+  outline:1px solid var(--accent);
+  background:#181b22;
+}
+.btn[data-on="true"]{
+  box-shadow:0 0 0 1px rgba(255,255,255,.06) inset,0 0 8px rgba(255,255,255,.04);
+}
+.btn[data-on="true"]::after{
+  content:"";
+  position:absolute;
+  top:4px;
+  right:4px;
+  width:6px;
+  height:6px;
+  border-radius:50%;
+  background:#e6e7ea;
+  opacity:.85;
+}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+
+/* FOOTER ---------------------------------------------------------------*/
+#footer{
+  position:fixed;
+  left:10px;
+  right:10px;
+  bottom:4px;
+  display:flex;
+  gap:14px;
+  flex-wrap:wrap;
+  align-items:center;
+  color:var(--muted);
+  font-size:12px;
+  z-index:10;
+}
+
+/* CANVAS ---------------------------------------------------------------*/
+canvas{display:block}
+
+/* Utility --------------------------------------------------------------*/
+.hidden{display:none}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+</head>
+<body>
+
+  <!-- TOP STATUS BAR -->
+  <div id="topbar">
+    <div id="gameTitle">Abstract Industry Optimizer · <span id="simState">Running</span></div>
+    <div class="status-row">
+      <span class="tag" id="scoreTag">Eff 0.00</span>
+      <span class="tag" id="throughTag">Thru 0/s</span>
+      <span class="tag">H <span id="hTotalTop">0</span> · <span id="hUseTop">0/s</span></span>
+      <span class="tag">V <span id="valTop">0</span> · P <span id="priceTop">1.00</span></span>
+      <span class="tag">Pow <span id="powUseTop">0</span>/<span id="powCapTop">0</span></span>
+      <button class="btn" id="btnPause" aria-pressed="false" title="Space">Pause</button>
+    </div>
+  </div>
+
+  <!-- LEFT BUILD PALETTE -->
+  <div id="leftbar">
+
+    <div class="group">
+      <div class="group-title">Extraction</div>
+      <div class="group-row">
+        <button class="btn" id="tool-R1" aria-pressed="true" title="R1 (1): raw x">R1</button>
+        <button class="btn" id="tool-R2" title="R2 (2): raw y">R2</button>
+        <button class="btn" id="tool-R3" title="R3 (3): raw z">R3</button>
+        <button class="btn" id="tool-R4" title="R4 (4): raw u">R4</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">Workers & Control</div>
+      <div class="group-row">
+        <button class="btn" id="tool-H1" title="H1 (5): —→H">H1</button>
+        <button class="btn" id="tool-H2" title="H2 (6): —→H×2">H2</button>
+        <button class="btn" id="tool-HC" title="HC (7): H adjacency boost">HC</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">Refining</div>
+      <div class="group-row">
+        <button class="btn" id="tool-F1" title="F1 (8): x+H→m">F1</button>
+        <button class="btn" id="tool-F2" title="F2 (9): y+H→p">F2</button>
+        <button class="btn" id="tool-F3" title="F3 (0): z+u+H→c">F3</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">Assembly</div>
+      <div class="group-row">
+        <button class="btn" id="tool-A1" title="A1 (-): m+p+H→g">A1</button>
+        <button class="btn" id="tool-A2" title="A2 (=): m+c+H→e">A2</button>
+        <button class="btn" id="tool-A3" title="A3 ([): p+c+H→s">A3</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">Modules & Final</div>
+      <div class="group-row">
+        <button class="btn" id="tool-M1" title="M1 (]): g+e+H→h">M1</button>
+        <button class="btn" id="tool-M2" title="M2 (;): s+m+H→k">M2</button>
+        <button class="btn" id="tool-C1" title="C1 ('): h+k+H→q">C1</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">Logistics & Export</div>
+      <div class="group-row">
+        <button class="btn" id="tool-Road" title="Rd: basic transit">Rd</button>
+        <button class="btn" id="tool-Rail" title="Rl: high-capacity transit">Rl</button>
+        <button class="btn" id="tool-Pipe" title="Pi: fluid-biased transit">Pi</button>
+        <button class="btn" id="tool-Hub" title="Hb: cross junction">Hb</button>
+        <button class="btn" id="tool-Port" title="Pt: q→V">Pt</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">Power & Civics</div>
+      <div class="group-row">
+        <button class="btn" id="tool-Gc" title="Coal plant: u+H→Power">Gc</button>
+        <button class="btn" id="tool-Gh" title="Hydro plant: terrain→Power">Gh</button>
+        <button class="btn" id="tool-Cr" title="Residential: →H (pollution-sensitive)">Cr</button>
+        <button class="btn" id="tool-Cp" title="Planning: local prod/logistics boost">Cp</button>
+        <button class="btn" id="tool-Ct" title="Trade: boosts nearby ports">Ct</button>
+        <button class="btn" id="tool-Cn" title="Research: slow tech gain">Cn</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">Policies</div>
+      <div class="group-row">
+        <button class="btn" id="policy-1">Policy 1</button>
+        <button class="btn" id="policy-2">Policy 2</button>
+        <button class="btn" id="policy-3" disabled>Policy 3</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">Overlays & Beauty</div>
+      <div class="group-row">
+        <span class="tag">O: <span id="overlayTag">·</span></span>
+        <span class="tag">B: <span id="beautyTag">·</span></span>
+        <span class="tag" title="Toggle beauty mode (V)">Beauty</span>
+        <span class="tag" title="Cycle overlays (O)">Overlay</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- BOTTOM FOOTER STRIP -->
+  <div id="footer">
+    <div>Index A: <span id="indexA">0</span></div>
+    <div>Index B: <span id="indexB">High</span></div>
+    <div>H: <span id="hTotal">0</span> | <span id="hUse">0/s</span></div>
+    <div>V: <span id="val">0</span> | P: <span id="price">1.00</span> | M: <span id="mask">0%</span> | Pow: <span id="powUse">0</span>/<span id="powCap">0</span></div>
+  </div>
+
+<script>
+// VIEW vs WORLD ----------------------------------------------------------
+const TILE=26, VIEW_W=36, SIDEBAR=220;
+let VIEW_H=22;
+const WORLD_W=120, WORLD_H=120;
+
+// TILE TYPES -------------------------------------------------------------
+const T0=0, T_ROAD=1, T_RAIL=2, T_PIPE=3, T_HUB=4;
+const T_BASE=100; // dynamic nodes
+
+// RESOURCES --------------------------------------------------------------
+const R = {
+  x:'x', y:'y', z:'z', u:'u',     // raw
+  m:'m', p:'p', c:'c',            // refined
+  g:'g', e:'e', s:'s',            // assembly
+  h:'h', k:'k',                   // modules
+  q:'q',                          // final
+  H:'H'                           // workers (abstract)
+};
+
+// NODE DEFINITIONS -------------------------------------------------------
+const nodeDefs = {
+  // extraction (no workers)
+  R1:{in:{}, out:{[R.x]:1}, rate:1.0, glyph:'sq'},
+  R2:{in:{}, out:{[R.y]:1}, rate:1.0, glyph:'tri'},
+  R3:{in:{}, out:{[R.z]:1}, rate:1.0, glyph:'cir'},
+  R4:{in:{}, out:{[R.u]:1}, rate:1.0, glyph:'hex'},
+  // worker system
+  H1:{in:{}, out:{[R.H]:1}, rate:0.8, glyph:'sq',  pUse:0.5},
+  H2:{in:{}, out:{[R.H]:2}, rate:0.8, glyph:'tri', pUse:0.8},
+  HC:{in:{[R.H]:1}, out:{[R.H]:1}, rate:1.2, glyph:'hex', pUse:0.3},  // adjacency booster
+  // refining (needs workers + power)
+  F1:{in:{[R.x]:1,[R.H]:0.2}, out:{[R.m]:1}, rate:0.9, glyph:'sq',  pUse:1.2},
+  F2:{in:{[R.y]:1,[R.H]:0.2}, out:{[R.p]:1}, rate:0.9, glyph:'tri', pUse:1.2},
+  F3:{in:{[R.z]:1,[R.u]:1,[R.H]:0.3}, out:{[R.c]:1}, rate:0.8, glyph:'cir', pUse:1.4},
+  // assembly (needs workers + power)
+  A1:{in:{[R.m]:1,[R.p]:1,[R.H]:0.3}, out:{[R.g]:1}, rate:0.7, glyph:'sq',  pUse:1.5},
+  A2:{in:{[R.m]:1,[R.c]:1,[R.H]:0.3}, out:{[R.e]:1}, rate:0.7, glyph:'tri', pUse:1.5},
+  A3:{in:{[R.p]:1,[R.c]:1,[R.H]:0.3}, out:{[R.s]:1}, rate:0.7, glyph:'cir', pUse:1.5},
+  // modules (needs workers + power)
+  M1:{in:{[R.g]:1,[R.e]:1,[R.H]:0.4}, out:{[R.h]:1}, rate:0.6, glyph:'hex', pUse:2.0},
+  M2:{in:{[R.s]:1,[R.m]:1,[R.H]:0.4}, out:{[R.k]:1}, rate:0.6, glyph:'hex', pUse:2.0},
+  // integration (needs workers + power)
+  C1:{in:{[R.h]:1,[R.k]:1,[R.H]:0.5}, out:{[R.q]:1}, rate:0.5, glyph:'cir', pUse:2.5},
+  // export ports (sell q -> V, uses some power)
+  PORT:{in:{[R.q]:1}, out:{}, rate:50.0, glyph:'dock', pUse:1.0},
+
+  // power generation (pre-nuclear)
+  Gc:{in:{[R.u]:0.5,[R.H]:0.3}, out:{}, rate:1.0, glyph:'sq',  pGen:6}, // coal
+  Gh:{in:{}, out:{}, rate:1.0, glyph:'tri', pGen:4},                     // hydro
+
+  // civics (basic)
+  Cr:{in:{}, out:{[R.H]:0.15}, rate:0.5, glyph:'sq'},   // residential
+  Cp:{in:{}, out:{}, rate:1.0, glyph:'tri'},            // planning
+  Ct:{in:{}, out:{}, rate:1.0, glyph:'cir'},            // trade
+  Cn:{in:{}, out:{}, rate:1.0, glyph:'hex'}             // research
+};
+
+// WORLD STATE ------------------------------------------------------------
+let grid, parts=[];
+let camX=0, camY=0;
+let tipX=0, tipY=0;
+let currentRot=0;
+let zoom=1;
+const MIN_ZOOM=0.5, MAX_ZOOM=2.5;
+let canvas;
+let beautyMode=false;
+
+// GEOLOGICAL PRESSURE + ORE DISTRIBUTION MAPS ---------------------------
+let geoHardness = Array.from({length: WORLD_H},()=> Array(WORLD_W).fill(1)); // 0.7..1.3
+let oreRichness = Array.from({length: WORLD_H},()=> Array(WORLD_W).fill(1)); // 0.4..1.6
+let oreReserve  = Array.from({length: WORLD_H},()=> Array(WORLD_W).fill(1)); // 0..1
+let faultMask   = Array.from({length: WORLD_H},()=> Array(WORLD_W).fill(false));
+let pollution   = Array.from({length: WORLD_H},()=> Array(WORLD_W).fill(0)); // 0..~1.5
+let overlayMode = 0; // 0:none, 1:hardness, 2:richness, 3:pollution, 4:stress
+
+// POLICIES / INDICES / MARKET / POWER -----------------------------------
+let paused=false, eff=0, thruSmooth=0, idxA=0, idxB=1, avgPollution=0;
+let hUseSmooth=0;
+let V=0;
+let price=1.0;
+let qTick=0;
+let mask=0;
+
+// power & tech
+let Pcap=0, Puse=0, Pfactor=1;
+let techIndex=0;
+
+const policies={
+  P1:{on:false, idx:2},
+  P2:{on:false, idx:3},
+  P3:{on:false, idx:8}
+};
+
+function hcBonusAt(x,y){
+  const N=[[1,0],[-1,0],[0,1],[0,-1]];
+  for(const [dx,dy] of N){
+    const nb=getNode(x+dx,y+dy);
+    if(nb && nb instanceof Node && nb.key==='HC') return 1.15;
+  }
+  return 1.0;
+}
+
+function planningBonusAt(x,y){
+  const N=[[1,0],[-1,0],[0,1],[0,-1]];
+  for(const [dx,dy] of N){
+    const nb=getNode(x+dx,y+dy);
+    if(nb && nb instanceof Node && nb.key==='Cp') return 1.1;
+  }
+  return 1.0;
+}
+
+function tradeBonusAt(x,y){
+  let mult = 1.0;
+  const N=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];
+  for(const [dx,dy] of N){
+    const nb=getNode(x+dx,y+dy);
+    if(nb && nb instanceof Node && nb.key==='Ct') mult += 0.08;
+  }
+  return mult;
+}
+
+function moveBonusAt(x,y){
+  const N=[[1,0],[-1,0],[0,1],[0,-1]];
+  for(const [dx,dy] of N){
+    const nb=getNode(x+dx,y+dy);
+    if(nb && nb instanceof Node && nb.key==='Cp') return 1.12;
+  }
+  return 1.0;
+}
+
+function policyProdMult(t,x,y){
+  let m=1;
+  if(/^R/.test(t) && policies.P1.on) m*=1.25;
+  if(/^(F|A|M|C)/.test(t) && policies.P2.on) m*=1.20;
+  m *= hcBonusAt(x,y);
+  m *= planningBonusAt(x,y);
+  return m;
+}
+function policyMoveMult(tileType){
+  let m=1; if(policies.P3.on) m*=1.25;
+  if(tileType===T_ROAD) m*=0.9;
+  if(tileType===T_RAIL) m*=1.6;
+  if(tileType===T_PIPE) m*=1.3;
+  if(tileType===T_HUB)  m*=1.2;
+  return m;
+}
+
+// IO SIDES (rotation-aware) ----------------------------------------------
+function ioSides(key){
+  if(key==='PORT') return {in:[2], out:[]};
+  if(key==='HC')   return {in:[0,1,2,3], out:[0,1,2,3]};
+  if(/^R/.test(key)) return {in:[], out:[0,1]};
+  if(/^(H1|H2)$/.test(key)) return {in:[], out:[0,1]};
+  if(/^(F|A|M|C)/.test(key)) return {in:[2,3], out:[0,1]};
+  if(/^(G|C)/.test(key)) return {in:[2,3], out:[0,1]};
+  return {in:[2,3], out:[0,1]};
+}
+function rotSides(arr, rot){ return arr.map(s => (s + rot) & 3); }
+
+// CLASSES ----------------------------------------------------------------
+class Node{
+  constructor(x,y,key,rot=0){
+    this.x=x; this.y=y; this.key=key;
+    this.t = T_BASE + Object.keys(nodeDefs).indexOf(key);
+    this.buf={};
+    this.r=nodeDefs[key].rate;
+    this.rot=rot&3;
+
+    if(key==='PORT'){
+      this.demand=1.0;
+      this.basePrice = regionalBasePrice(x,y);
+    }
+  }
+  allowedIn(){ return rotSides(ioSides(this.key).in, this.rot); }
+  allowedOut(){ return rotSides(ioSides(this.key).out, this.rot); }
+
+  wants(res, fromDir){
+    const def=nodeDefs[this.key];
+    if(this.key==='PORT' && res!==R.q) return false;
+    const typeOk = !def.in || def.in[res]>0;
+    if(!typeOk) return false;
+    if(fromDir==null) return true;
+    return this.allowedIn().includes(fromDir&3);
+  }
+
+  step(dt){
+    const def=nodeDefs[this.key];
+
+    // Ports: sell q at current price, local demand dynamics + pollution
+    if(this.key==='PORT'){
+      const available = this.buf[R.q]||0;
+      if(available>0){
+        const sell = Math.min(available, this.r*dt);
+        this.buf[R.q]-=sell;
+        V += sell * this.currentPrice();
+        this.demand = clamp(this.demand - sell*0.02 + dt*0.005, 0.2, 1.2);
+        const polP = 0.008*sell;
+        pollution[this.y][this.x] = clamp((pollution[this.y][this.x]||0) + polP, 0, 2.0);
+      } else {
+        this.demand = clamp(this.demand + dt*0.01, 0.2, 1.2);
+      }
+      return;
+    }
+
+    // GEOLOGY / ORE / STRATA --------------------------------------------
+    let geo = geoHardness[this.y][this.x] || 1;
+    let ore = oreRichness[this.y][this.x] || 1;
+    let reserve = oreReserve[this.y][this.x] || 1;
+
+    let geoMult = 1/(geo);
+    let oreMult = /^R/.test(this.key) ? ore : 1;
+    let strataMult = 1;
+    let reserveMult = /^R/.test(this.key) ? reserve : 1;
+
+    if(/^R/.test(this.key)){
+      if(geo < 0.9) strataMult = 1.2;
+      else if(geo > 1.1) strataMult = 0.85;
+
+      if(faultMask[this.y][this.x] && this.buf[R.H] && this.buf[R.H] > 0){
+        const leak = this.buf[R.H]*0.003*dt;
+        this.buf[R.H] = Math.max(0, this.buf[R.H]-leak);
+      }
+    }
+
+    // Production transform
+    let runs = Infinity; const inMap=def.in||{}, outMap=def.out||{};
+    for(const k in inMap){
+      const need=inMap[k]; const have=this.buf[k]||0;
+      runs=Math.min(runs, have/need);
+    }
+    if(runs===Infinity) runs=1;
+
+    // power scaling (if building uses power)
+    let powerMult = 1;
+    if(def.pUse) powerMult = Pfactor;
+
+    // residential sensitivity
+    let envMult = 1;
+    if(this.key==='Cr'){
+      const pLevel = pollution[this.y][this.x] || 0;
+      envMult = clamp(1 - 0.5*pLevel, 0.3, 1.1);
+    }
+
+    const baseRate = this.r*dt*policyProdMult(this.key,this.x,this.y)*powerMult*envMult;
+    const prod = Math.min(
+      runs,
+      baseRate * geoMult * oreMult * reserveMult * strataMult
+    );
+
+    if(prod>0){
+      // local emissions by industry type
+      let polEmit = 0;
+      if(/^R/.test(this.key)) polEmit += 0.015*prod;
+      if(/^F/.test(this.key)) polEmit += 0.020*prod;
+      if(/^A/.test(this.key)) polEmit += 0.012*prod;
+      if(/^M/.test(this.key) || this.key==='C1') polEmit += 0.018*prod;
+      if(this.key==='Gc') polEmit += 0.030*prod;
+      if(this.key==='Gh') polEmit += 0.006*prod;
+      if(polEmit>0){
+        pollution[this.y][this.x] = clamp((pollution[this.y][this.x]||0) + polEmit, 0, 2.0);
+      }
+
+      // depletion: only extractors
+      if(/^R/.test(this.key)){
+        let dBase = 0.02 * prod;
+        if(geo < 0.9) dBase *= 1.6;
+        else if(geo > 1.1) dBase *= 0.7;
+        if(faultMask[this.y][this.x]) dBase *= 1.3;
+        oreReserve[this.y][this.x] = clamp(oreReserve[this.y][this.x] - dBase, 0.05, 1.0);
+      }
+
+      const hNeed = inMap[R.H] ? inMap[R.H]*prod : 0;
+      if(hNeed>0) hUseSmooth += hNeed;
+      for(const k in inMap){ this.buf[k]=(this.buf[k]||0)-inMap[k]*prod; }
+      for(const k in outMap){
+        this.buf[k]=(this.buf[k]||0)+outMap[k]*prod;
+        if(k===R.q){
+          const qAdd=outMap[k]*prod;
+          thruSmooth+=qAdd; qTick+=qAdd;
+        }
+      }
+
+      // local H degradation from pollution
+      if(this.buf[R.H] && this.buf[R.H] > 0){
+        const pLevel = pollution[this.y][this.x] || 0;
+        if(pLevel>0){
+          const leakLocal = this.buf[R.H] * pLevel * 0.002 * dt;
+          this.buf[R.H] = Math.max(0, this.buf[R.H] - leakLocal);
+        }
+      }
+    }
+
+    // Research bureau: tech accumulation
+    if(this.key==='Cn'){
+      techIndex += this.r * dt;
+    }
+
+    // Routing by allowed output sides
+    const D=[[1,0],[0,1],[-1,0],[0,-1]];
+    for(const res of Object.values(R)){
+      let available=this.buf[res]||0; if(available<=0) continue;
+      for(const d of this.allowedOut()){
+        if(available<=0) break;
+        const nx=this.x+D[d][0], ny=this.y+D[d][1];
+        if(!inBounds(nx,ny) || grid[ny][nx]===T0) continue;
+        const nb=getNode(nx,ny);
+        const tt=grid[ny][nx];
+        let cap=(tt===T_ROAD?0.8:tt===T_RAIL?2.0:tt===T_PIPE?1.5:1.0) * dt * policyMoveMult(tt) * moveBonusAt(nx,ny);
+        if(tt===T_PIPE && !(res===R.u || res===R.c)) cap*=0.35;
+        if(nb && nb.wants(res, (d+2)&3)){
+          const take=Math.min(available,cap);
+          this.buf[res]-=take; nb.buf[res]=(nb.buf[res]||0)+take; available-=take;
+        }
+      }
+    }
+  }
+
+  currentPrice(){
+    const demandFactor = 0.8 + 0.4*this.demand;
+    const conn = 1 + 0.1*connectivityScore(this.x,this.y);
+    const pol = (policies.P3.on?1.05:1.0);
+    const env = clamp(1 - 0.2*(pollution[this.y][this.x]||0), 0.7, 1.05);
+    const trade = tradeBonusAt(this.x,this.y);
+    return this.basePrice * demandFactor * conn * pol * env * trade;
+  }
+
+  draw(){
+    const t=TILE*zoom;
+    const x=(this.x - camX)*t, y=(this.y - camY)*t;
+    noStroke();
+    if(beautyMode){
+      fill(18,14,40,230);
+      rect(x+3.5*zoom,y+3.5*zoom,t-7*zoom,t-7*zoom,6*zoom);
+      const col1 = color(255,130,200,230);
+      const col2 = color(80,200,255,230);
+      const u = (((this.x + this.y*1.7) % 16) + 16) % 16 / 15;
+      fill(lerpColor(col1,col2,u));
+    } else {
+      fill('#14171b');
+      rect(x+3.5*zoom,y+3.5*zoom,t-7*zoom,t-7*zoom,6*zoom);
+      fill('#dfe2e6');
+    }
+    const g=nodeDefs[this.key].glyph;
+    if(g==='sq'){ rect(x+9.5*zoom,y+9.5*zoom,7*zoom,7*zoom,2*zoom); }
+    else if(g==='tri'){ push(); translate(x+13*zoom,y+13*zoom); rotate(HALF_PI*this.rot); triangle(-4*zoom,5*zoom, 0,-5*zoom, 4*zoom,5*zoom); pop(); }
+    else if(g==='cir'){ circle(x+13*zoom,y+13*zoom,8*zoom); }
+    else if(g==='hex'){ push(); translate(x+13*zoom,y+13*zoom); beginShape(); for(let i=0;i<6;i++){ const a=PI/3*i; vertex(6*zoom*cos(a),6*zoom*sin(a)); } endShape(CLOSE); pop(); }
+    else if(g==='dock'){ rect(x+6.5*zoom,y+6.5*zoom,t-13*zoom,t-13*zoom,3*zoom); rect(x+11.5*zoom,y+4.5*zoom,3*zoom,6*zoom,1*zoom); }
+    const outs=this.allowedOut(); stroke(220,220,220,90); strokeWeight(1);
+    const z=zoom;
+    outs.forEach(s=>{
+      if(s===0) line(x+23*z,y+13*z,x+25*z,y+13*z);
+      if(s===2) line(x+1*z,y+13*z,x+3*z,y+13*z);
+      if(s===1) line(x+13*z,y+23*z,x+13*z,y+25*z);
+      if(s===3) line(x+13*z,y+1*z,x+13*z,y+3*z);
+    });
+    noStroke();
+    if(beautyMode) fill(230,220,255,150); else fill(200,200,200,90);
+    textSize(9*zoom); textAlign(CENTER,CENTER); text(this.key==='PORT'?'PORT':this.key, x+13*zoom, y+22*zoom);
+  }
+}
+
+class Transit{
+  constructor(x,y,tt,rot=0){
+    this.x=x; this.y=y; this.tt=tt;
+    this.key='T'; this.t=tt;
+    this.buf={}; this.r=0; this.rot=rot&3;
+  }
+  allowedSides(){
+    if(this.tt===T_HUB) return [0,1,2,3];
+    if(this.tt===T_ROAD || this.tt===T_RAIL || this.tt===T_PIPE) return (this.rot&1)? [1,3] : [0,2];
+    return [0,1,2,3];
+  }
+  wants(_res, fromDir){ return this.allowedSides().includes((fromDir||0)&3); }
+
+  step(dt){
+    if(this.buf[R.H] && this.buf[R.H] > 0){
+      let decay=(this.tt===T_ROAD?0.008:this.tt===T_RAIL?0.006:this.tt===T_PIPE?0.004:0.001);
+      const pLevel = pollution[this.y][this.x] || 0;
+      decay += pLevel*0.01;
+      if(policies.P3.on) decay *= 2.0;
+      if(faultMask[this.y][this.x]) decay *= 1.5;
+      const loss = this.buf[R.H]*decay*dt;
+      this.buf[R.H] = Math.max(0, this.buf[R.H]-loss);
+    }
+    const D=[[1,0],[0,1],[-1,0],[0,-1]];
+    for(const res in this.buf){
+      let available=this.buf[res]||0; if(available<=0) continue;
+      for(const d of this.allowedSides()){
+        if(available<=0) break;
+        const nx=this.x+D[d][0], ny=this.y+D[d][1];
+        if(!inBounds(nx,ny) || grid[ny][nx]===T0) continue;
+        const nb=getNode(nx,ny);
+        let cap=(this.tt===T_ROAD?0.8:this.tt===T_RAIL?2.0:this.tt===T_PIPE?1.5:1.0)*dt*policyMoveMult(this.tt)*moveBonusAt(nx,ny);
+        if(this.tt===T_PIPE && !(res===R.u || res===R.c)) cap*=0.35;
+        if(nb && nb.wants(res, (d+2)&3)){
+          const take=Math.min(available,cap);
+          this.buf[res]-=take; nb.buf[res]=(nb.buf[res]||0)+take; available-=take;
+        }
+      }
+    }
+  }
+
+  draw(){
+    const t=TILE*zoom;
+    const x=(this.x - camX)*t, y=(this.y - camY)*t;
+    noStroke();
+    if(beautyMode){ fill(20,16,45,230); } else { fill('#14171b'); }
+    rect(x+3.5*zoom,y+3.5*zoom,t-7*zoom,t-7*zoom,6*zoom);
+    if(this.tt===T_ROAD){
+      if(beautyMode) fill(190,230,255,230); else fill('#c2c4c7');
+      if((this.rot&1)===0) rect(x+5.5*zoom,y+12.5*zoom, t-11*zoom, 1*zoom);
+      else rect(x+12.5*zoom,y+5.5*zoom, 1*zoom, t-11*zoom);
+    } else if(this.tt===T_RAIL){
+      if(beautyMode) fill(150,210,255,230); else fill('#9fa3a7');
+      if((this.rot&1)===0){
+        rect(x+6.5*zoom,y+10.5*zoom, t-13*zoom, 1.5*zoom);
+        rect(x+6.5*zoom,y+14.5*zoom, t-13*zoom, 1.5*zoom);
+      } else {
+        rect(x+10.5*zoom,y+6.5*zoom, 1.5*zoom, t-13*zoom);
+        rect(x+14.5*zoom,y+6.5*zoom, 1.5*zoom, t-13*zoom);
+      }
+    } else if(this.tt===T_PIPE){
+      if(beautyMode){
+        const steps = 18;
+        const colA = color(80,200,255);
+        const colB = color(255,120,220);
+        noStroke();
+        if((this.rot&1)===0){
+          const w = t-13*zoom;
+          const y0 = y+12.5*zoom;
+          for(let i=0;i<steps;i++){
+            const u=i/(steps-1);
+            const cx = x+6.5*zoom + w*u;
+            const slice = w/steps+0.5;
+            const c = lerpColor(colA,colB,u);
+            fill(c);
+            rect(cx,y0, slice,1.6*zoom);
+          }
+        } else {
+          const h = t-13*zoom;
+          const x0 = x+12.5*zoom;
+          for(let i=0;i<steps;i++){
+            const u=i/(steps-1);
+            const cy = y+6.5*zoom + h*u;
+            const slice = h/steps+0.5;
+            const c = lerpColor(colA,colB,u);
+            fill(c);
+            rect(x0,cy,1.6*zoom, slice);
+          }
+        }
+      } else {
+        fill('#8e9399');
+        if((this.rot&1)===0) rect(x+6.5*zoom,y+12.5*zoom, t-13*zoom,1*zoom);
+        else rect(x+12.5*zoom,y+6.5*zoom,1*zoom, t-13*zoom);
+      }
+    } else if(this.tt===T_HUB){
+      if(beautyMode) fill(230,220,255,235); else fill('#dfe2e6');
+      rect(x+6.5*zoom,y+6.5*zoom,t-13*zoom,t-13*zoom,6*zoom);
+      fill(0,0,0,30);
+      circle(x+13*zoom,y+13*zoom,8*zoom);
+    }
+  }
+}
+
+// HELPERS ----------------------------------------------------------------
+function inBounds(x,y){ return x>=0&&y>=0&&x<WORLD_W&&y<WORLD_H; }
+function getNode(x,y){ return parts.find(p=>p.x===x && p.y===y); }
+function neighbors(x,y){
+  const out=[];
+  const D=[[1,0],[0,1],[-1,0],[0,-1]];
+  for(let d=0; d<4; d++){
+    const nx=x+D[d][0], ny=y+D[d][1];
+    if(inBounds(nx,ny) && grid[ny][nx]!==T0) out.push({x:nx,y:ny,dir:d});
+  }
+  return out;
+}
+function total(res){
+  return parts.reduce((s,p)=>s+(p.buf? (p.buf[res]||0) : 0),0);
+}
+function chainBonus(){
+  let b=0;
+  for(const p of parts){
+    if(!(p instanceof Node)) continue;
+    const def=nodeDefs[p.key];
+    for(const res in def.out){
+      for(const n of neighbors(p.x,p.y)){
+        const nb=getNode(n.x,n.y);
+        if(nb && (nb instanceof Node)){
+          if(nodeDefs[nb.key].in[res]>0) b++;
+        }
+      }
+    }
+  }
+  return b*0.5;
+}
+function varColor(name){ return getComputedStyle(document.documentElement).getPropertyValue(name)||'#1c1e23'; }
+function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
+
+// convert screen (mouse) coordinates into world tile coordinates
+function screenToWorld(mx, my){
+  const wx = camX + (mx - SIDEBAR) / (TILE * zoom);
+  const wy = camY +  my          / (TILE * zoom);
+  return {
+    gx: Math.floor(wx),
+    gy: Math.floor(wy)
+  };
+}
+
+// MARKET / VALUE + GEO UPDATE -------------------------------------------
+function regionalBasePrice(x,y){
+  const fx = (x / WORLD_W) - 0.5; const fy = (y / WORLD_H) - 0.5;
+  return 1.0 + 0.08*fy + 0.05*fx;
+}
+function connectivityScore(x,y){
+  let n=0, total=0;
+  for(let dy=-3; dy<=3; dy++){
+    for(let dx=-3; dx<=3; dx++){
+      const nx=x+dx, ny=y+dy; if(!inBounds(nx,ny)) continue;
+      total++; const t=grid[ny][nx];
+      if(t===T_ROAD||t===T_RAIL||t===T_PIPE||t===T_HUB) n++;
+    }
+  }
+  return n/Math.max(1,total);
+}
+
+function pollutionStep(dt){
+  const decay = 0.02*dt;
+  const diff  = 0.18*dt;
+  let sum=0, count=0;
+  const next = Array.from({length: WORLD_H},()=> Array(WORLD_W).fill(0));
+  for(let y=0;y<WORLD_H;y++){
+    for(let x=0;x<WORLD_W;x++){
+      const base = pollution[y][x] || 0;
+      let acc=0, n=0;
+      if(y>0){ acc+=pollution[y-1][x]; n++; }
+      if(y<WORLD_H-1){ acc+=pollution[y+1][x]; n++; }
+      if(x>0){ acc+=pollution[y][x-1]; n++; }
+      if(x<WORLD_W-1){ acc+=pollution[y][x+1]; n++; }
+      const neigh = n? acc/n : base;
+      let val = base + diff*(neigh-base);
+      val *= (1-decay);
+      val = clamp(val,0,1.5);
+      next[y][x]=val;
+      sum += val; count++;
+    }
+  }
+  pollution = next;
+  avgPollution = count? sum/count : 0;
+}
+
+function marketUpdate(dt){
+  let sumP=0, cnt=0;
+  for(const p of parts){
+    if(p instanceof Node && p.key==='PORT'){
+      sumP += p.currentPrice(); cnt++;
+    }
+  }
+  if(cnt>0) price = sumP/cnt;
+
+  // base mask from value
+  const k = 1/800;
+  const valueMask = 1/(1+Math.exp(-k*(V-400)) );
+
+  const hPool = total(R.H);
+  const hLeak = hPool * (0.003 + 0.01*valueMask) * dt;
+  if(hLeak>0 && hPool>0){
+    let remaining = hLeak;
+    for(const p of parts){
+      if(!p.buf) continue;
+      const h=p.buf[R.H]||0; if(h<=0) continue;
+      const share = Math.min(h, remaining*(h/hPool));
+      p.buf[R.H]-=share; remaining-=share; if(remaining<=0) break;
+    }
+  }
+
+  // ORE REGENERATION
+  const regenBase = 0.0003;
+  for(let y=0;y<WORLD_H;y++){
+    for(let x=0;x<WORLD_W;x++){
+      const base = clamp(oreRichness[y][x],0.4,1.6);
+      const target = clamp(base,0.6,1.0);
+      const r = oreReserve[y][x];
+      if(r < target){
+        let rate = regenBase * dt;
+        if(faultMask[y][x]) rate *= 0.4;
+        const pLevel = pollution[y][x] || 0;
+        rate *= clamp(1 - 0.6*pLevel, 0.1, 1);
+        oreReserve[y][x] = Math.min(target, r + rate);
+      }
+    }
+  }
+
+  // pollution diffusion/decay
+  pollutionStep(dt);
+
+  // final mask combines value + pollution
+  mask = clamp(valueMask + avgPollution*0.4, 0, 1);
+}
+
+// HOVER / TOOLTIP --------------------------------------------------------
+function recipeText(key){
+  if(key==='PORT') return 'Pt: q→V';
+  if(key==='Gc') return 'Gc: u+H→Power (dirty)';
+  if(key==='Gh') return 'Gh: terrain→Power (cleaner)';
+  if(key==='Cr') return 'Cr: →H (pollution-sensitive)';
+  if(key==='Cp') return 'Cp: local prod/logistics boost';
+  if(key==='Ct') return 'Ct: boosts nearby ports';
+  if(key==='Cn') return 'Cn: slow tech gain';
+  const def=nodeDefs[key]; if(!def) return key;
+  const ins=Object.keys(def.in||{}); const outs=Object.keys(def.out||{});
+  const lhs = ins.length ? ins.join('+') : '—';
+  const rhs = outs.length ? outs.join('+') : '—';
+  return `${key}: ${lhs}→${rhs}`;
+}
+function drawTooltip(txt){
+  const pad=6; push(); textSize(11); textAlign(LEFT,TOP);
+  const w = textWidth(txt) + pad*2; const h = 16 + pad*2;
+  const x = clamp(tipX, 4, width - w - 4);
+  const y = clamp(tipY, 4, height - h - 4);
+  noStroke(); fill(15,17,21,220); rect(x, y, w, h, 6);
+  fill(220); text(txt, x+pad, y+pad+2);
+  pop();
+}
+
+// SETUP ------------------------------------------------------------------
+function setup(){
+  pixelDensity(window.devicePixelRatio || 1);
+  VIEW_H = Math.floor((windowHeight - 40) / TILE);
+  canvas = createCanvas(SIDEBAR + VIEW_W * TILE, VIEW_H * TILE);
+  canvas.elt.style.imageRendering = 'pixelated';
+  canvas.mousePressed((e)=>onCanvasPressed(e));
+
+  grid=Array.from({length:WORLD_H},()=>Array(WORLD_W).fill(T0));
+  bindUI();
+
+  // generate geological + ore maps + faults BEFORE seeding city
+  for(let y=0;y<WORLD_H;y++){
+    for(let x=0;x<WORLD_W;x++){
+      const n1 = noise(x*0.03, y*0.03);
+      const n2 = noise(x*0.05+200, y*0.05+200);
+      const nFault = noise(x*0.02+500, y*0.02-500);
+      geoHardness[y][x] = 0.7 + n1*0.6;
+      const d=Math.hypot(x-WORLD_W/2,y-WORLD_H/2)/(Math.max(WORLD_W,WORLD_H)/2);
+      oreRichness[y][x] = clamp(0.5 + n2*1.0 - d*0.2,0.4,1.6);
+      oreReserve[y][x] = 1.0;
+      const isFault = nFault > 0.78;
+      faultMask[y][x] = isFault;
+      if(isFault){
+        geoHardness[y][x] = clamp(geoHardness[y][x] + 0.2, 0.7, 1.5);
+      }
+    }
+  }
+
+  seed(); // demo city
+
+  strokeCap(PROJECT); strokeJoin(MITER);
+  syncPolicyDots();
+}
+
+// DRAW -------------------------------------------------------------------
+function draw(){
+  if(beautyMode){
+    const topCol = color(14,10,40);
+    const botCol = color(80,20,120);
+    noFill();
+    for(let y=0; y<height; y++){
+      const u = y/height;
+      const c = lerpColor(topCol, botCol, u);
+      stroke(c);
+      line(0,y,width,y);
+    }
+  } else {
+    background('#0b0c0e');
+  }
+  renderSidebar();
+  translate(SIDEBAR,0);
+
+  const vx0=Math.floor(camX), vy0=Math.floor(camY);
+  const effViewW = VIEW_W / zoom;
+  const effViewH = VIEW_H / zoom;
+  const vx1=Math.min(WORLD_W, Math.floor(vx0+effViewW))+1;
+  const vy1=Math.min(WORLD_H, Math.floor(vy0+effViewH))+1;
+
+  // precompute local H density for stress overlay
+  let workerMap = null;
+  if (overlayMode === 4) {
+    workerMap = {};
+    for (const p of parts) {
+      if (!p.buf) continue;
+      const h = p.buf[R.H] || 0;
+      if (h <= 0) continue;
+      const key = p.x + ',' + p.y;
+      workerMap[key] = (workerMap[key] || 0) + h;
+    }
+  }
+
+  // GEO / ORE / POLLUTION / STRESS OVERLAYS ------------------------------
+  if(overlayMode!==0){
+    noStroke();
+    for(let y=vy0; y<vy1; y++){
+      for(let x=vx0; x<vx1; x++){
+        const tileSize=TILE*zoom;
+        const sx=(x-camX)*tileSize, sy=(y-camY)*tileSize;
+        if(overlayMode===1){
+          const h = geoHardness[y][x];
+          const n = clamp((h-0.7)/0.6,0,1);
+          const r = lerp(30,110,n);
+          const g = lerp(90,50,n);
+          const b = lerp(130,40,n);
+          fill(r,g,b,110);
+          rect(sx,sy,tileSize,tileSize);
+        } else if(overlayMode===2){
+          const rr = oreRichness[y][x]*oreReserve[y][x];
+          const n = clamp((rr-0.4)/1.2,0,1);
+          const r = lerp(20,60,n);
+          const g = lerp(60,180,n);
+          const b = lerp(40,90,n);
+          fill(r,g,b,110);
+          rect(sx,sy,tileSize,tileSize);
+        } else if(overlayMode===3){
+          const p = pollution[y][x] || 0;
+          const n = clamp(p/1.5,0,1);
+          const r = lerp(40,200,n);
+          const g = lerp(60,20,n);
+          const b = lerp(80,160,n);
+          fill(r,g,b,130);
+          rect(sx,sy,tileSize,tileSize);
+        } else if(overlayMode===4){
+          const p = pollution[y][x] || 0;
+          const key = x + ',' + y;
+          const hLoc = workerMap && workerMap[key] ? workerMap[key] : 0;
+          const hFactor = Math.log10(hLoc + 1) / 1.2;
+          const stress = clamp(p * 0.7 * hFactor, 0, 1);
+          const r = lerp(40, 220, stress);
+          const g = lerp(80, 40,  stress);
+          const b = lerp(30, 90,  stress);
+          fill(r,g,b,130);
+          rect(sx,sy,tileSize,tileSize);
+        }
+        if(faultMask[y][x]){
+          fill(200,60,60,60);
+          rect(sx,sy,tileSize,tileSize);
+        }
+      }
+    }
+  }
+
+  // GRID -----------------------------------------------------------------
+  const t=TILE*zoom;
+  if(beautyMode) stroke(80,90,140,150); else stroke(varColor('--grid'));
+  strokeWeight(1);
+  for(let y=vy0; y<=vy1; y++){
+    const ypix=(y-camY)*t+0.5;
+    line(0.5,ypix, VIEW_W*TILE-0.5, ypix);
+  }
+  for(let x=vx0; x<=vx1; x++){
+    const xpix=(x-camX)*t+0.5;
+    line(xpix,0.5, xpix, VIEW_H*TILE-0.5);
+  }
+
+  // draw parts (logistics first)
+  noStroke();
+  parts.filter(p=>p instanceof Transit).forEach(p=>p.draw());
+  parts.filter(p=>!(p instanceof Transit)).forEach(p=>p.draw());
+
+  // hover + tooltip
+  const {gx: hgx, gy: hgy} = screenToWorld(mouseX, mouseY);
+  if(inBounds(hgx,hgy)){
+    noFill(); stroke('#2a2d33');
+    rect((hgx-camX)*TILE*zoom+0.5, (hgy-camY)*TILE*zoom+0.5, TILE*zoom-1, TILE*zoom-1, 3*zoom);
+    const hovered = getNode(hgx,hgy);
+    let label='';
+    if(hovered){
+      if(hovered instanceof Transit){
+        label = hovered.tt===T_ROAD? 'Rd' : hovered.tt===T_RAIL? 'Rl' : hovered.tt===T_PIPE? 'Pi' : 'Hb';
+      } else if(hovered.key==='PORT'){
+        const pNow = hovered.currentPrice().toFixed(2);
+        const dPct = Math.round(((hovered.demand - 0.2) / 1.0) * 100);
+        label = `P:${pNow} · D:${dPct}%`;
+      } else {
+        label = recipeText(hovered.key);
+      }
+    }
+    const targetX = (mouseX - SIDEBAR) + 10;
+    const targetY = mouseY + 10;
+    tipX = lerp(tipX, targetX, 0.2);
+    tipY = lerp(tipY, targetY, 0.2);
+    if(label) drawTooltip(label);
+  }
+
+  // step + camera
+  const dt = Math.min(1/30, deltaTime/1000);
+  const pan = 12 * dt * (1/zoom);
+  if(keyIsDown(LEFT_ARROW)) camX-=pan;
+  if(keyIsDown(RIGHT_ARROW)) camX+=pan;
+  if(keyIsDown(UP_ARROW)) camY-=pan;
+  if(keyIsDown(DOWN_ARROW)) camY+=pan;
+  const effViewW2 = VIEW_W / zoom;
+  const effViewH2 = VIEW_H / zoom;
+  camX=constrain(camX,0,WORLD_W-effViewW2);
+  camY=constrain(camY,0,WORLD_H-effViewH2);
+
+  if(!paused){
+    // POWER BUDGET
+    Pcap = 0;
+    Puse = 0;
+    for(const p of parts){
+      if(!(p instanceof Node)) continue;
+      const def = nodeDefs[p.key];
+      if(!def) continue;
+      if(def.pGen) Pcap += def.pGen;
+      if(def.pUse) Puse += def.pUse;
+    }
+    Pfactor = Pcap>0 ? clamp(Pcap / Math.max(Puse,0.0001), 0, 1) : 0;
+
+    thruSmooth*=0.92;
+    hUseSmooth*=0.92;
+    qTick=0;
+
+    parts.forEach(p=>p.step(dt));
+    marketUpdate(dt);
+    eff = lerp(eff, total(R.q)*0.15 + chainBonus()*0.1, 0.05);
+  }
+
+  // HUD sync
+  document.getElementById('scoreTag').textContent=`Eff ${eff.toFixed(2)}`;
+  document.getElementById('throughTag').textContent=`Thru ${Math.round(thruSmooth)}/s`;
+  document.getElementById('indexA').textContent=idxA;
+  document.getElementById('indexB').textContent= idxB>0.66?'High': idxB>0.33?'Med':'Low';
+  const hTot = Math.round(total(R.H));
+  const hUse = Math.round(hUseSmooth);
+  document.getElementById('hTotal').textContent = hTot;
+  document.getElementById('hUse').textContent = `${hUse}/s`;
+  document.getElementById('val').textContent = Math.round(V);
+  document.getElementById('price').textContent = price.toFixed(2);
+  document.getElementById('mask').textContent = `${Math.round(mask*100)}%`;
+  document.getElementById('hTotalTop').textContent = hTot;
+  document.getElementById('hUseTop').textContent = `${hUse}/s`;
+  document.getElementById('valTop').textContent = Math.round(V);
+  document.getElementById('priceTop').textContent = price.toFixed(2);
+  document.getElementById('powUse').textContent = (Math.round(Puse*10)/10).toFixed(1);
+  document.getElementById('powCap').textContent = (Math.round(Pcap*10)/10).toFixed(1);
+  document.getElementById('powUseTop').textContent = (Math.round(Puse*10)/10).toFixed(1);
+  document.getElementById('powCapTop').textContent = (Math.round(Pcap*10)/10).toFixed(1);
+
+  const ov = document.getElementById('overlayTag');
+  if(ov){
+    ov.textContent =
+      overlayMode===0 ? '·' :
+      overlayMode===1 ? 'H' :
+      overlayMode===2 ? 'R' :
+      overlayMode===3 ? 'P' : 'S';
+    ov.style.opacity = overlayMode===0 ? '0.4' : '0.9';
+  }
+  const bt = document.getElementById('beautyTag');
+  if(bt){
+    bt.textContent = beautyMode ? 'V' : '·';
+    bt.style.opacity = beautyMode ? '0.9' : '0.4';
+  }
+
+  if(idxA>=40){ document.getElementById('policy-3').disabled=false; }
+}
+
+// INPUT / UI -------------------------------------------------------------
+let currentTool='R1';
+
+function onCanvasPressed(e){
+  if(e && e.target !== canvas.elt) return;
+  if(mouseY < 60) return;
+  if(mouseX < SIDEBAR) return;
+
+  if(mouseButton===RIGHT){ removeAt(); return; }
+  const {gx, gy} = screenToWorld(mouseX, mouseY);
+  if(!inBounds(gx,gy)) return;
+  place(gx,gy,currentTool);
+}
+
+function keyPressed(){
+  if(key==='v' || key==='V'){ 
+    beautyMode = !beautyMode;
+  }
+
+  if(key===' '){
+    togglePause();
+  }
+
+  if(key==='r' || key==='R'){
+    const {gx, gy} = screenToWorld(mouseX, mouseY);
+    const p = inBounds(gx,gy) ? getNode(gx,gy) : null;
+    if(p){ 
+      p.rot = (p.rot+1)&3;
+    } else { 
+      currentRot = (currentRot+1)&3;
+    }
+  }
+
+  // zoom with cursor anchoring
+  if(key==='+' || key==='=' || key==='-' || key==='_'){
+    const prevZoom = zoom;
+    let factor = 1.0;
+    if(key==='+' || key==='=') factor = 1.15;
+    if(key==='-' || key==='_') factor = 1/1.15;
+
+    const newZoom = clamp(prevZoom * factor, MIN_ZOOM, MAX_ZOOM);
+    if(newZoom === prevZoom) return;
+
+    const mx = mouseX - SIDEBAR;
+    const my = mouseY;
+    const worldX = camX + mx / (TILE * prevZoom);
+    const worldY = camY + my / (TILE * prevZoom);
+
+    zoom = newZoom;
+
+    camX = worldX - mx / (TILE * zoom);
+    camY = worldY - my / (TILE * zoom);
+
+    const effViewW = VIEW_W / zoom;
+    const effViewH = VIEW_H / zoom;
+    camX = constrain(camX, 0, WORLD_W - effViewW);
+    camY = constrain(camY, 0, WORLD_H - effViewH);
+    return;
+  }
+
+  if(key==='o' || key==='O'){ 
+    overlayMode = (overlayMode+1)%5;
+  }
+}
+
+function place(x,y,tool){
+  if(!inBounds(x,y)) return;
+  if(grid[y][x]!==T0) return;
+  if(tool==='Road'){
+    grid[y][x]=T_ROAD; parts.push(new Transit(x,y,T_ROAD,currentRot)); 
+  }
+  else if(tool==='Railway' || tool==='Rail'){
+    grid[y][x]=T_RAIL; parts.push(new Transit(x,y,T_RAIL,currentRot)); 
+  }
+  else if(tool==='Pipeline' || tool==='Pi' || tool==='Pipe'){
+    grid[y][x]=T_PIPE; parts.push(new Transit(x,y,T_PIPE,currentRot)); 
+  }
+  else if(tool==='Hub' || tool==='Hb'){
+    grid[y][x]=T_HUB; parts.push(new Transit(x,y,T_HUB,currentRot)); 
+  }
+  else if(tool==='PORT' || tool==='Pt'){
+    grid[y][x]=T_BASE; parts.push(new Node(x,y,'PORT',currentRot)); 
+  }
+  else if(tool==='Gc'){
+    grid[y][x]=T_BASE; parts.push(new Node(x,y,'Gc',currentRot)); 
+  }
+  else if(tool==='Gh'){
+    grid[y][x]=T_BASE; parts.push(new Node(x,y,'Gh',currentRot)); 
+  }
+  else if(tool==='Cr'){
+    grid[y][x]=T_BASE; parts.push(new Node(x,y,'Cr',currentRot)); 
+  }
+  else if(tool==='Cp'){
+    grid[y][x]=T_BASE; parts.push(new Node(x,y,'Cp',currentRot)); 
+  }
+  else if(tool==='Ct'){
+    grid[y][x]=T_BASE; parts.push(new Node(x,y,'Ct',currentRot)); 
+  }
+  else if(tool==='Cn'){
+    grid[y][x]=T_BASE; parts.push(new Node(x,y,'Cn',currentRot)); 
+  }
+  else {
+    grid[y][x]=T_BASE;
+    parts.push(new Node(x,y,tool,currentRot));
+    if(tool==='HC') idxA += 5;
+  }
+}
+
+function removeAt(){
+  const {gx, gy} = screenToWorld(mouseX, mouseY);
+  if(!inBounds(gx,gy)) return;
+  if(grid[gy][gx]===T0) return;
+  grid[gy][gx]=T0;
+  const i=parts.findIndex(p=>p.x===gx&&p.y===gy);
+  if(i>=0) parts.splice(i,1);
+}
+
+function setTool(name){
+  currentTool=name;
+  const ids=[
+    'tool-R1','tool-R2','tool-R3','tool-R4',
+    'tool-H1','tool-H2','tool-HC',
+    'tool-F1','tool-F2','tool-F3',
+    'tool-A1','tool-A2','tool-A3',
+    'tool-M1','tool-M2','tool-C1',
+    'tool-Port','tool-Road','tool-Rail','tool-Pipe','tool-Hub',
+    'tool-Gc','tool-Gh','tool-Cr','tool-Cp','tool-Ct','tool-Cn'
+  ];
+  ids.forEach(id=>{
+    const pressed =
+      ('tool-'+name)===id ||
+      (name==='Road'     && id==='tool-Road') ||
+      (name==='Railway'  && id==='tool-Rail') ||
+      (name==='Pipeline' && id==='tool-Pipe') ||
+      (name==='Hub'      && id==='tool-Hub') ||
+      (name==='PORT'     && id==='tool-Port');
+    const el=document.getElementById(id);
+    if(el) el.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+  });
+}
+
+function togglePause(){
+  paused=!paused;
+  const btn = document.getElementById('btnPause');
+  btn.setAttribute('aria-pressed',paused.toString());
+  document.getElementById('simState').textContent = paused ? 'Paused' : 'Running';
+}
+
+function bindUI(){
+  const map=[
+    ['tool-R1','R1'],['tool-R2','R2'],['tool-R3','R3'],['tool-R4','R4'],
+    ['tool-H1','H1'],['tool-H2','H2'],['tool-HC','HC'],
+    ['tool-F1','F1'],['tool-F2','F2'],['tool-F3','F3'],
+    ['tool-A1','A1'],['tool-A2','A2'],['tool-A3','A3'],
+    ['tool-M1','M1'],['tool-M2','M2'],['tool-C1','C1'],
+    ['tool-Port','PORT'],
+    ['tool-Road','Road'],['tool-Rail','Railway'],['tool-Pipe','Pipeline'],['tool-Hub','Hub'],
+    ['tool-Gc','Gc'],['tool-Gh','Gh'],
+    ['tool-Cr','Cr'],['tool-Cp','Cp'],['tool-Ct','Ct'],['tool-Cn','Cn']
+  ];
+
+  map.forEach(([id,name])=>{
+    const el=document.getElementById(id);
+    if(el){
+      el.onclick=()=>setTool(name);
+    }
+  });
+
+  document.getElementById('btnPause').onclick=()=>togglePause();
+  document.getElementById('policy-1').onclick=()=>toggleP('P1');
+  document.getElementById('policy-2').onclick=()=>toggleP('P2');
+  document.getElementById('policy-3').onclick=()=>toggleP('P3');
+}
+
+// POLICY DOTS ------------------------------------------------------------
+function toggleP(k){
+  const p=policies[k];
+  if(k==='P3' && document.getElementById('policy-3').disabled) return;
+  p.on=!p.on;
+  idxA += p.on? p.idx : -p.idx;
+  idxA=Math.max(0,idxA);
+  idxB=Math.max(0, idxB-(p.on?0.15:-0.12));
+  syncPolicyDots();
+}
+
+function syncPolicyDots(){
+  document.getElementById('policy-1').dataset.on=policies.P1.on;
+  document.getElementById('policy-2').dataset.on=policies.P2.on;
+  document.getElementById('policy-3').dataset.on=policies.P3.on;
+}
+
+// SIDEBAR RENDER (background under left palette) -------------------------
+function renderSidebar(){
+  push();
+  noStroke();
+  fill('#0f1115');
+  rect(0.5,0.5,SIDEBAR-1,height-1,8);
+  pop();
+}
+
+// SEED (geology-optimised demo city) ------------------------------------
+function seed(){
+  parts.length = 0;
+  for(let y=0;y<WORLD_H;y++) for(let x=0;x<WORLD_W;x++) grid[y][x]=T0;
+
+  const cx=Math.floor(WORLD_W/2);
+
+  function rowScore(y){
+    const xStart=cx-18, xEnd=cx+6;
+    let sum=0, count=0, faults=0;
+    for(let x=xStart; x<=xEnd; x++){
+      if(!inBounds(x,y)) continue;
+      const h = geoHardness[y][x];
+      const o = oreRichness[y][x];
+      const r = oreReserve[y][x];
+      const f = faultMask[y][x] ? 1 : 0;
+      sum += (o*0.7 + (1/h)*0.3) * r - f*0.8;
+      faults += f;
+      count++;
+    }
+    if(count===0) return -999;
+    return sum/count - faults*0.1;
+  }
+
+  let candidates=[];
+  for(let y=12; y<WORLD_H-12; y++){
+    candidates.push({y,score:rowScore(y)});
+  }
+  candidates.sort((a,b)=>b.score-a.score);
+
+  const chosen=[];
+  const minSep=10;
+  for(const c of candidates){
+    if(chosen.length>=3) break;
+    if(chosen.every(ch=>Math.abs(ch.y-c.y)>=minSep)) chosen.push(c);
+  }
+
+  if(chosen.length<3){
+    const cyMid=Math.floor(WORLD_H/2);
+    const fallback=[cyMid-16, cyMid, cyMid+16];
+    for(const y of fallback){
+      if(chosen.length>=3) break;
+      if(y>5 && y<WORLD_H-5 && chosen.every(ch=>Math.abs(ch.y-y)>=minSep)){
+        chosen.push({y,score:0});
+      }
+    }
+  }
+
+  const branches = chosen.sort((a,b)=>a.y-b.y).map(c=>c.y);
+  const midY = Math.round(branches.reduce((s,y)=>s+y,0)/branches.length);
+
+  function branchAt(by){
+    // WORKERS
+    place(cx-16,by-1,'H2');
+    place(cx-16,by+1,'H2');
+    place(cx-15,by,'H1');
+    place(cx-14,by,'HC');
+
+    // REFINING FEEDS (mines + first stage)
+    place(cx-13,by-3,'R1');
+    place(cx-11,by-3,'F1');
+
+    place(cx-13,by-1,'R2');
+    place(cx-11,by-1,'F2');
+
+    place(cx-13,by+2,'R3');
+    place(cx-13,by+3,'R4');
+    place(cx-11,by+2,'F3');
+
+    place(cx-10,by-2,'Hub');
+    place(cx-10,by+2,'Hub');
+
+    // ASSEMBLY
+    place(cx-9,by-2,'A1');
+    place(cx-9,by+0,'A2');
+    place(cx-9,by+2,'A3');
+
+    // MODULES
+    place(cx-8,by-1,'Hub');
+    place(cx-8,by+1,'Hub');
+    place(cx-7,by-1,'M1');
+    place(cx-7,by+1,'M2');
+
+    // INTEGRATION
+    place(cx-6,by,'Hub');
+    place(cx-5,by,'HC');
+    place(cx-4,by,'C1');
+
+    for(let x=cx-13; x<=cx-7; x++){
+      place(x,by-2,'Road');
+      place(x,by+2,'Road');
+    }
+  }
+
+  branches.forEach(branchAt);
+
+  // vertical logistics spines covering all branches
+  const minY = Math.max(0, branches[0]-20);
+  const maxY = Math.min(WORLD_H-1, branches[branches.length-1]+20);
+  for(let y=minY; y<=maxY; y++){
+    place(cx-10,y,'Hub');
+    place(cx-6, y,'Hub');
+  }
+
+  // export corridors & ports for each branch
+  for(const by of branches){
+    for(let x=cx-3; x<=cx+2; x++) place(x,by,'Hub');
+    for(let x=cx+3; x<=cx+18; x++) place(x,by,'Railway');
+    place(cx+19,by,'PORT');
+  }
+
+  // global H cluster below the lowest branch
+  const lowest = branches[branches.length-1];
+  const gy = Math.min(WORLD_H-4, lowest+10);
+  place(cx-16,gy-1,'H2');
+  place(cx-16,gy+1,'H2');
+  place(cx-15,gy,'H1');
+  place(cx-14,gy,'HC');
+  for(let x=cx-15; x<=cx-10; x++) place(x,gy,'Hub');
+
+  // small early coal + hydro near mid
+  const gyP = midY+4;
+  place(cx+4,gyP,'Gc');
+  place(cx+6,gyP,'Gh');
+
+  // some civics near the central area
+  place(cx-2,midY-4,'Cr');
+  place(cx-2,midY-2,'Cr');
+  place(cx-1,midY-3,'Cp');
+  place(cx+2,midY-3,'Ct');
+  place(cx+1,midY-1,'Cn');
+
+  // centre camera
+  camX=cx-Math.floor(VIEW_W/2);
+  camY=midY-Math.floor(VIEW_H/2);
+  const effViewW2 = VIEW_W / zoom;
+  const effViewH2 = VIEW_H / zoom;
+  camX=constrain(camX,0,WORLD_W-effViewW2);
+  camY=constrain(camY,0,WORLD_H-effViewH2);
+}
+
+// MISC -------------------------------------------------------------------
+addEventListener('contextmenu', e=>e.preventDefault());
+</script>
+</body>
+</html>
