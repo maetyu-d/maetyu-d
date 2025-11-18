@@ -101,6 +101,14 @@ def write_wav_stereo(path, audio, sr=SR):
 # ---------------------------------------------------
 
 def build_full_mode1_plain_to_fm(index=2.0, attack=0.01, decay=0.1):
+    """
+    For each Fibonacci pair (f1, f2) where max(f1,f2) <= Nyquist:
+      - carrier_plain = sine(f1)
+      - carrier_fm    = FM(fc=f1, fm=f2, I=index)
+      - splice at N = f2 positive zero-crossing of carrier_plain
+      - apply AD envelope to the segment
+    Concatenate all segments.
+    """
     fib = [1, 1]
     segments = []
     step = 0
@@ -149,6 +157,14 @@ def build_full_mode1_plain_to_fm(index=2.0, attack=0.01, decay=0.1):
 # ---------------------------------------------------
 
 def build_full_mode3_stereo_plain_vs_fm(index=3.0, attack=0.01, decay=0.1):
+    """
+    For each Fibonacci pair (f1, f2) where max(f1,f2) <= Nyquist:
+      - Left  = plain sine at fc = f1
+      - Right = FM sine  at fc = f1, fm = f2, I = index
+      - duration = (n_zero + 2) cycles of fc
+      - apply AD envelope to both channels
+    Concatenate all segments.
+    """
     fib = [1, 1]
     stereo_segments = []
     step = 0
@@ -213,31 +229,35 @@ def tile_to_length(audio, target_len):
 
 if __name__ == "__main__":
     target_minutes = 27.0
-    target_len = int(target_minutes * 60.0 * SR)
-    print(f"Target length: {target_len} samples (~{target_minutes} minutes)")
+    target_samples = int(round(target_minutes * 60.0 * SR))
+    print(f"Target: {target_minutes} minutes @ {SR} Hz = {target_samples} samples")
 
-    # Mode 1: mono full-length Fibonacci FM splice with AD per segment
+    # --- build raw pieces ---
     print("Building full-length Mode 1 (mono plain→FM, Fibonacci, AD env)…")
     audio1 = build_full_mode1_plain_to_fm(index=2.0, attack=0.01, decay=0.1)
     write_wav_mono("fm_full1_plain_to_fm_fib_AD_raw.wav", audio1)
-    print("Raw Mode1 duration (s):", len(audio1) / SR)
+    print("Raw Mode1 length (samples):", len(audio1),
+          "=> seconds:", len(audio1) / SR)
 
-    # Mode 3: stereo full-length Fibonacci FM with AD per segment
     print("Building full-length Mode 3 (stereo plain vs FM, Fibonacci, AD env)…")
     audio3 = build_full_mode3_stereo_plain_vs_fm(index=3.0, attack=0.01, decay=0.1)
     write_wav_stereo("fm_full3_stereo_plain_vs_fm_AD_raw.wav", audio3)
-    print("Raw Mode3 duration (s):", audio3.shape[0] / SR)
+    print("Raw Mode3 length (samples):", audio3.shape[0],
+          "=> seconds:", audio3.shape[0] / SR)
 
-    # -------------------------------------------------
-    # Overlay: repeat both pieces until exactly 27 minutes
-    # -------------------------------------------------
+    # --- overlay to exactly 27 minutes ---
 
     # Upmix mono Mode1 to stereo
     stereo1 = np.stack([audio1, audio1], axis=-1)
 
     # Tile both to target length
-    stereo1_t = tile_to_length(stereo1, target_len)
-    stereo3_t = tile_to_length(audio3, target_len)
+    stereo1_t = tile_to_length(stereo1, target_samples)
+    stereo3_t = tile_to_length(audio3, target_samples)
+
+    print("Tiled Mode1 length (samples):", stereo1_t.shape[0],
+          "=> seconds:", stereo1_t.shape[0] / SR)
+    print("Tiled Mode3 length (samples):", stereo3_t.shape[0],
+          "=> seconds:", stereo3_t.shape[0] / SR)
 
     # Overlay (sum)
     overlay = stereo1_t + stereo3_t
@@ -245,8 +265,11 @@ if __name__ == "__main__":
     # Soft normalize
     peak = np.max(np.abs(overlay))
     if peak > 0:
-        overlay = overlay * (0.95 / peak)
+        overlay *= (0.95 / peak)
 
-    write_wav_stereo("fm_27min_overlay_AD.wav", overlay)
-    print("Wrote fm_27min_overlay_AD.wav  |  duration (s):", overlay.shape[0] / SR)
+    print("Overlay length (samples):", overlay.shape[0],
+          "=> seconds:", overlay.shape[0] / SR)
+
+    write_wav_stereo("fm_27min_overlay_AD.wav", overlay, sr=SR)
+    print("Wrote fm_27min_overlay_AD.wav")
 
