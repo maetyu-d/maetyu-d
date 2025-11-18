@@ -212,29 +212,32 @@ def tile_to_length(audio, target_len):
 # ---------------------------------------------------
 
 if __name__ == "__main__":
+    target_minutes = 27.0
+    target_len = int(target_minutes * 60.0 * SR)
+    print(f"Target length: {target_len} samples (~{target_minutes} minutes)")
+
     # Mode 1: mono full-length Fibonacci FM splice with AD per segment
     print("Building full-length Mode 1 (mono plain→FM, Fibonacci, AD env)…")
     audio1 = build_full_mode1_plain_to_fm(index=2.0, attack=0.01, decay=0.1)
-    write_wav_mono("fm_full1_plain_to_fm_fib_AD.wav", audio1)
-    print("Wrote fm_full1_plain_to_fm_fib_AD.wav  |  duration ~", len(audio1) / SR, "seconds")
+    write_wav_mono("fm_full1_plain_to_fm_fib_AD_raw.wav", audio1)
+    print("Raw Mode1 duration (s):", len(audio1) / SR)
 
     # Mode 3: stereo full-length Fibonacci FM with AD per segment
     print("Building full-length Mode 3 (stereo plain vs FM, Fibonacci, AD env)…")
     audio3 = build_full_mode3_stereo_plain_vs_fm(index=3.0, attack=0.01, decay=0.1)
-    write_wav_stereo("fm_full3_stereo_plain_vs_fm_AD.wav", audio3)
-    print("Wrote fm_full3_stereo_plain_vs_fm_AD.wav  |  duration ~", audio3.shape[0] / SR, "seconds")
+    write_wav_stereo("fm_full3_stereo_plain_vs_fm_AD_raw.wav", audio3)
+    print("Raw Mode3 duration (s):", audio3.shape[0] / SR)
 
     # -------------------------------------------------
-    # Overlay: repeat both pieces to match Mode 1 length
+    # Overlay: repeat both pieces until exactly 27 minutes
     # -------------------------------------------------
-    ref_len = len(audio1)
 
     # Upmix mono Mode1 to stereo
     stereo1 = np.stack([audio1, audio1], axis=-1)
 
-    # Tile both to reference length
-    stereo1_t = tile_to_length(stereo1, ref_len)
-    stereo3_t = tile_to_length(audio3, ref_len)
+    # Tile both to target length
+    stereo1_t = tile_to_length(stereo1, target_len)
+    stereo3_t = tile_to_length(audio3, target_len)
 
     # Overlay (sum)
     overlay = stereo1_t + stereo3_t
@@ -244,6 +247,6 @@ if __name__ == "__main__":
     if peak > 0:
         overlay = overlay * (0.95 / peak)
 
-    write_wav_stereo("fm_full_overlay_AD.wav", overlay)
-    print("Wrote fm_full_overlay_AD.wav  |  duration ~", overlay.shape[0] / SR, "seconds")
+    write_wav_stereo("fm_27min_overlay_AD.wav", overlay)
+    print("Wrote fm_27min_overlay_AD.wav  |  duration (s):", overlay.shape[0] / SR)
 
