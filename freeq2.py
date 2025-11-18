@@ -35,6 +35,38 @@ def nth_positive_zero_crossing(x, n):
 
 
 # ---------------------------------------------------
+# AD envelope
+# ---------------------------------------------------
+
+def ad_envelope(n_samples, sr=SR, attack=0.01, decay=0.1):
+    """
+    Simple AD envelope:
+      0 -> 1 over 'attack' seconds
+      1 -> 0 over 'decay' seconds
+      then stays at 0.
+    """
+    env = np.zeros(n_samples, dtype=np.float32)
+
+    a_samps = int(attack * sr)
+    d_samps = int(decay * sr)
+
+    # Attack
+    if a_samps > 0:
+        a_len = min(a_samps, n_samples)
+        env[:a_len] = np.linspace(0.0, 1.0, a_len, endpoint=False)
+
+    # Decay
+    start_d = a_samps
+    end_d = a_samps + d_samps
+    if start_d < n_samples:
+        end_d = min(end_d, n_samples)
+        if end_d > start_d:
+            env[start_d:end_d] = np.linspace(1.0, 0.0, end_d - start_d, endpoint=False)
+
+    return env
+
+
+# ---------------------------------------------------
 # WAV writers
 # ---------------------------------------------------
 
@@ -65,16 +97,10 @@ def write_wav_stereo(path, audio, sr=SR):
 # ---------------------------------------------------
 # FULL LENGTH – Mode 1:
 # Mono Fibonacci FM splice: plain → FM at N-th zero crossing
+# with AD envelope per segment
 # ---------------------------------------------------
 
-def build_full_mode1_plain_to_fm(index=2.0):
-    """
-    For each Fibonacci pair (f1, f2) where max(f1,f2) <= Nyquist:
-      - carrier_plain = sine(f1)
-      - carrier_fm    = FM(fc=f1, fm=f2, I=index)
-      - splice at N = f2 positive zero-crossing of carrier_plain
-    Concatenate all segments.
-    """
+def build_full_mode1_plain_to_fm(index=2.0, attack=0.01, decay=0.1):
     fib = [1, 1]
     segments = []
     step = 0
@@ -99,6 +125,10 @@ def build_full_mode1_plain_to_fm(index=2.0):
             cut = n_samples // 2
 
         seg = np.concatenate([carrier_plain[:cut], carrier_fm[cut:]])
+
+        env = ad_envelope(len(seg), sr=SR, attack=attack, decay=decay)
+        seg *= env
+
         segments.append(seg)
 
         step += 1
@@ -115,17 +145,10 @@ def build_full_mode1_plain_to_fm(index=2.0):
 # ---------------------------------------------------
 # FULL LENGTH – Mode 3:
 # Stereo Fibonacci FM: Left=plain, Right=FM
+# with AD envelope per segment
 # ---------------------------------------------------
 
-def build_full_mode3_stereo_plain_vs_fm(index=3.0):
-    """
-    For each Fibonacci pair (f1, f2) where max(f1,f2) <= Nyquist:
-      - Left  = plain sine at fc = f1
-      - Right = FM sine  at fc = f1, fm = f2, I = index
-      - Same duration logic as Mode 1 (n_zero + 2 cycles of slower freq)
-
-    All segments concatenated into one stereo file.
-    """
+def build_full_mode3_stereo_plain_vs_fm(index=3.0, attack=0.01, decay=0.1):
     fib = [1, 1]
     stereo_segments = []
     step = 0
@@ -146,6 +169,10 @@ def build_full_mode3_stereo_plain_vs_fm(index=3.0):
         right = fm_sine(f1, f2, index=index, t=t)
 
         stereo = np.stack([left, right], axis=-1)
+
+        env = ad_envelope(n_samples, sr=SR, attack=attack, decay=decay)
+        stereo *= env[:, None]
+
         stereo_segments.append(stereo)
 
         step += 1
@@ -160,19 +187,63 @@ def build_full_mode3_stereo_plain_vs_fm(index=3.0):
 
 
 # ---------------------------------------------------
+# Utility: tile / repeat to target length
+# ---------------------------------------------------
+
+def tile_to_length(audio, target_len):
+    """
+    Repeat (tile) 1D or 2D audio along time axis until at least target_len,
+    then trim to exactly target_len.
+    """
+    audio = np.asarray(audio)
+    n = audio.shape[0]
+    if n == 0:
+        raise ValueError("audio length is zero")
+    reps = target_len // n + 1
+    if audio.ndim == 1:
+        tiled = np.tile(audio, reps)
+    else:
+        tiled = np.tile(audio, (reps, 1))
+    return tiled[:target_len]
+
+
+# ---------------------------------------------------
 # MAIN
 # ---------------------------------------------------
 
 if __name__ == "__main__":
-    # Mode 1: mono full-length Fibonacci FM splice
-    print("Building full-length Mode 1 (mono plain→FM, Fibonacci)…")
-    audio1 = build_full_mode1_plain_to_fm(index=2.0)
-    write_wav_mono("fm_full1_plain_to_fm_fib.wav", audio1)
-    print("Wrote fm_full1_plain_to_fm_fib.wav  |  duration ~", len(audio1) / SR, "seconds")
+    # Mode 1: mono full-length Fibonacci FM splice with AD per segment
+    print("Building full-length Mode 1 (mono plain→FM, Fibonacci, AD env)…")
+    audio1 = build_full_mode1_plain_to_fm(index=2.0, attack=0.01, decay=0.1)
+    write_wav_mono("fm_full1_plain_to_fm_fib_AD.wav", audio1)
+    print("Wrote fm_full1_plain_to_fm_fib_AD.wav  |  duration ~", len(audio1) / SR, "seconds")
 
-    # Mode 3: stereo full-length Fibonacci FM (plain vs FM)
-    print("Building full-length Mode 3 (stereo plain vs FM, Fibonacci)…")
-    audio3 = build_full_mode3_stereo_plain_vs_fm(index=3.0)
-    write_wav_stereo("fm_full3_stereo_plain_vs_fm.wav", audio3)
-    print("Wrote fm_full3_stereo_plain_vs_fm.wav  |  duration ~", audio3.shape[0] / SR, "seconds")
+    # Mode 3: stereo full-length Fibonacci FM with AD per segment
+    print("Building full-length Mode 3 (stereo plain vs FM, Fibonacci, AD env)…")
+    audio3 = build_full_mode3_stereo_plain_vs_fm(index=3.0, attack=0.01, decay=0.1)
+    write_wav_stereo("fm_full3_stereo_plain_vs_fm_AD.wav", audio3)
+    print("Wrote fm_full3_stereo_plain_vs_fm_AD.wav  |  duration ~", audio3.shape[0] / SR, "seconds")
+
+    # -------------------------------------------------
+    # Overlay: repeat both pieces to match Mode 1 length
+    # -------------------------------------------------
+    ref_len = len(audio1)
+
+    # Upmix mono Mode1 to stereo
+    stereo1 = np.stack([audio1, audio1], axis=-1)
+
+    # Tile both to reference length
+    stereo1_t = tile_to_length(stereo1, ref_len)
+    stereo3_t = tile_to_length(audio3, ref_len)
+
+    # Overlay (sum)
+    overlay = stereo1_t + stereo3_t
+
+    # Soft normalize
+    peak = np.max(np.abs(overlay))
+    if peak > 0:
+        overlay = overlay * (0.95 / peak)
+
+    write_wav_stereo("fm_full_overlay_AD.wav", overlay)
+    print("Wrote fm_full_overlay_AD.wav  |  duration ~", overlay.shape[0] / SR, "seconds")
 
