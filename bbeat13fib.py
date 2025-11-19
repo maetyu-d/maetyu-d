@@ -222,17 +222,15 @@ def place_stereo(mix_l, mix_r, sample, start_idx, pan=0.0, gain=1.0):
 
 
 # ============================
-# Layer generation per FULL section
+# Layer generation per FULL section (rhythm)
 # ============================
 
 def build_layers_for_section(section_index, fib_number, bars_in_section):
     """For each FULL section:
-    - Create fib_number new layers.
+    - Create fib_number new rhythmic layers.
     - Each layer chooses a type from LAYER_TYPES (A + C hybrid).
     - Each layer has its own Euclidean pattern & bar-wise rotation.
-    Returns list of dicts describing layers:
-      { "sample": mono_array, "pattern_steps_per_bar": [...],
-        "pan": float, "gain": float, "rotate_per_bar": int }"""
+    Returns list of dicts describing layers."""
     layers = []
     if fib_number <= 0:
         return layers
@@ -303,54 +301,53 @@ def build_section_plan():
 
 
 # ============================
-# Render full track
+# Drum rendering (as before)
 # ============================
 
-def render_track():
-    # Pre-generate core drums
+def render_drums(sections, total_samples):
     kick = voice_kick()
     snare = voice_snare()
     hat = voice_hat()
 
-    sections = build_section_plan()
+    full_l = np.zeros(total_samples, dtype=np.float32)
+    full_r = np.zeros(total_samples, dtype=np.float32)
 
-    all_l = []
-    all_r = []
-
+    # compute section start offsets in samples
+    bar_cursor = 0
     for sec_index, (bars, mode, fib_n) in enumerate(sections):
-        print(f"Rendering section {sec_index}: {bars} bars, mode={mode}, Fn={fib_n}")
+        section_start_bar = bar_cursor
+        section_start_sample = int(round(section_start_bar * BAR_DURATION_SEC * SR))
+        section_samples = int(round(bars * BAR_DURATION_SEC * SR))
 
-        n_samples_section = int(round(bars * BAR_DURATION_SEC * SR))
-        mix_l = np.zeros(n_samples_section, dtype=np.float32)
-        mix_r = np.zeros(n_samples_section, dtype=np.float32)
+        print(f"Drums section {sec_index}: {bars} bars, mode={mode}, Fn={fib_n}")
 
-        # Build extra layers only for FULL sections (A + C hybrid)
+        mix_l = np.zeros(section_samples, dtype=np.float32)
+        mix_r = np.zeros(section_samples, dtype=np.float32)
+
         if mode == "full":
             layers = build_layers_for_section(sec_index, fib_n, bars)
         else:
             layers = []
 
-        # Sequence steps
         total_steps = bars * STEPS_PER_BAR
 
         for step in range(total_steps):
             bar_idx = step // STEPS_PER_BAR
             local_step = step % STEPS_PER_BAR
-            start_sample = int(round(step * STEP_DURATION_SEC * SR))
+            local_start = int(round(step * STEP_DURATION_SEC * SR))
 
             # Base patterns:
-            # Kick only in full; snare & hats in both
             if mode == "full":
                 if local_step in BASE_PATTERN["kick"]:
-                    place_stereo(mix_l, mix_r, kick, start_sample, pan=0.0, gain=0.9)
+                    place_stereo(mix_l, mix_r, kick, local_start, pan=0.0, gain=0.9)
 
             if local_step in BASE_PATTERN["snare"]:
-                place_stereo(mix_l, mix_r, snare, start_sample, pan=0.2, gain=0.85)
+                place_stereo(mix_l, mix_r, snare, local_start, pan=0.2, gain=0.85)
 
             if local_step in BASE_PATTERN["hat_all"]:
                 accent = local_step in BASE_PATTERN["hat_accent"]
                 g = 0.35 if accent else 0.2
-                place_stereo(mix_l, mix_r, hat, start_sample, pan=-0.3, gain=g)
+                place_stereo(mix_l, mix_r, hat, local_start, pan=-0.3, gain=g)
 
             # Extra layers for this full section
             for lyr in layers:
@@ -358,23 +355,194 @@ def render_track():
                 rotate = lyr["rotate_per_bar"]
                 rotated_steps = [(s + bar_idx * rotate) % STEPS_PER_BAR for s in base_steps]
                 if local_step in rotated_steps:
-                    place_stereo(mix_l, mix_r, lyr["sample"], start_sample,
+                    place_stereo(mix_l, mix_r, lyr["sample"], local_start,
                                  pan=lyr["pan"], gain=lyr["gain"])
 
-        all_l.append(mix_l)
-        all_r.append(mix_r)
+        end_idx = min(section_start_sample + section_samples, total_samples)
+        seg_len = end_idx - section_start_sample
+        full_l[section_start_sample:end_idx] += mix_l[:seg_len]
+        full_r[section_start_sample:end_idx] += mix_r[:seg_len]
 
-    # Concatenate all sections
-    full_l = np.concatenate(all_l)
-    full_r = np.concatenate(all_r)
-    stereo = np.stack([full_l, full_r], axis=1)
+        bar_cursor += bars
 
-    # Normalise & gentle master drive
-    max_val = np.max(np.abs(stereo)) + 1e-9
-    stereo = stereo / max_val * 0.95
-    stereo = np.tanh(stereo * 2.0)
+    return full_l, full_r
 
-    return stereo
+
+# ============================
+# Melodic voices (Aphex-y sad leads)
+# ============================
+
+# D natural minor scale degrees (relative semitones from root)
+SCALE_DEGREES = [0, 2, 3, 5, 7, 10]  # D, E, F, G, A, C
+BASE_MIDI_ROOT = 50  # D3-ish
+
+
+def midi_to_freq(m):
+    return 440.0 * (2.0 ** ((m - 69) / 12.0))
+
+
+def synth_melody_notes(mix_l, mix_r, start_sample, end_sample,
+                       seed, linespec):
+    """
+    Generates a single melodic line between [start_sample, end_sample).
+    - mix_l, mix_r: stereo buffers to add into
+    - linespec: dict with melodic parameters
+    """
+    rng = random.Random(seed)
+    duration_samples = max(0, end_sample - start_sample)
+    if duration_samples <= 0:
+        return
+
+    duration_sec = duration_samples / SR
+
+    note_period_steps = linespec["note_period_steps"]
+    note_dur_steps = linespec["note_dur_steps"]
+    timbre = linespec["timbre"]
+    pan = linespec["pan"]
+    gain = linespec["gain"]
+
+    note_period_sec = note_period_steps * STEP_DURATION_SEC
+    note_dur_sec = note_dur_steps * STEP_DURATION_SEC
+
+    n_notes = int(duration_sec / note_period_sec) + 1
+    current_scale_idx = rng.randint(0, len(SCALE_DEGREES) - 1)
+    current_oct = rng.choice([-1, 0, 0, 1])  # bias mid, occasional jump
+
+    base_midi = BASE_MIDI_ROOT
+
+    for i in range(n_notes):
+        note_start_sec = i * note_period_sec
+        global_note_start = start_sample + int(round(note_start_sec * SR))
+        if global_note_start >= end_sample:
+            break
+
+        # random walk on scale
+        step_choice = rng.choice([-2, -1, -1, 0, 1, 1, 2])
+        current_scale_idx = (current_scale_idx + step_choice) % len(SCALE_DEGREES)
+        # occasional octave shifts
+        if rng.random() < 0.12:
+            current_oct += rng.choice([-1, 1])
+            current_oct = max(-2, min(2, current_oct))
+
+        midi_note = base_midi + SCALE_DEGREES[current_scale_idx] + 12 * current_oct + rng.choice([0, 0, 12])  # sometimes up an octave
+        freq = midi_to_freq(midi_note)
+
+        this_note_dur_sec = note_dur_sec * rng.uniform(0.7, 1.4)
+        this_note_samp = int(this_note_dur_sec * SR)
+        if this_note_samp <= 0:
+            continue
+
+        global_note_end = min(global_note_start + this_note_samp, end_sample)
+        note_len = global_note_end - global_note_start
+        if note_len <= 0:
+            continue
+
+        t = np.arange(note_len) / SR
+
+        # timbre
+        if timbre == "soft_sine_tri":
+            base_wave = 0.6 * np.sin(2 * np.pi * freq * t) + 0.4 * np.sign(
+                np.sin(2 * np.pi * freq * t)
+            )
+        elif timbre == "glass_fm":
+            mod_f = freq * 2.5
+            mod_index = 4.0
+            mod = np.sin(2 * np.pi * mod_f * t) * mod_index
+            base_wave = np.sin(2 * np.pi * freq * t + mod)
+        else:  # airy-pad-ish
+            mod_f = freq * 1.01
+            mod_index = 2.0
+            mod = np.sin(2 * np.pi * mod_f * t) * mod_index
+            base_wave = 0.5 * np.sin(2 * np.pi * freq * t) + 0.5 * np.sin(2 * np.pi * freq * t + mod)
+
+        # envelope: slowish attack, long tail, sad/floaty
+        atk = 0.02
+        env = np.exp(-t * 2.5)  # relatively long decay
+        atk_samples = max(1, int(atk * SR))
+        env[:atk_samples] *= np.linspace(0.0, 1.0, atk_samples)
+
+        # small random tremolo for fragility
+        trem = 1.0 + 0.12 * np.sin(2 * np.pi * rng.uniform(3.0, 6.0) * t + rng.random() * 2 * np.pi)
+        wave = base_wave * env * trem
+
+        wave = wave.astype(np.float32)
+
+        # pan and mix
+        angle = (pan + 1.0) * math.pi / 4.0
+        lg = math.cos(angle)
+        rg = math.sin(angle)
+
+        end_idx = global_note_start + note_len
+        mix_l[global_note_start:end_idx] += wave * gain * lg
+        mix_r[global_note_start:end_idx] += wave * gain * rg
+
+
+def build_melody_line_spec(section_index, line_index, fib_n):
+    seed = MASTER_SEED + 100000 + section_index * 500 + line_index
+    rng = random.Random(seed)
+
+    # different note speeds / durations
+    note_period_steps = rng.choice([2, 2, 4, 4, 6, 8])
+    note_dur_steps = rng.choice([4, 6, 8, 12])
+
+    # choose timbre
+    timbre = rng.choice(["soft_sine_tri", "glass_fm", "pad_fm"])
+
+    # pan across stereo field
+    pan = rng.uniform(-0.8, 0.8)
+    # later Fibonacci sections can be a bit quieter per line
+    base_gain = 0.18
+    gain = base_gain * (0.9 + rng.random() * 0.3) / (1.0 + 0.02 * max(0, fib_n - 5))
+
+    return {
+        "note_period_steps": note_period_steps,
+        "note_dur_steps": note_dur_steps,
+        "timbre": timbre,
+        "pan": pan,
+        "gain": gain,
+    }
+
+
+def render_melodies(sections, total_samples):
+    mel_l = np.zeros(total_samples, dtype=np.float32)
+    mel_r = np.zeros(total_samples, dtype=np.float32)
+
+    # we need section start offsets in bars/samples
+    bars_so_far = 0
+    section_offsets = []
+    for bars, mode, fib_n in sections:
+        start_bar = bars_so_far
+        start_sample = int(round(start_bar * BAR_DURATION_SEC * SR))
+        section_samples = int(round(bars * BAR_DURATION_SEC * SR))
+        section_offsets.append((start_bar, start_sample, section_samples))
+        bars_so_far += bars
+
+    # For each FULL section: create fib_n melodic lines that span that
+    # full section + its following lull (if present).
+    for idx, ((bars, mode, fib_n), (start_bar, start_sample, section_samples)) in enumerate(zip(sections, section_offsets)):
+        if mode != "full":
+            continue
+
+        # span full + next lull
+        span_start = start_sample
+        span_end = start_sample + section_samples
+
+        if idx + 1 < len(sections):
+            bars2, mode2, fib2 = sections[idx + 1]
+            if mode2 == "lull":
+                # extend span over lull too
+                span_end = span_start + int(round((bars + bars2) * BAR_DURATION_SEC * SR))
+
+        span_end = min(span_end, total_samples)
+
+        print(f"Melodies for full section {idx}: Fn={fib_n}, span_samples={span_end - span_start}")
+
+        for line_index in range(fib_n):
+            spec = build_melody_line_spec(idx, line_index, fib_n)
+            line_seed = MASTER_SEED + 200000 + idx * 1000 + line_index
+            synth_melody_notes(mel_l, mel_r, span_start, span_end, line_seed, spec)
+
+    return mel_l, mel_r
 
 
 # ============================
@@ -391,11 +559,39 @@ def write_wav_stereo(filename, data, samplerate=SR):
         wf.writeframes(data_i16.tobytes())
 
 
+# ============================
+# Main
+# ============================
+
 if __name__ == "__main__":
-    print("Building Fibonacci-structured, layered breakbeat...")
-    stereo_data = render_track()
-    duration = stereo_data.shape[0] / SR
+    print("Building section plan...")
+    sections = build_section_plan()
+
+    # Total bars to figure overall length
+    total_bars = sum(b for b, _, _ in sections)
+    total_samples = int(round(total_bars * BAR_DURATION_SEC * SR))
+    print(f"Total bars: {total_bars}, total_samples: {total_samples}")
+
+    print("Rendering drums...")
+    drums_l, drums_r = render_drums(sections, total_samples)
+
+    print("Rendering melodies (Aphex-y sad lines)...")
+    mel_l, mel_r = render_melodies(sections, total_samples)
+
+    print("Mixing and mastering...")
+    full_l = drums_l + mel_l
+    full_r = drums_r + mel_r
+    stereo = np.stack([full_l, full_r], axis=1)
+
+    # Normalise & gentle master drive
+    max_val = np.max(np.abs(stereo)) + 1e-9
+    stereo = stereo / max_val * 0.9
+    stereo = np.tanh(stereo * 1.8)
+
+    duration = stereo.shape[0] / SR
     print(f"Rendered duration: {duration:.2f} seconds (~{duration/60:.2f} minutes)")
+
     out_name = "fibonacci_megadrive_fib_layers_13min.wav"
-    write_wav_stereo(out_name, stereo_data)
+    write_wav_stereo(out_name, stereo)
     print(f"Written to {out_name}")
+
