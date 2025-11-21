@@ -1,0 +1,2158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Atomic Mini Game Engine</title>
+  <style>
+    :root {
+      --bg: #050608;
+      --panel: #0b0f16;
+      --border: #111827;
+      --accent: #8be9fd;
+      --accent-soft: rgba(139, 233, 253, 0.12);
+      --accent-strong: #50fa7b;
+      --danger: #ff5555;
+      --text: #e5e7eb;
+      --text-soft: #9ca3af;
+      --code-bg: #050608;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      height: 100%;
+      width: 100%;
+      background: radial-gradient(circle at top left, #111827 0, #050608 40%, #020308 100%);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+      overflow: hidden;
+    }
+
+    body {
+      display: flex;
+      align-items: stretch;
+      justify-content: stretch;
+      padding: 10px;
+    }
+
+    .root {
+      display: flex;
+      flex: 1;
+      gap: 10px;
+      background: rgba(5, 6, 8, 0.95);
+      border-radius: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.1);
+      box-shadow: 0 18px 45px rgba(0, 0, 0, 0.75);
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    .left, .right {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .left {
+      flex: 1.1;
+      background: radial-gradient(circle at top, #111827 0, #020308 55%);
+      border-right: 1px solid rgba(15, 23, 42, 0.9);
+      position: relative;
+      padding: 10px;
+      gap: 8px;
+    }
+
+    .right {
+      flex: 1;
+      background: linear-gradient(145deg, #020308 0, #050815 60%, #020308 100%);
+      padding: 10px;
+      gap: 8px;
+    }
+
+    canvas {
+      flex: 1;
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid rgba(15, 23, 42, 1);
+      background: #000;
+      box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.8),
+                  0 0 0 1px rgba(15, 23, 42, 0.9);
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(55, 65, 81, 0.9);
+      background: radial-gradient(circle at top left, rgba(139, 233, 253, 0.12), rgba(15, 23, 42, 0.95));
+      color: var(--text-soft);
+      font-size: 11px;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      align-self: flex-start;
+    }
+
+    .status-pill::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--accent-strong);
+      box-shadow: 0 0 8px rgba(80, 250, 123, 0.9);
+    }
+
+    .status-pill.error {
+      border-color: rgba(239, 68, 68, 0.8);
+      background: radial-gradient(circle at top left, rgba(248, 113, 113, 0.26), rgba(15, 23, 42, 0.95));
+      color: #fecaca;
+    }
+
+    .status-pill.error::before {
+      background: var(--danger);
+      box-shadow: 0 0 8px rgba(248, 113, 113, 0.9);
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .toolbar button {
+      background: radial-gradient(circle at top, rgba(139, 233, 253, 0.22), rgba(15, 23, 42, 0.95));
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      padding: 6px 14px;
+      color: var(--text);
+      font-size: 12px;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 120ms ease, transform 80ms ease, box-shadow 120ms ease, border-color 120ms ease;
+      box-shadow: 0 0 0 1px rgba(15, 23, 42, 1),
+                  0 12px 25px rgba(0, 0, 0, 0.7);
+    }
+
+    .toolbar button:nth-child(2) {
+      background: radial-gradient(circle at top, rgba(248, 250, 252, 0.06), rgba(15, 23, 42, 0.95));
+      color: var(--text-soft);
+    }
+
+    .toolbar button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.7),
+                  0 18px 35px rgba(0, 0, 0, 0.8);
+    }
+
+    .toolbar button:active {
+      transform: translateY(0);
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.8);
+    }
+
+    .toolbar button:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    textarea#code {
+      flex: 1;
+      width: 100%;
+      resize: none;
+      border-radius: 10px;
+      border: 1px solid rgba(31, 41, 55, 1);
+      background: radial-gradient(circle at top left, rgba(15, 23, 42, 0.95), #020308);
+      color: var(--text);
+      padding: 10px 12px;
+      font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 12px;
+      line-height: 1.4;
+      tab-size: 2;
+      white-space: pre;
+      overflow: auto;
+      box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.9);
+    }
+
+    textarea#code:focus-visible {
+      outline: none;
+      border-color: rgba(139, 233, 253, 0.9);
+      box-shadow:
+        0 0 0 1px rgba(139, 233, 253, 0.8),
+        0 0 25px rgba(139, 233, 253, 0.25);
+    }
+
+    @media (max-width: 900px) {
+      body {
+        padding: 4px;
+      }
+      .root {
+        flex-direction: column;
+      }
+      .left {
+        border-right: none;
+        border-bottom: 1px solid rgba(15, 23, 42, 0.9);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="root">
+    <div class="left">
+      <canvas id="game" width="640" height="480"></canvas>
+      <div class="status-pill" id="statusPill">
+        <span id="statusText">Ready.</span>
+      </div>
+    </div>
+    <div class="right">
+      <div class="toolbar">
+        <button id="applyBtn">Apply</button>
+        <button id="resetBtn">Reset</button>
+      </div>
+      <textarea id="code" spellcheck="false"></textarea>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      // Polyfill for roundRect (used for atomic rounded tiles)
+      if (typeof CanvasRenderingContext2D !== "undefined" &&
+          !CanvasRenderingContext2D.prototype.roundRect) {
+        CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+          var ctx = this;
+          if (typeof r === "number") {
+            r = { tl: r, tr: r, br: r, bl: r };
+          } else {
+            r = Object.assign({ tl: 0, tr: 0, br: 0, bl: 0 }, r || {});
+          }
+          ctx.moveTo(x + r.tl, y);
+          ctx.lineTo(x + w - r.tr, y);
+          ctx.quadraticCurveTo(x + w, y, x + w, y + r.tr);
+          ctx.lineTo(x + w, y + h - r.br);
+          ctx.quadraticCurveTo(x + w, y + h, x + w - r.br, y + h);
+          ctx.lineTo(x + r.bl, y + h);
+          ctx.quadraticCurveTo(x, y + h, x, y + h - r.bl);
+          ctx.lineTo(x, y + r.tl);
+          ctx.quadraticCurveTo(x, y, x + r.tl, y);
+          return ctx;
+        };
+      }
+
+      // -----------------------------------------------------------------------
+      // DOM & small helpers
+      // -----------------------------------------------------------------------
+      const canvas = document.getElementById("game");
+      const ctx = canvas.getContext("2d");
+      const codeEl = document.getElementById("code");
+      const applyBtn = document.getElementById("applyBtn");
+      const resetBtn = document.getElementById("resetBtn");
+      const statusPill = document.getElementById("statusPill");
+      const statusText = document.getElementById("statusText");
+
+      function setStatus(message, isError = false) {
+        statusText.textContent = message;
+        if (isError) statusPill.classList.add("error");
+        else statusPill.classList.remove("error");
+      }
+
+      function clone(obj) {
+        return JSON.parse(JSON.stringify(obj));
+      }
+
+      function parseConfig() {
+        let config;
+        try {
+          config = JSON.parse(codeEl.value);
+        } catch (e) {
+          throw new Error("Invalid JSON: " + e.message);
+        }
+        if (!Array.isArray(config.level) || config.level.length === 0) {
+          throw new Error("Config.level must be a non-empty array of strings.");
+        }
+        const width = config.level[0].length;
+        for (const row of config.level) {
+          if (row.length !== width) {
+            throw new Error("All level rows must have the same length.");
+          }
+        }
+        return config;
+      }
+
+      function isInsideRC(rows, cols, r, c) {
+        return r >= 0 && r < rows && c >= 0 && c < cols;
+      }
+
+      // Key state for realtime modes
+      const keyState = {};
+      window.addEventListener("keydown", e => keyState[e.key] = true);
+      window.addEventListener("keyup", e => keyState[e.key] = false);
+
+      // -----------------------------------------------------------------------
+      // Default config (puzzle + simple RPG/quest)
+      // -----------------------------------------------------------------------
+      const defaultConfig = {
+        tileSize: 40,
+        backgroundColor: "#050608",
+        palette: {
+          floor: "#050608",
+          wall: "#1f2933",
+          player: "#8be9fd",
+          box: "#ffb86c",
+          boxOnGoal: "#50fa7b",
+          goal: "#6272a4",
+          grid: "rgba(255,255,255,0.04)",
+          coin: "#f1fa8c",
+          exit: "#bd93f9",
+          hazard: "#ff5555",
+          enemy: "#ff79c6",
+          key: "#50fa7b",
+          doorLocked: "#44475a",
+          doorOpen: "#2b3248",
+          teleporter: "#8be9fd"
+        },
+        engine: {
+          mode: "turn",             // "turn" | "realtime"
+          primary: "puzzle",        // "puzzle" | "board" | "shooter" | "platformer" | "racing" | "factory"
+          systems: ["puzzle", "rpg", "quests"],
+          tickRate: 60
+        },
+        legend: {
+          "#": "wall",
+          ".": "floor",
+          "@": "player",
+          "B": "box",
+          "X": "goal",
+          "C": "coin",
+          "E": "enemyH",
+          "e": "enemyV",
+          "H": "hazard",
+          "K": "key",
+          "D": "door",
+          "T": "teleporter",
+          "O": "exit"
+        },
+        level: [
+          "##########",
+          "#..C..O..#",
+          "#..B..X..#",
+          "#........#",
+          "#....@...#",
+          "#........#",
+          "#..B..X..#",
+          "##########"
+        ],
+        rules: {
+          type: "collectThenExit",
+          allowPushBoxes: true,
+          needsKeyForDoors: true,
+          win: {
+            allGoalsFilled: true,
+            collectAllCoins: true,
+            reachExit: true,
+            collectAllCoinsAndExit: true
+          },
+          lose: {
+            touchHazard: true,
+            touchEnemy: true
+          },
+          text: {
+            win: "All cargo aligned, all orbs collected, exit reached. Simulation complete.",
+            lose: "System integrity failure."
+          }
+        },
+        rpg: {
+          stats: { hp: 10, maxHp: 10, xp: 0, level: 1 },
+          inventory: []
+        },
+        quests: [
+          {
+            id: "demo",
+            title: "Collect all coins",
+            startFlag: null,
+            completeFlag: "allCoins",
+            reward: { xp: 5 }
+          }
+        ]
+      };
+
+      // -----------------------------------------------------------------------
+      // Base grid drawing
+      // -----------------------------------------------------------------------
+      function drawBaseGrid(w) {
+        const cfg = w.config;
+        const p = (cfg.palette = cfg.palette || {});
+        const tile = w.tileSize;
+        const bg = cfg.backgroundColor || "#000";
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = p.floor || bg;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        if (p.grid) {
+          ctx.strokeStyle = p.grid;
+          ctx.lineWidth = 1;
+          for (let r = 0; r <= w.rows; r++) {
+            const y = r * tile + 0.5;
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(canvas.width, y);
+            ctx.stroke();
+          }
+          for (let c = 0; c <= w.cols; c++) {
+            const x = c * tile + 0.5;
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, canvas.height);
+            ctx.stroke();
+          }
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // RPG / Quests / Dialogue / Story
+      // -----------------------------------------------------------------------
+      function initRpgState(config) {
+        return {
+          stats: Object.assign(
+            { hp: 10, maxHp: 10, xp: 0, level: 1 },
+            (config.rpg && config.rpg.stats) || {}
+          ),
+          inventory: (config.rpg && config.rpg.inventory) || [],
+          flags: {},
+          quests: (config.quests || []).map(q => ({ ...q, state: "locked" }))
+        };
+      }
+
+      function updateQuests(world) {
+        if (!world.rpg) return;
+        const flags = world.rpg.flags;
+        for (const q of world.rpg.quests) {
+          if (q.state === "locked" && (!q.startFlag || flags[q.startFlag])) {
+            q.state = "active";
+            if (q.startFlag) setStatus("Quest started: " + q.title);
+          } else if (q.state === "active" && q.completeFlag && flags[q.completeFlag]) {
+            q.state = "done";
+            if (q.reward && q.reward.xp) world.rpg.stats.xp += q.reward.xp;
+            setStatus("Quest complete: " + q.title);
+          }
+        }
+      }
+
+      function initDialogueState(config) {
+        if (!config.dialogue) return null;
+        return {
+          nodes: config.dialogue.nodes || {},
+          current: null
+        };
+      }
+
+      function startDialogue(world, nodeId) {
+        if (!world.dialogue || !world.dialogue.nodes[nodeId]) return;
+        world.dialogue.current = nodeId;
+        setStatus("Dialogue: " + nodeId);
+      }
+
+      function initStoryState(config) {
+        return config.storyNodes
+          ? { nodes: config.storyNodes, current: config.storyStart || null }
+          : null;
+      }
+
+      // -----------------------------------------------------------------------
+      // PUZZLE family
+      // -----------------------------------------------------------------------
+      function buildPuzzleWorld(config) {
+        const rows = config.level.length;
+        const cols = config.level[0].length;
+        const tileSize = config.tileSize || 32;
+        canvas.width = cols * tileSize;
+        canvas.height = rows * tileSize;
+
+        const w = {
+          kind: "puzzle",
+          rows,
+          cols,
+          tileSize,
+          config,
+          walls: [],
+          boxes: [],
+          goals: [],
+          coins: [],
+          hazards: [],
+          exits: [],
+          doors: [],
+          keys: [],
+          teleporters: [],
+          enemies: [],
+          player: null,
+          stats: { coinsRemaining: 0, moves: 0, keys: 0 },
+          completed: false
+        };
+
+        for (let r = 0; r < rows; r++) {
+          w.walls[r] = [];
+          w.boxes[r] = [];
+          w.goals[r] = [];
+          w.coins[r] = [];
+          w.hazards[r] = [];
+          w.exits[r] = [];
+          w.doors[r] = [];
+          w.keys[r] = [];
+          for (let c = 0; c < cols; c++) {
+            w.walls[r][c] = false;
+            w.boxes[r][c] = false;
+            w.goals[r][c] = false;
+            w.coins[r][c] = false;
+            w.hazards[r][c] = false;
+            w.exits[r][c] = false;
+            w.doors[r][c] = false;
+            w.keys[r][c] = false;
+          }
+        }
+
+        const legend = config.legend || {};
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const ch = config.level[r][c];
+            const type = legend[ch];
+            switch (type) {
+              case "wall":
+                w.walls[r][c] = true;
+                break;
+              case "box":
+                w.boxes[r][c] = true;
+                break;
+              case "goal":
+                w.goals[r][c] = true;
+                break;
+              case "player":
+                w.player = { r, c };
+                break;
+              case "coin":
+                w.coins[r][c] = true;
+                w.stats.coinsRemaining++;
+                break;
+              case "exit":
+                w.exits[r][c] = true;
+                break;
+              case "hazard":
+                w.hazards[r][c] = true;
+                break;
+              case "door":
+                w.doors[r][c] = true;
+                break;
+              case "key":
+                w.keys[r][c] = true;
+                break;
+              case "teleporter":
+                w.teleporters.push({ r, c });
+                break;
+              case "enemy":
+              case "enemyH":
+                w.enemies.push({ r, c, axis: "h", dir: 1 });
+                break;
+              case "enemyV":
+                w.enemies.push({ r, c, axis: "v", dir: 1 });
+                break;
+              default:
+                break;
+            }
+          }
+        }
+
+        if (!w.player) throw new Error("No player found (legend mapped to 'player').");
+        return w;
+      }
+
+      function puzzleIsBlocked(w, r, c) {
+        if (!isInsideRC(w.rows, w.cols, r, c)) return true;
+        if (w.walls[r][c]) return true;
+        if (w.doors[r][c]) return true;
+        if (w.boxes[r][c]) return true;
+        return false;
+      }
+
+      function puzzleIsBlockedForEnemy(w, r, c) {
+        return puzzleIsBlocked(w, r, c);
+      }
+
+      function puzzleCheckAllGoalsFilled(w) {
+        for (let r = 0; r < w.rows; r++) {
+          for (let c = 0; c < w.cols; c++) {
+            if (w.goals[r][c] && !w.boxes[r][c]) return false;
+          }
+        }
+        return true;
+      }
+
+      function puzzleTeleportPlayerIfNeeded(w) {
+        if (!w.teleporters.length || !w.player) return;
+        const { r, c } = w.player;
+        let index = -1;
+        for (let i = 0; i < w.teleporters.length; i++) {
+          const t = w.teleporters[i];
+          if (t.r === r && t.c === c) {
+            index = i;
+            break;
+          }
+        }
+        if (index === -1) return;
+        const nextIndex = (index + 1) % w.teleporters.length;
+        const dest = w.teleporters[nextIndex];
+        w.player.r = dest.r;
+        w.player.c = dest.c;
+        setStatus("Teleported.");
+      }
+
+      function puzzleLoseAndReset(w, config, reason) {
+        const rules = w.config.rules || {};
+        const textLose = (rules.text && rules.text.lose) || "You lost.";
+        setStatus(reason || textLose, true);
+        return buildPuzzleWorld(clone(config));
+      }
+
+      function puzzleEvaluateWin(w) {
+        if (w.completed) return;
+        const rules = w.config.rules || {};
+        const winRules = rules.win || {};
+        const type = rules.type || "custom";
+
+        const onExit = w.exits[w.player.r][w.player.c];
+        let win = false;
+
+        if (type === "sokoban") win = puzzleCheckAllGoalsFilled(w);
+        else if (type === "collect") win = (w.stats.coinsRemaining === 0);
+        else if (type === "reachExit") win = onExit;
+        else if (type === "collectThenExit") win = (w.stats.coinsRemaining === 0 && onExit);
+
+        if (winRules.allGoalsFilled) win = win || puzzleCheckAllGoalsFilled(w);
+        if (winRules.collectAllCoins) win = win || (w.stats.coinsRemaining === 0);
+        if (winRules.reachExit) win = win || onExit;
+        if (winRules.collectAllCoinsAndExit) {
+          win = win || (w.stats.coinsRemaining === 0 && onExit);
+        }
+
+        if (win) {
+          w.completed = true;
+          const textWin = (rules.text && rules.text.win) || "You win!";
+          setStatus(textWin, false);
+          if (w.rpg) w.rpg.flags["allCoins"] = true;
+        }
+      }
+
+      function puzzleMovePlayer(w, dr, dc, currentConfigRef) {
+        if (!w.player || w.completed) return w;
+        const rules = w.config.rules || {};
+        const allowPushBoxes = rules.allowPushBoxes !== false;
+
+        const pr = w.player.r;
+        const pc = w.player.c;
+        const nr = pr + dr;
+        const nc = pc + dc;
+        if (!isInsideRC(w.rows, w.cols, nr, nc)) return w;
+
+        if (w.doors[nr][nc]) {
+          if (rules.needsKeyForDoors && w.stats.keys > 0) {
+            w.doors[nr][nc] = false;
+            w.stats.keys--;
+            setStatus("Door opened.");
+          } else if (!rules.needsKeyForDoors) {
+            w.doors[nr][nc] = false;
+            setStatus("Door opened.");
+          } else {
+            setStatus("Door locked. Need a key.", true);
+            return w;
+          }
+        }
+
+        if (w.boxes[nr][nc]) {
+          if (!allowPushBoxes) return w;
+          const br = nr + dr;
+          const bc = nc + dc;
+          if (puzzleIsBlocked(w, br, bc)) return w;
+          w.boxes[nr][nc] = false;
+          w.boxes[br][bc] = true;
+        } else if (puzzleIsBlocked(w, nr, nc)) {
+          return w;
+        }
+
+        w.player.r = nr;
+        w.player.c = nc;
+        w.stats.moves++;
+
+        puzzleTeleportPlayerIfNeeded(w);
+
+        const r = w.player.r;
+        const c = w.player.c;
+
+        if (w.keys[r][c]) {
+          w.keys[r][c] = false;
+          w.stats.keys++;
+          setStatus("Key collected.");
+        }
+        if (w.coins[r][c]) {
+          w.coins[r][c] = false;
+          w.stats.coinsRemaining--;
+          setStatus("Coin collected.");
+        }
+
+        const loseRules = (rules.lose || {});
+        if (w.hazards[r][c] && loseRules.touchHazard !== false) {
+          return puzzleLoseAndReset(w, currentConfigRef, "You stepped on a hazard.");
+        }
+        puzzleEvaluateWin(w);
+        return w;
+      }
+
+      function puzzleUpdateEnemies(w, currentConfigRef) {
+        if (!w.enemies.length || w.completed) return w;
+        const rules = w.config.rules || {};
+        const loseRules = rules.lose || {};
+
+        for (const e of w.enemies) {
+          let dr = 0, dc = 0;
+          if (e.axis === "h") dc = e.dir;
+          else dr = e.dir;
+          let nr = e.r + dr, nc = e.c + dc;
+          if (!isInsideRC(w.rows, w.cols, nr, nc) || puzzleIsBlockedForEnemy(w, nr, nc)) {
+            e.dir = -e.dir;
+            if (e.axis === "h") dc = e.dir;
+            else dr = e.dir;
+            nr = e.r + dr;
+            nc = e.c + dc;
+            if (!isInsideRC(w.rows, w.cols, nr, nc) || puzzleIsBlockedForEnemy(w, nr, nc)) {
+              nr = e.r;
+              nc = e.c;
+            }
+          }
+          e.r = nr;
+          e.c = nc;
+
+          if (loseRules.touchEnemy !== false &&
+              w.player &&
+              e.r === w.player.r &&
+              e.c === w.player.c) {
+            return puzzleLoseAndReset(w, currentConfigRef, "You were caught by an enemy.");
+          }
+        }
+        return w;
+      }
+
+      function drawPuzzleWorld(w) {
+        const cfg = w.config;
+        const p = (cfg.palette = cfg.palette || {});
+        const tile = w.tileSize;
+
+        drawBaseGrid(w);
+
+        // goals
+        const goalColor = p.goal || "#6272a4";
+        for (let r = 0; r < w.rows; r++) {
+          for (let c = 0; c < w.cols; c++) {
+            if (w.goals[r][c]) {
+              const x = c * tile;
+              const y = r * tile;
+              const pad = tile * 0.25;
+              ctx.fillStyle = goalColor;
+              ctx.beginPath();
+              ctx.roundRect(x + pad, y + pad, tile - pad * 2, tile - pad * 2, tile * 0.2);
+              ctx.fill();
+            }
+          }
+        }
+
+        // hazards
+        const hazardColor = p.hazard || "#ff5555";
+        for (let r = 0; r < w.rows; r++) {
+          for (let c = 0; c < w.cols; c++) {
+            if (w.hazards[r][c]) {
+              const x = c * tile;
+              const y = r * tile;
+              ctx.fillStyle = hazardColor;
+              ctx.beginPath();
+              const spikeCount = 4;
+              for (let i = 0; i < spikeCount; i++) {
+                const sx = x + (i + 0.5) * (tile / spikeCount);
+                const sy = y + tile * 0.25;
+                ctx.moveTo(sx - tile * 0.1, sy + tile * 0.3);
+                ctx.lineTo(sx, sy);
+                ctx.lineTo(sx + tile * 0.1, sy + tile * 0.3);
+              }
+              ctx.fill();
+            }
+          }
+        }
+
+        // exits
+        const exitColor = p.exit || "#bd93f9";
+        for (let r = 0; r < w.rows; r++) {
+          for (let c = 0; c < w.cols; c++) {
+            if (w.exits[r][c]) {
+              const x = c * tile;
+              const y = r * tile;
+              const pad = tile * 0.2;
+              ctx.strokeStyle = exitColor;
+              ctx.lineWidth = 2;
+              ctx.beginPath();
+              ctx.roundRect(x + pad, y + pad, tile - pad * 2, tile - pad * 2, tile * 0.3);
+              ctx.stroke();
+            }
+          }
+        }
+
+        // doors
+        for (let r = 0; r < w.rows; r++) {
+          for (let c = 0; c < w.cols; c++) {
+            if (w.doors[r][c]) {
+              const x = c * tile;
+              const y = r * tile;
+              const pad = tile * 0.12;
+              ctx.fillStyle = p.doorLocked || "#44475a";
+              ctx.beginPath();
+              ctx.roundRect(x + pad, y + pad, tile - pad * 2, tile - pad * 2, tile * 0.18);
+              ctx.fill();
+            }
+          }
+        }
+
+        // walls
+        const wallColor = p.wall || "#1f2933";
+        for (let r = 0; r < w.rows; r++) {
+          for (let c = 0; c < w.cols; c++) {
+            if (w.walls[r][c]) {
+              const x = c * tile;
+              const y = r * tile;
+              const grad = ctx.createLinearGradient(x, y, x + tile, y + tile);
+              grad.addColorStop(0, wallColor);
+              grad.addColorStop(1, "#000000");
+              ctx.fillStyle = grad;
+              ctx.fillRect(x, y, tile, tile);
+            }
+          }
+        }
+
+        // coins
+        const coinColor = p.coin || "#f1fa8c";
+        for (let r = 0; r < w.rows; r++) {
+          for (let c = 0; c < w.cols; c++) {
+            if (w.coins[r][c]) {
+              const x = c * tile + tile / 2;
+              const y = r * tile + tile / 2;
+              const radius = tile * 0.22;
+              ctx.save();
+              const g = ctx.createRadialGradient(
+                x, y, radius * 0.2,
+                x, y, radius * 1.4
+              );
+              g.addColorStop(0, "rgba(241, 250, 140, 1)");
+              g.addColorStop(1, "rgba(241, 250, 140, 0)");
+              ctx.fillStyle = g;
+              ctx.beginPath();
+              ctx.arc(x, y, radius * 1.4, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.fillStyle = coinColor;
+              ctx.beginPath();
+              ctx.arc(x, y, radius, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.restore();
+            }
+          }
+        }
+
+        // keys
+        const keyColor = p.key || "#50fa7b";
+        for (let r = 0; r < w.rows; r++) {
+          for (let c = 0; c < w.cols; c++) {
+            if (w.keys[r][c]) {
+              const x = c * tile + tile * 0.3;
+              const y = r * tile + tile * 0.4;
+              ctx.strokeStyle = keyColor;
+              ctx.lineWidth = 2;
+              ctx.beginPath();
+              ctx.arc(x, y, tile * 0.15, 0, Math.PI * 2);
+              ctx.stroke();
+              ctx.beginPath();
+              ctx.moveTo(x + tile * 0.15, y);
+              ctx.lineTo(x + tile * 0.35, y);
+              ctx.moveTo(x + tile * 0.3, y);
+              ctx.lineTo(x + tile * 0.3, y + tile * 0.2);
+              ctx.stroke();
+            }
+          }
+        }
+
+        // teleporters
+        const teleColor = p.teleporter || "#8be9fd";
+        for (const t of w.teleporters) {
+          const x = t.c * tile + tile / 2;
+          const y = t.r * tile + tile / 2;
+          const r = tile * 0.3;
+          ctx.save();
+          ctx.strokeStyle = teleColor;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(x, y, r * 0.5, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // boxes
+        for (let r = 0; r < w.rows; r++) {
+          for (let c = 0; c < w.cols; c++) {
+            if (w.boxes[r][c]) {
+              const x = c * tile;
+              const y = r * tile;
+              const onGoal = w.goals[r][c];
+              const color = onGoal
+                ? p.boxOnGoal || p.box || "#50fa7b"
+                : p.box || "#ffb86c";
+              const pad = tile * 0.18;
+              ctx.fillStyle = color;
+              ctx.beginPath();
+              ctx.roundRect(x + pad, y + pad, tile - pad * 2, tile - pad * 2, tile * 0.12);
+              ctx.fill();
+              ctx.strokeStyle = "rgba(0,0,0,0.35)";
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              ctx.roundRect(x + pad, y + pad, tile - pad * 2, tile - pad * 2, tile * 0.12);
+              ctx.stroke();
+            }
+          }
+        }
+
+        // enemies
+        const enemyColor = p.enemy || "#ff79c6";
+        for (const e of w.enemies) {
+          const x = e.c * tile + tile / 2;
+          const y = e.r * tile + tile / 2;
+          const r = tile * 0.25;
+          ctx.save();
+          ctx.fillStyle = enemyColor;
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        // player
+        if (w.player) {
+          const x = w.player.c * tile + tile / 2;
+          const y = w.player.r * tile + tile / 2;
+          const r = tile * 0.3;
+          const playerColor = p.player || "#8be9fd";
+          ctx.save();
+          const g = ctx.createRadialGradient(
+            x, y, r * 0.2,
+            x, y, r * 1.6
+          );
+          g.addColorStop(0, "rgba(139, 233, 253, 0.9)");
+          g.addColorStop(1, "rgba(139, 233, 253, 0)");
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(x, y, r * 1.6, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = playerColor;
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // BOARD family (chess / draughts / tactics)
+      // -----------------------------------------------------------------------
+      function buildBoardWorld(config) {
+        const rows = config.level.length;
+        const cols = config.level[0].length;
+        const boardCfg = config.board || {};
+        const cell = boardCfg.cellSize || config.tileSize || 48;
+
+        canvas.width = cols * cell;
+        canvas.height = rows * cell;
+
+        const pieces = [];
+        const pieceDefs = boardCfg.pieces || {};
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const ch = config.level[r][c];
+            if (pieceDefs[ch]) {
+              const def = pieceDefs[ch];
+              pieces.push({ symbol: ch, team: def.team, r, c });
+            }
+          }
+        }
+        return {
+          kind: "board",
+          rows,
+          cols,
+          tileSize: cell,
+          config,
+          pieces,
+          boardCfg,
+          selected: null,
+          legalMoves: [],
+          currentTeamIndex: 0
+        };
+      }
+
+      function boardTileAt(world, r, c) {
+        return world.pieces.find(p => p.r === r && p.c === c) || null;
+      }
+
+      function boardIsInside(world, r, c) {
+        return isInsideRC(world.rows, world.cols, r, c);
+      }
+
+      function boardComputeLegalMoves(world, piece) {
+        const def = world.boardCfg.pieces[piece.symbol];
+        if (!def || !def.move) return [];
+        const move = def.move;
+        const dirs = move.dirs || [];
+        const maxSteps = move.maxSteps || 1;
+        const team = piece.team;
+        const moves = [];
+        for (const d of dirs) {
+          const dr = d[0];
+          const dc = d[1];
+          for (let step = 1; step <= maxSteps; step++) {
+            const nr = piece.r + dr * step;
+            const nc = piece.c + dc * step;
+            if (!boardIsInside(world, nr, nc)) break;
+            const occ = boardTileAt(world, nr, nc);
+            if (!occ) {
+              moves.push({ r: nr, c: nc, capture: false });
+            } else {
+              if (occ.team !== team) moves.push({ r: nr, c: nc, capture: true });
+              break;
+            }
+            if (move.type === "step") break;
+          }
+        }
+        return moves;
+      }
+
+      function boardNextTeam(world) {
+        const order = world.boardCfg.turnOrder || world.boardCfg.teams || ["white", "black"];
+        world.currentTeamIndex = (world.currentTeamIndex + 1) % order.length;
+      }
+
+      function boardCurrentTeam(world) {
+        const order = world.boardCfg.turnOrder || world.boardCfg.teams || ["white", "black"];
+        return order[world.currentTeamIndex % order.length];
+      }
+
+      function boardHandleClick(world, x, y) {
+        const cell = world.tileSize;
+        const c = Math.floor(x / cell);
+        const r = Math.floor(y / cell);
+        if (!boardIsInside(world, r, c)) return world;
+
+        const currentTeam = boardCurrentTeam(world);
+        const clickedPiece = boardTileAt(world, r, c);
+
+        if (clickedPiece && clickedPiece.team === currentTeam) {
+          world.selected = clickedPiece;
+          world.legalMoves = boardComputeLegalMoves(world, clickedPiece);
+          setStatus("Selected " + clickedPiece.symbol + " (" + currentTeam + ")");
+          return world;
+        }
+
+        if (world.selected) {
+          const lm = world.legalMoves.find(m => m.r === r && m.c === c);
+          if (lm) {
+            const target = boardTileAt(world, r, c);
+            if (target) {
+              world.pieces = world.pieces.filter(p => p !== target);
+            }
+            world.selected.r = r;
+            world.selected.c = c;
+
+            const captureSym = world.boardCfg.win && world.boardCfg.win.captureSymbol;
+            if (captureSym && (!world.pieces.find(p => p.symbol === captureSym))) {
+              setStatus("Victory: captured " + captureSym);
+            } else {
+              boardNextTeam(world);
+              setStatus("Moved. Next: " + boardCurrentTeam(world));
+            }
+
+            world.selected = null;
+            world.legalMoves = [];
+            return world;
+          }
+        }
+
+        world.selected = null;
+        world.legalMoves = [];
+        return world;
+      }
+
+      function drawBoardWorld(world) {
+        const cell = world.tileSize;
+        const cfg = world.config;
+        const p = (cfg.palette = cfg.palette || {});
+        const bg = cfg.backgroundColor || "#000";
+
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const light = p.floor || "#11131b";
+        const dark = p.wall || "#050608";
+        for (let r = 0; r < world.rows; r++) {
+          for (let c = 0; c < world.cols; c++) {
+            const x = c * cell;
+            const y = r * cell;
+            const isLight = (r + c) % 2 === 0;
+            ctx.fillStyle = isLight ? light : dark;
+            ctx.fillRect(x, y, cell, cell);
+          }
+        }
+
+        if (world.selected) {
+          ctx.fillStyle = "rgba(80, 250, 123, 0.2)";
+          for (const m of world.legalMoves) {
+            ctx.beginPath();
+            ctx.rect(m.c * cell, m.r * cell, cell, cell);
+            ctx.fill();
+          }
+        }
+
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.font = Math.floor(cell * 0.5) + "px system-ui, sans-serif";
+
+        for (const piece of world.pieces) {
+          const def = world.boardCfg.pieces[piece.symbol] || {};
+          const team = def.team || "white";
+          const color = team === "white" ? "#f8f8f2" : "#ff79c6";
+          const x = piece.c * cell + cell / 2;
+          const y = piece.r * cell + cell / 2;
+
+          ctx.fillStyle = "rgba(0,0,0,0.35)";
+          ctx.beginPath();
+          ctx.arc(x, y + cell * 0.1, cell * 0.35, Math.PI, 0);
+          ctx.fill();
+
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.arc(x, y, cell * 0.32, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = "#050608";
+          ctx.fillText(piece.symbol, x, y + 1);
+        }
+
+        if (world.selected) {
+          const s = world.selected;
+          const x = s.c * cell + cell / 2;
+          const y = s.r * cell + cell / 2;
+          ctx.strokeStyle = "#8be9fd";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(x, y, cell * 0.35, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // SHOOTER family
+      // -----------------------------------------------------------------------
+      function buildShooterWorld(config) {
+        const rows = config.level.length;
+        const cols = config.level[0].length;
+        const tileSize = config.tileSize || 32;
+        canvas.width = cols * tileSize;
+        canvas.height = rows * tileSize;
+
+        const legend = config.legend || {};
+        let player = null;
+        const walls = [];
+        const enemies = [];
+        for (let r = 0; r < rows; r++) {
+          walls[r] = [];
+          for (let c = 0; c < cols; c++) {
+            walls[r][c] = false;
+            const type = legend[config.level[r][c]];
+            if (type === "wall") {
+              walls[r][c] = true;
+            } else if (type === "player") {
+              player = { x: c * tileSize + tileSize / 2, y: r * tileSize + tileSize / 2 };
+            } else if (type && type.startsWith("enemy")) {
+              enemies.push({ x: c * tileSize + tileSize / 2, y: r * tileSize + tileSize / 2, hp: 1 });
+            }
+          }
+        }
+        if (!player) throw new Error("Shooter mode: no 'player' tile found.");
+
+        const shooterCfg = config.shooter || {};
+        return {
+          kind: "shooter",
+          rows,
+          cols,
+          tileSize,
+          config,
+          walls,
+          player: Object.assign(player, { dirX: 1, dirY: 0 }),
+          enemies,
+          bullets: [],
+          shooterCfg: {
+            playerSpeed: shooterCfg.playerSpeed || 6,
+            bulletSpeed: shooterCfg.bulletSpeed || 14,
+            fireCooldownMs: shooterCfg.fireCooldownMs || 150
+          },
+          lastFireDir: { x: 1, y: 0 },
+          fireCooldown: 0
+        };
+      }
+
+      function shooterUpdate(world, dtMs) {
+        const cfg = world.shooterCfg;
+        const speed = cfg.playerSpeed;
+        let vx = 0, vy = 0;
+
+        if (keyState["w"] || keyState["W"]) vy -= 1;
+        if (keyState["s"] || keyState["S"]) vy += 1;
+        if (keyState["a"] || keyState["A"]) vx -= 1;
+        if (keyState["d"] || keyState["D"]) vx += 1;
+
+        if (vx !== 0 || vy !== 0) {
+          const len = Math.hypot(vx, vy);
+          vx /= len;
+          vy /= len;
+          world.player.x += vx * speed;
+          world.player.y += vy * speed;
+        }
+
+        let fdX = world.lastFireDir.x;
+        let fdY = world.lastFireDir.y;
+        if (keyState["ArrowUp"]) { fdX = 0; fdY = -1; }
+        else if (keyState["ArrowDown"]) { fdX = 0; fdY = 1; }
+        else if (keyState["ArrowLeft"]) { fdX = -1; fdY = 0; }
+        else if (keyState["ArrowRight"]) { fdX = 1; fdY = 0; }
+        if (fdX !== 0 || fdY !== 0) world.lastFireDir = { x: fdX, y: fdY };
+
+        world.fireCooldown -= dtMs;
+        const firing = keyState["ArrowUp"] || keyState["ArrowDown"] ||
+                       keyState["ArrowLeft"] || keyState["ArrowRight"];
+        if (firing && world.fireCooldown <= 0) {
+          world.fireCooldown = cfg.fireCooldownMs;
+          world.bullets.push({
+            x: world.player.x,
+            y: world.player.y,
+            vx: world.lastFireDir.x * cfg.bulletSpeed,
+            vy: world.lastFireDir.y * cfg.bulletSpeed
+          });
+        }
+
+        const bullets = [];
+        for (const b of world.bullets) {
+          b.x += b.vx;
+          b.y += b.vy;
+          const r = Math.floor(b.y / world.tileSize);
+          const c = Math.floor(b.x / world.tileSize);
+          if (!isInsideRC(world.rows, world.cols, r, c)) continue;
+          if (world.walls[r][c]) continue;
+          bullets.push(b);
+        }
+        world.bullets = bullets;
+
+        for (const b of world.bullets) {
+          for (const e of world.enemies) {
+            if (e.hp <= 0) continue;
+            const d = Math.hypot(e.x - b.x, e.y - b.y);
+            if (d < world.tileSize * 0.4) {
+              e.hp = 0;
+            }
+          }
+        }
+        world.enemies = world.enemies.filter(e => e.hp > 0);
+
+        for (const e of world.enemies) {
+          const dx = world.player.x - e.x;
+          const dy = world.player.y - e.y;
+          const d = Math.hypot(dx, dy) || 1;
+          const step = 1.5;
+          e.x += (dx / d) * step;
+          e.y += (dy / d) * step;
+          const dist = Math.hypot(e.x - world.player.x, e.y - world.player.y);
+          if (dist < world.tileSize * 0.4) {
+            setStatus("Shooter: hit by enemy.", true);
+          }
+        }
+      }
+
+      function drawShooterWorld(world) {
+        const cfg = world.config;
+        const p = (cfg.palette = cfg.palette || {});
+        const tile = world.tileSize;
+
+        drawBaseGrid(world);
+
+        const wallColor = p.wall || "#1f2933";
+        for (let r = 0; r < world.rows; r++) {
+          for (let c = 0; c < world.cols; c++) {
+            if (world.walls[r][c]) {
+              const x = c * tile;
+              const y = r * tile;
+              const grad = ctx.createLinearGradient(x, y, x + tile, y + tile);
+              grad.addColorStop(0, wallColor);
+              grad.addColorStop(1, "#000000");
+              ctx.fillStyle = grad;
+              ctx.fillRect(x, y, tile, tile);
+            }
+          }
+        }
+
+        const enemyColor = p.enemy || "#ff79c6";
+        for (const e of world.enemies) {
+          ctx.fillStyle = enemyColor;
+          ctx.beginPath();
+          ctx.arc(e.x, e.y, tile * 0.3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        ctx.fillStyle = p.coin || "#f1fa8c";
+        for (const b of world.bullets) {
+          ctx.beginPath();
+          ctx.arc(b.x, b.y, tile * 0.12, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        const x = world.player.x;
+        const y = world.player.y;
+        const r = tile * 0.35;
+        const playerColor = p.player || "#8be9fd";
+        ctx.save();
+        const g = ctx.createRadialGradient(x, y, r * 0.2, x, y, r * 1.6);
+        g.addColorStop(0, "rgba(139, 233, 253, 0.9)");
+        g.addColorStop(1, "rgba(139, 233, 253, 0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(x, y, r * 1.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = playerColor;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // -----------------------------------------------------------------------
+      // PLATFORMER family
+      // -----------------------------------------------------------------------
+      function buildPlatformerWorld(config) {
+        const rows = config.level.length;
+        const cols = config.level[0].length;
+        const tileSize = config.tileSize || 32;
+        canvas.width = cols * tileSize;
+        canvas.height = rows * tileSize;
+
+        const legend = config.legend || {};
+        const solids = [];
+        const spikes = [];
+        for (let r = 0; r < rows; r++) {
+          solids[r] = [];
+          spikes[r] = [];
+          for (let c = 0; c < cols; c++) {
+            solids[r][c] = false;
+            spikes[r][c] = false;
+            const type = legend[config.level[r][c]];
+            if (type === "solid") solids[r][c] = true;
+            else if (type === "spike") spikes[r][c] = true;
+          }
+        }
+
+        let spawn = { x: tileSize * 1.5, y: tileSize * 1.5 };
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            if (legend[config.level[r][c]] === "pfPlayer") {
+              spawn = { x: c * tileSize + tileSize / 2, y: r * tileSize + tileSize / 2 };
+            }
+          }
+        }
+
+        const pfCfg = config.platformer || {};
+        return {
+          kind: "platformer",
+          rows,
+          cols,
+          tileSize,
+          config,
+          solids,
+          spikes,
+          player: { x: spawn.x, y: spawn.y, vx: 0, vy: 0, onGround: false },
+          camera: { x: 0, y: 0 },
+          pfCfg
+        };
+      }
+
+      function platformerCollide(world, x, y) {
+        const t = world.tileSize;
+        const r = Math.floor(y / t);
+        const c = Math.floor(x / t);
+        if (!isInsideRC(world.rows, world.cols, r, c)) return { solid: false, spike: false };
+        return { solid: world.solids[r][c], spike: world.spikes[r][c] };
+      }
+
+      function updatePlatformer(world, dtMs) {
+        const cfg = world.pfCfg;
+        const gravity = cfg.gravity ?? 0.7;
+        const moveSpeed = cfg.moveSpeed ?? 0.4;
+        const jumpImpulse = cfg.jumpImpulse ?? -12;
+        const maxFall = cfg.maxFallSpeed ?? 18;
+
+        const keys = cfg.controls || {};
+        const leftKeys = keys.left || ["ArrowLeft", "a", "A"];
+        const rightKeys = keys.right || ["ArrowRight", "d", "D"];
+        const jumpKeys = keys.jump || [" ", "w", "W", "ArrowUp"];
+
+        const p = world.player;
+        const dt = dtMs;
+        let ax = 0;
+        if (leftKeys.some(k => keyState[k])) ax -= moveSpeed;
+        if (rightKeys.some(k => keyState[k])) ax += moveSpeed;
+
+        p.vx += ax;
+        p.vx *= 0.8;
+        p.vy += gravity;
+        if (p.vy > maxFall) p.vy = maxFall;
+
+        const jumpPressed = jumpKeys.some(k => keyState[k]);
+        if (jumpPressed && p.onGround) {
+          p.vy = jumpImpulse;
+          p.onGround = false;
+        }
+
+        let newX = p.x + p.vx;
+        let newY = p.y + p.vy;
+
+        const radiusX = world.tileSize * 0.3;
+        const head = p.y - world.tileSize * 0.3;
+        const feet = p.y + world.tileSize * 0.3;
+
+        if (p.vx > 0) {
+          const probe = platformerCollide(world, newX + radiusX, head);
+          const probe2 = platformerCollide(world, newX + radiusX, feet);
+          if (probe.solid || probe2.solid) {
+            newX = Math.floor((newX + radiusX) / world.tileSize) * world.tileSize - radiusX - 0.01;
+            p.vx = 0;
+          }
+        } else if (p.vx < 0) {
+          const probe = platformerCollide(world, newX - radiusX, head);
+          const probe2 = platformerCollide(world, newX - radiusX, feet);
+          if (probe.solid || probe2.solid) {
+            newX = Math.floor((newX - radiusX) / world.tileSize + 1) * world.tileSize + radiusX + 0.01;
+            p.vx = 0;
+          }
+        }
+
+        const radiusY = world.tileSize * 0.35;
+        let onGround = false;
+        if (p.vy > 0) {
+          const probe = platformerCollide(world, newX - radiusX, newY + radiusY);
+          const probe2 = platformerCollide(world, newX + radiusX, newY + radiusY);
+          if (probe.solid || probe2.solid) {
+            newY = Math.floor((newY + radiusY) / world.tileSize) * world.tileSize - radiusY - 0.01;
+            p.vy = 0;
+            onGround = true;
+          }
+        } else if (p.vy < 0) {
+          const probe = platformerCollide(world, newX, newY - radiusY);
+          if (probe.solid) {
+            newY = Math.floor((newY - radiusY) / world.tileSize + 1) * world.tileSize + radiusY + 0.01;
+            p.vy = 0;
+          }
+        }
+
+        p.x = newX;
+        p.y = newY;
+        p.onGround = onGround;
+
+        const cinfo = platformerCollide(world, p.x, p.y);
+        if (cinfo.spike) {
+          setStatus("Platformer: hit spike, respawning.");
+          const fresh = buildPlatformerWorld(clone(world.config));
+          Object.assign(world, fresh);
+          return;
+        }
+
+        const cam = world.camera;
+        const padX = (cfg.camera && cfg.camera.paddingX) ?? 160;
+        const padY = (cfg.camera && cfg.camera.paddingY) ?? 120;
+        if (p.x - cam.x < padX) cam.x = p.x - padX;
+        if (p.x - cam.x > canvas.width - padX) cam.x = p.x - (canvas.width - padX);
+        if (p.y - cam.y < padY) cam.y = p.y - padY;
+        if (p.y - cam.y > canvas.height - padY) cam.y = p.y - (canvas.height - padY);
+      }
+
+      function drawPlatformerWorld(world) {
+        const cfg = world.config;
+        const p = (cfg.palette = cfg.palette || {});
+        const tile = world.tileSize;
+        const cam = world.camera;
+        const bg = cfg.backgroundColor || "#000";
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        for (let r = 0; r < world.rows; r++) {
+          for (let c = 0; c < world.cols; c++) {
+            const x = c * tile - cam.x;
+            const y = r * tile - cam.y;
+            if (x + tile < 0 || y + tile < 0 || x > canvas.width || y > canvas.height) continue;
+            if (world.solids[r][c]) {
+              ctx.fillStyle = p.wall || "#1f2933";
+              ctx.fillRect(x, y, tile, tile);
+            }
+            if (world.spikes[r][c]) {
+              ctx.fillStyle = p.hazard || "#ff5555";
+              ctx.beginPath();
+              ctx.moveTo(x, y + tile);
+              ctx.lineTo(x + tile * 0.5, y);
+              ctx.lineTo(x + tile, y + tile);
+              ctx.closePath();
+              ctx.fill();
+            }
+          }
+        }
+
+        const pl = world.player;
+        const px = pl.x - cam.x;
+        const py = pl.y - cam.y;
+        const r = tile * 0.35;
+        ctx.save();
+        const g = ctx.createRadialGradient(px, py, r * 0.2, px, py, r * 1.6);
+        g.addColorStop(0, "rgba(139, 233, 253, 0.9)");
+        g.addColorStop(1, "rgba(139, 233, 253, 0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(px, py, r * 1.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = p.player || "#8be9fd";
+        ctx.beginPath();
+        ctx.arc(px, py, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // -----------------------------------------------------------------------
+      // RACING family
+      // -----------------------------------------------------------------------
+      function buildRacingWorld(config) {
+        const rows = config.level.length;
+        const cols = config.level[0].length;
+        const tileSize = config.tileSize || 32;
+        canvas.width = cols * tileSize;
+        canvas.height = rows * tileSize;
+
+        const legend = config.legend || {};
+        let startPos = { x: tileSize * 1.5, y: tileSize * 1.5 };
+        const walls = [];
+        const checkpoints = [];
+        for (let r = 0; r < rows; r++) {
+          walls[r] = [];
+          for (let c = 0; c < cols; c++) {
+            walls[r][c] = false;
+            const t = legend[config.level[r][c]];
+            if (t === "wall") walls[r][c] = true;
+            if (t === "startFinish") {
+              startPos = { x: c * tileSize + tileSize / 2, y: r * tileSize + tileSize / 2 };
+            }
+            if (t === "checkpoint") checkpoints.push({ r, c });
+          }
+        }
+        const rcfg = config.racing || {};
+        return {
+          kind: "racing",
+          rows,
+          cols,
+          tileSize,
+          config,
+          walls,
+          checkpoints,
+          racingCfg: rcfg.car || {},
+          state: { laps: 0, elapsed: 0, passedCheckpoints: new Set() },
+          car: { x: startPos.x, y: startPos.y, angle: 0, speed: 0 }
+        };
+      }
+
+      function racingUpdate(world, dtMs) {
+        const carCfg = world.racingCfg;
+        const accel = carCfg.accel ?? 0.002;
+        const brake = carCfg.brake ?? 0.004;
+        const turnSpeed = carCfg.turnSpeed ?? 0.005;
+        const maxSpeed = carCfg.maxSpeed ?? 0.9;
+        const friction = carCfg.friction ?? 0.001;
+        const c = world.car;
+        const dt = dtMs;
+
+        const forward = keyState["ArrowUp"];
+        const backward = keyState["ArrowDown"];
+        const left = keyState["ArrowLeft"];
+        const right = keyState["ArrowRight"];
+
+        if (forward) c.speed += accel * dt;
+        if (backward) c.speed -= brake * dt;
+        if (c.speed > maxSpeed) c.speed = maxSpeed;
+        if (c.speed < -maxSpeed * 0.5) c.speed = -maxSpeed * 0.5;
+
+        if (c.speed !== 0) {
+          if (left) c.angle -= turnSpeed * dt * Math.sign(c.speed);
+          if (right) c.angle += turnSpeed * dt * Math.sign(c.speed);
+        }
+
+        if (!forward && !backward) {
+          if (c.speed > 0) c.speed -= friction * dt;
+          else if (c.speed < 0) c.speed += friction * dt;
+          if (Math.abs(c.speed) < 0.0001) c.speed = 0;
+        }
+
+        const nx = c.x + Math.cos(c.angle) * c.speed * dt;
+        const ny = c.y + Math.sin(c.angle) * c.speed * dt;
+        const tr = Math.floor(ny / world.tileSize);
+        const tc = Math.floor(nx / world.tileSize);
+        if (!isInsideRC(world.rows, world.cols, tr, tc) || world.walls[tr][tc]) {
+          c.speed = -c.speed * 0.3;
+        } else {
+          c.x = nx;
+          c.y = ny;
+        }
+
+        world.state.elapsed += dt;
+        const legend = world.config.legend || {};
+        const tileChar = world.config.level[tr]?.[tc];
+        const ttype = legend[tileChar];
+
+        if (ttype === "checkpoint") {
+          world.state.passedCheckpoints.add(tr + "," + tc);
+        }
+        if (ttype === "startFinish" && world.state.passedCheckpoints.size > 0) {
+          world.state.laps++;
+          world.state.passedCheckpoints.clear();
+          setStatus("Lap " + world.state.laps);
+        }
+      }
+
+      function drawRacingWorld(world) {
+        const cfg = world.config;
+        const p = (cfg.palette = cfg.palette || {});
+        const tile = world.tileSize;
+        const bg = cfg.backgroundColor || "#000";
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const legend = cfg.legend || {};
+        for (let r = 0; r < world.rows; r++) {
+          for (let c = 0; c < world.cols; c++) {
+            const x = c * tile;
+            const y = r * tile;
+            const t = legend[cfg.level[r][c]];
+            if (t === "track" || t === "startFinish") {
+              ctx.fillStyle = "#1b1d27";
+              ctx.fillRect(x, y, tile, tile);
+            } else if (t === "offTrack") {
+              ctx.fillStyle = "#050608";
+              ctx.fillRect(x, y, tile, tile);
+            } else if (t === "wall") {
+              ctx.fillStyle = p.wall || "#1f2933";
+              ctx.fillRect(x, y, tile, tile);
+            } else if (t === "checkpoint") {
+              ctx.fillStyle = "#44475a";
+              ctx.fillRect(x, y, tile, tile);
+            }
+          }
+        }
+
+        const c = world.car;
+        ctx.save();
+        ctx.translate(c.x, c.y);
+        ctx.rotate(c.angle);
+        ctx.fillStyle = p.player || "#8be9fd";
+        const w = tile * 0.7;
+        const h = tile * 0.4;
+        ctx.fillRect(-w / 2, -h / 2, w, h);
+        ctx.restore();
+      }
+
+      // -----------------------------------------------------------------------
+      // FACTORY / Factorio-like
+      // -----------------------------------------------------------------------
+      function buildFactoryWorld(config) {
+        const rows = config.level.length;
+        const cols = config.level[0].length;
+        const tileSize = config.tileSize || 32;
+        canvas.width = cols * tileSize;
+        canvas.height = rows * tileSize;
+
+        const legend = config.legend || {};
+        const fCfg = config.factory || {};
+        const buildingDefs = fCfg.buildings || {};
+        const grid = [];
+
+        for (let r = 0; r < rows; r++) {
+          grid[r] = [];
+          for (let c = 0; c < cols; c++) {
+            const ch = config.level[r][c];
+            const code = legend[ch];      // e.g. "beltRight", "minerIron"
+            const def = buildingDefs[code];
+            if (def) {
+              grid[r][c] = {
+                r,
+                c,
+                code,
+                def,
+                items: [],
+                progress: 0
+              };
+            } else {
+              grid[r][c] = null;
+            }
+          }
+        }
+
+        return {
+          kind: "factory",
+          rows,
+          cols,
+          tileSize,
+          config,
+          factoryCfg: fCfg,
+          grid,
+          tickMs: fCfg.tickMs || 200,
+          tickAccum: 0
+        };
+      }
+
+      function factoryTick(world) {
+        const grid = world.grid;
+        const rows = world.rows;
+        const cols = world.cols;
+        const fCfg = world.factoryCfg;
+        const recipes = fCfg.recipes || {};
+
+        // Miners
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const cell = grid[r][c];
+            if (!cell) continue;
+            if (cell.def.type === "miner" && cell.def.resource) {
+              cell.items.push({ type: cell.def.resource });
+            }
+          }
+        }
+
+        // Furnaces / Assemblers
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const cell = grid[r][c];
+            if (!cell) continue;
+            if (cell.def.type === "assembler" || cell.def.type === "furnace") {
+              const recipeName = cell.def.recipe;
+              const recipe = recipes[recipeName];
+              if (!recipe) continue;
+
+              if (cell.progress > 0) {
+                cell.progress -= 1;
+                if (cell.progress <= 0) {
+                  const out = recipe.out || {};
+                  for (const itemType in out) {
+                    const count = out[itemType];
+                    for (let i = 0; i < count; i++) {
+                      cell.items.push({ type: itemType });
+                    }
+                  }
+                }
+              } else {
+                const inp = recipe.in || {};
+                let canStart = true;
+                const counts = {};
+                for (const it of cell.items) {
+                  counts[it.type] = (counts[it.type] || 0) + 1;
+                }
+                for (const itemType in inp) {
+                  if ((counts[itemType] || 0) < inp[itemType]) {
+                    canStart = false;
+                    break;
+                  }
+                }
+                if (canStart) {
+                  const newItems = [];
+                  const needed = {};
+                  for (const itemType in inp) needed[itemType] = inp[itemType];
+                  for (const it of cell.items) {
+                    if (needed[it.type] > 0) {
+                      needed[it.type]--;
+                    } else {
+                      newItems.push(it);
+                    }
+                  }
+                  cell.items = newItems;
+                  cell.progress = recipe.timeSteps || 1;
+                }
+              }
+            }
+          }
+        }
+
+        // Belts
+        const newItemGrid = [];
+        for (let r = 0; r < rows; r++) {
+          newItemGrid[r] = [];
+          for (let c = 0; c < cols; c++) newItemGrid[r][c] = [];
+        }
+
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const cell = grid[r][c];
+            const itemsHere = (cell && cell.items) || [];
+            if (!cell || cell.def.type !== "belt") {
+              for (const it of itemsHere) newItemGrid[r][c].push(it);
+              continue;
+            }
+            const dir = cell.def.dir || [0, 1];
+            const dr = dir[0];
+            const dc = dir[1];
+            const nr = r + dr;
+            const nc = c + dc;
+            if (isInsideRC(rows, cols, nr, nc)) {
+              for (const it of itemsHere) newItemGrid[nr][nc].push(it);
+            } else {
+              for (const it of itemsHere) newItemGrid[r][c].push(it);
+            }
+          }
+        }
+
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const cell = grid[r][c];
+            if (cell) cell.items = newItemGrid[r][c];
+          }
+        }
+      }
+
+      function updateFactory(world, dtMs) {
+        world.tickAccum += dtMs;
+        while (world.tickAccum >= world.tickMs) {
+          world.tickAccum -= world.tickMs;
+          factoryTick(world);
+        }
+      }
+
+      function drawFactoryWorld(world) {
+        const cfg = world.config;
+        const p = (cfg.palette = cfg.palette || {});
+        const tile = world.tileSize;
+        const bg = cfg.backgroundColor || "#000";
+
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = p.floor || bg;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const grid = world.grid;
+        for (let r = 0; r < world.rows; r++) {
+          for (let c = 0; c < world.cols; c++) {
+            const cell = grid[r][c];
+            const x = c * tile;
+            const y = r * tile;
+
+            ctx.strokeStyle = "rgba(255,255,255,0.05)";
+            ctx.strokeRect(x + 0.5, y + 0.5, tile - 1, tile - 1);
+
+            if (!cell) continue;
+            const def = cell.def;
+
+            if (def.type === "belt") {
+              ctx.fillStyle = "#1f2933";
+              ctx.fillRect(x + 4, y + tile * 0.4, tile - 8, tile * 0.2);
+
+              ctx.save();
+              ctx.translate(x + tile / 2, y + tile / 2);
+              const dir = def.dir || [0, 1];
+              let angle = 0;
+              if (dir[0] === -1 && dir[1] === 0) angle = -Math.PI / 2;
+              else if (dir[0] === 1 && dir[1] === 0) angle = Math.PI / 2;
+              else if (dir[0] === 0 && dir[1] === -1) angle = Math.PI;
+              ctx.rotate(angle);
+              ctx.fillStyle = "#8be9fd";
+              ctx.beginPath();
+              ctx.moveTo(0, -4);
+              ctx.lineTo(tile * 0.2, 0);
+              ctx.lineTo(0, 4);
+              ctx.closePath();
+              ctx.fill();
+              ctx.restore();
+            } else if (def.type === "miner") {
+              ctx.fillStyle = "#44475a";
+              ctx.fillRect(x + 4, y + 4, tile - 8, tile - 8);
+            } else if (def.type === "assembler" || def.type === "furnace") {
+              ctx.fillStyle = "#bd93f9";
+              ctx.fillRect(x + 4, y + 4, tile - 8, tile - 8);
+            } else {
+              ctx.fillStyle = "#1f2933";
+              ctx.fillRect(x + 6, y + 6, tile - 12, tile - 12);
+            }
+
+            const items = cell.items || [];
+            let idx = 0;
+            for (const it of items) {
+              const ix = x + tile * 0.2 + (idx % 2) * tile * 0.3;
+              const iy = y + tile * 0.2 + Math.floor(idx / 2) * tile * 0.3;
+              idx++;
+              const colorMap = world.factoryCfg.itemColors || {};
+              ctx.fillStyle = colorMap[it.type] || "#f1fa8c";
+              ctx.beginPath();
+              ctx.arc(ix, iy, tile * 0.08, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // Extra system init & update (RPG / quests / sim / etc.)
+      // -----------------------------------------------------------------------
+      function initExtraSystems(world, config, systems) {
+        world.systems = {};
+
+        if (systems.includes("rpg") || config.rpg) {
+          world.rpg = initRpgState(config);
+          world.systems.rpg = true;
+        }
+        if (systems.includes("quests") || config.quests) {
+          if (!world.rpg) world.rpg = initRpgState(config);
+          world.systems.quests = true;
+        }
+        if (systems.includes("dialogue") || config.dialogue) {
+          world.dialogue = initDialogueState(config);
+          world.systems.dialogue = true;
+        }
+        if (systems.includes("story") || config.storyNodes) {
+          world.story = initStoryState(config);
+          world.systems.story = true;
+        }
+
+        if (systems.includes("roguelike") || config.roguelike) {
+          world.roguelike = { config: config.roguelike || {}, depth: 1 };
+          world.systems.roguelike = true;
+        }
+
+        if (systems.includes("stealth") || config.stealth) {
+          world.stealth = { config: config.stealth || {} };
+          world.systems.stealth = true;
+        }
+
+        if (systems.includes("towerDefense") || config.towerDefense) {
+          world.towerDefense = {
+            config: config.towerDefense || {},
+            towers: [],
+            creeps: []
+          };
+          world.systems.towerDefense = true;
+        }
+
+        if (systems.includes("rhythm") || config.rhythm) {
+          world.rhythm = { config: config.rhythm || {}, beatTime: 0 };
+          world.systems.rhythm = true;
+        }
+
+        if (systems.includes("exploration") || config.exploration) {
+          world.exploration = {
+            config: config.exploration || {},
+            discovered: new Set()
+          };
+          world.systems.exploration = true;
+        }
+
+        if (systems.includes("cards") || config.cards) {
+          world.cards = { config: config.cards || {}, deck: [], hand: [] };
+          world.systems.cards = true;
+        }
+
+        if (systems.includes("sim") || config.sim) {
+          world.sim = {
+            config: config.sim || {},
+            totals: {}
+          };
+          world.systems.sim = true;
+        }
+
+        if (systems.includes("ruleSystem") || config.rules2) {
+          world.rules2 = config.rules2 || [];
+          world.systems.ruleSystem = true;
+        }
+
+        if (systems.includes("combat2d") || config.combat2d) {
+          world.combat2d = { config: config.combat2d || {} };
+          world.systems.combat2d = true;
+        }
+
+        if (systems.includes("factory") || config.factory) {
+          world.systems.factory = true;
+        }
+      }
+
+      function updateExtraSystems(world, dtMs) {
+        if (!world.systems) return;
+
+        if (world.systems.quests) updateQuests(world);
+        if (world.systems.rhythm) {
+          world.rhythm.beatTime += dtMs;
+        }
+
+        // Simple SimCity-like totals
+        if (world.systems.sim && world.sim && world.sim.config) {
+          const simCfg = world.sim.config;
+          const legend = world.config.legend || {};
+          const bDefs = simCfg.buildings || {};
+          const totals = {};
+          for (let r = 0; r < world.rows; r++) {
+            for (let c = 0; c < world.cols; c++) {
+              const ch = world.config.level[r][c];
+              const code = legend[ch];
+              const b = bDefs[code];
+              if (!b) continue;
+              for (const k in b) {
+                totals[k] = (totals[k] || 0) + b[k];
+              }
+            }
+          }
+          world.sim.totals = totals;
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // Engine switching / main loop
+      // -----------------------------------------------------------------------
+      let currentConfig = null;
+      let world = null;
+      let engineMode = "turn";
+      let enginePrimary = "puzzle";
+      let lastTime = 0;
+
+      function applyConfigFromEditor() {
+        try {
+          const config = parseConfig();
+          currentConfig = config;
+
+          const engine = config.engine || {};
+          engineMode = engine.mode || "turn";
+          enginePrimary = engine.primary || engine.family || "puzzle";
+          const systems = engine.systems || [];
+
+          if (enginePrimary === "board") {
+            world = buildBoardWorld(clone(config));
+          } else if (enginePrimary === "shooter") {
+            world = buildShooterWorld(clone(config));
+          } else if (enginePrimary === "platformer") {
+            world = buildPlatformerWorld(clone(config));
+          } else if (enginePrimary === "racing") {
+            world = buildRacingWorld(clone(config));
+          } else if (enginePrimary === "factory") {
+            world = buildFactoryWorld(clone(config));
+          } else {
+            world = buildPuzzleWorld(clone(config));
+          }
+
+          initExtraSystems(world, config, systems);
+
+          if (world.kind === "board") drawBoardWorld(world);
+          else if (world.kind === "shooter") drawShooterWorld(world);
+          else if (world.kind === "platformer") drawPlatformerWorld(world);
+          else if (world.kind === "racing") drawRacingWorld(world);
+          else if (world.kind === "factory") drawFactoryWorld(world);
+          else drawPuzzleWorld(world);
+
+          setStatus("Config applied. mode=" + engineMode + ", primary=" + enginePrimary);
+        } catch (err) {
+          setStatus(err.message, true);
+        }
+      }
+
+      function handleKeyTurnBased(e) {
+        if (!world) return;
+        if (world.kind !== "puzzle") return;
+        const key = e.key;
+        let dr = 0, dc = 0;
+        if (key === "ArrowUp") dr = -1;
+        else if (key === "ArrowDown") dr = 1;
+        else if (key === "ArrowLeft") dc = -1;
+        else if (key === "ArrowRight") dc = 1;
+        else return;
+
+        e.preventDefault();
+        world = puzzleMovePlayer(world, dr, dc, currentConfig);
+        world = puzzleUpdateEnemies(world, currentConfig);
+        updateExtraSystems(world, 0);
+        drawPuzzleWorld(world);
+      }
+
+      canvas.addEventListener("click", e => {
+        if (!world || world.kind !== "board") return;
+        const rect = canvas.getBoundingClientRect();
+        const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+        const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+        world = boardHandleClick(world, x, y);
+        drawBoardWorld(world);
+      });
+
+      function loop(timestamp) {
+        const dtMs = timestamp - lastTime;
+        lastTime = timestamp;
+
+        if (world && engineMode === "realtime") {
+          if (world.kind === "shooter") {
+            shooterUpdate(world, dtMs);
+            updateExtraSystems(world, dtMs);
+            drawShooterWorld(world);
+          } else if (world.kind === "platformer") {
+            updatePlatformer(world, dtMs);
+            updateExtraSystems(world, dtMs);
+            drawPlatformerWorld(world);
+          } else if (world.kind === "racing") {
+            racingUpdate(world, dtMs);
+            updateExtraSystems(world, dtMs);
+            drawRacingWorld(world);
+          } else if (world.kind === "factory") {
+            updateFactory(world, dtMs);
+            updateExtraSystems(world, dtMs);
+            drawFactoryWorld(world);
+          } else if (world.kind === "puzzle") {
+            updateExtraSystems(world, dtMs);
+            drawPuzzleWorld(world);
+          }
+        }
+
+        requestAnimationFrame(loop);
+      }
+
+      applyBtn.addEventListener("click", applyConfigFromEditor);
+      resetBtn.addEventListener("click", () => {
+        codeEl.value = JSON.stringify(defaultConfig, null, 2);
+        applyConfigFromEditor();
+      });
+
+      window.addEventListener("keydown", e => {
+        if (engineMode === "turn") handleKeyTurnBased(e);
+      });
+
+      // boot
+      codeEl.value = JSON.stringify(defaultConfig, null, 2);
+      applyConfigFromEditor();
+      requestAnimationFrame(ts => {
+        lastTime = ts;
+        loop(ts);
+      });
+    })();
+  </script>
+</body>
+</html>
