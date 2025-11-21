@@ -2,19 +2,17 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Atomic Mini Game Engine</title>
+  <title>Atomic Mini Game Engine – Retro</title>
   <style>
     :root {
       --bg: #050608;
-      --panel: #0b0f16;
+      --panel: #05070c;
       --border: #111827;
       --accent: #8be9fd;
-      --accent-soft: rgba(139, 233, 253, 0.12);
       --accent-strong: #50fa7b;
       --danger: #ff5555;
       --text: #e5e7eb;
       --text-soft: #9ca3af;
-      --code-bg: #050608;
     }
 
     * {
@@ -26,7 +24,7 @@
     html, body {
       height: 100%;
       width: 100%;
-      background: radial-gradient(circle at top left, #111827 0, #050608 40%, #020308 100%);
+      background: #000;
       color: var(--text);
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
       overflow: hidden;
@@ -36,17 +34,16 @@
       display: flex;
       align-items: stretch;
       justify-content: stretch;
-      padding: 10px;
+      padding: 4px;
     }
 
     .root {
       display: flex;
       flex: 1;
-      gap: 10px;
-      background: rgba(5, 6, 8, 0.95);
-      border-radius: 12px;
-      border: 1px solid rgba(148, 163, 184, 0.1);
-      box-shadow: 0 18px 45px rgba(0, 0, 0, 0.75);
+      gap: 6px;
+      background: #050608;
+      border-radius: 6px;
+      border: 1px solid rgba(15, 23, 42, 0.9);
       overflow: hidden;
       min-height: 0;
     }
@@ -58,145 +55,150 @@
     }
 
     .left {
-      flex: 1.1;
-      background: radial-gradient(circle at top, #111827 0, #020308 55%);
-      border-right: 1px solid rgba(15, 23, 42, 0.9);
+      flex: 1.3;
+      background: #020308;
+      border-right: 1px solid #111827;
       position: relative;
-      padding: 10px;
-      gap: 8px;
+      padding: 4px;
+      gap: 4px;
     }
 
     .right {
-      flex: 1;
-      background: linear-gradient(145deg, #020308 0, #050815 60%, #020308 100%);
-      padding: 10px;
-      gap: 8px;
+      flex: 0.9;
+      background: #020308;
+      padding: 4px;
+      gap: 4px;
     }
 
     canvas {
       flex: 1;
       width: 100%;
-      border-radius: 10px;
-      border: 1px solid rgba(15, 23, 42, 1);
+      border-radius: 4px;
+      border: 1px solid #111827;
       background: #000;
-      box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.8),
-                  0 0 0 1px rgba(15, 23, 42, 0.9);
+      box-shadow: 0 0 0 1px #000;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
     }
 
     .status-pill {
+      position: absolute;
+      left: 10px;
+      bottom: 10px;
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      padding: 6px 10px;
+      padding: 3px 8px;
       border-radius: 999px;
       border: 1px solid rgba(55, 65, 81, 0.9);
-      background: radial-gradient(circle at top left, rgba(139, 233, 253, 0.12), rgba(15, 23, 42, 0.95));
+      background: #05070c;
       color: var(--text-soft);
-      font-size: 11px;
-      letter-spacing: 0.03em;
+      font-size: 10px;
+      letter-spacing: 0.05em;
       text-transform: uppercase;
-      align-self: flex-start;
+      pointer-events: none;
     }
 
     .status-pill::before {
       content: "";
-      width: 8px;
-      height: 8px;
+      width: 6px;
+      height: 6px;
       border-radius: 999px;
       background: var(--accent-strong);
-      box-shadow: 0 0 8px rgba(80, 250, 123, 0.9);
+      box-shadow: 0 0 4px rgba(80, 250, 123, 0.8);
     }
 
     .status-pill.error {
-      border-color: rgba(239, 68, 68, 0.8);
-      background: radial-gradient(circle at top left, rgba(248, 113, 113, 0.26), rgba(15, 23, 42, 0.95));
+      border-color: rgba(239, 68, 68, 0.9);
+      background: #1c0b0f;
       color: #fecaca;
     }
 
     .status-pill.error::before {
       background: var(--danger);
-      box-shadow: 0 0 8px rgba(248, 113, 113, 0.9);
+      box-shadow: 0 0 4px rgba(248, 113, 113, 0.9);
     }
 
     .toolbar {
       display: flex;
       align-items: center;
-      gap: 8px;
-      margin-bottom: 4px;
+      gap: 6px;
+      margin-bottom: 2px;
     }
 
     .toolbar button {
-      background: radial-gradient(circle at top, rgba(139, 233, 253, 0.22), rgba(15, 23, 42, 0.95));
+      background: #05070c;
       border-radius: 999px;
-      border: 1px solid rgba(148, 163, 184, 0.4);
-      padding: 6px 14px;
+      border: 1px solid #222;
+      padding: 4px 10px;
       color: var(--text);
-      font-size: 12px;
-      letter-spacing: 0.03em;
+      font-size: 10px;
+      letter-spacing: 0.06em;
       text-transform: uppercase;
       cursor: pointer;
-      transition: background 120ms ease, transform 80ms ease, box-shadow 120ms ease, border-color 120ms ease;
-      box-shadow: 0 0 0 1px rgba(15, 23, 42, 1),
-                  0 12px 25px rgba(0, 0, 0, 0.7);
+      transition: background 80ms ease, transform 60ms ease, box-shadow 80ms ease, border-color 80ms ease;
+      box-shadow: 0 0 0 1px #000;
+    }
+
+    .toolbar button:nth-child(1) {
+      border-color: var(--accent);
+      color: var(--accent);
     }
 
     .toolbar button:nth-child(2) {
-      background: radial-gradient(circle at top, rgba(248, 250, 252, 0.06), rgba(15, 23, 42, 0.95));
       color: var(--text-soft);
     }
 
     .toolbar button:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.7),
-                  0 18px 35px rgba(0, 0, 0, 0.8);
+      background: #090c12;
+      transform: translateY(-0.5px);
+      box-shadow: 0 0 0 1px #111;
     }
 
     .toolbar button:active {
       transform: translateY(0);
-      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.8);
+      box-shadow: 0 0 0 1px #000;
     }
 
     .toolbar button:focus-visible {
-      outline: 2px solid var(--accent);
-      outline-offset: 2px;
+      outline: 1px solid var(--accent);
+      outline-offset: 1px;
     }
 
     textarea#code {
       flex: 1;
       width: 100%;
+      min-height: 0;
       resize: none;
-      border-radius: 10px;
-      border: 1px solid rgba(31, 41, 55, 1);
-      background: radial-gradient(circle at top left, rgba(15, 23, 42, 0.95), #020308);
+      border-radius: 4px;
+      border: 1px solid #111827;
+      background: #020308;
       color: var(--text);
-      padding: 10px 12px;
+      padding: 6px 8px;
       font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      font-size: 12px;
-      line-height: 1.4;
+      font-size: 11px;
+      line-height: 1.25;
       tab-size: 2;
       white-space: pre;
       overflow: auto;
-      box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.9);
     }
 
     textarea#code:focus-visible {
       outline: none;
-      border-color: rgba(139, 233, 253, 0.9);
-      box-shadow:
-        0 0 0 1px rgba(139, 233, 253, 0.8),
-        0 0 25px rgba(139, 233, 253, 0.25);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent);
     }
 
     @media (max-width: 900px) {
       body {
-        padding: 4px;
+        padding: 2px;
       }
       .root {
         flex-direction: column;
       }
       .left {
         border-right: none;
-        border-bottom: 1px solid rgba(15, 23, 42, 0.9);
+        border-bottom: 1px solid #111827;
       }
     }
   </style>
@@ -220,7 +222,7 @@
 
   <script>
     (function () {
-      // Polyfill for roundRect (used for atomic rounded tiles)
+      // Polyfill for roundRect (for tile rounding)
       if (typeof CanvasRenderingContext2D !== "undefined" &&
           !CanvasRenderingContext2D.prototype.roundRect) {
         CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
@@ -243,11 +245,12 @@
         };
       }
 
-      // -----------------------------------------------------------------------
-      // DOM & small helpers
-      // -----------------------------------------------------------------------
+      // DOM and canvas setup
       const canvas = document.getElementById("game");
       const ctx = canvas.getContext("2d");
+      ctx.imageSmoothingEnabled = false;
+      canvas.style.imageRendering = "pixelated";
+
       const codeEl = document.getElementById("code");
       const applyBtn = document.getElementById("applyBtn");
       const resetBtn = document.getElementById("resetBtn");
@@ -287,25 +290,22 @@
         return r >= 0 && r < rows && c >= 0 && c < cols;
       }
 
-      // Key state for realtime modes
       const keyState = {};
       window.addEventListener("keydown", e => keyState[e.key] = true);
       window.addEventListener("keyup", e => keyState[e.key] = false);
 
-      // -----------------------------------------------------------------------
-      // Default config (puzzle + simple RPG/quest)
-      // -----------------------------------------------------------------------
+      // Default config
       const defaultConfig = {
-        tileSize: 40,
-        backgroundColor: "#050608",
+        tileSize: 32,
+        backgroundColor: "#000000",
         palette: {
-          floor: "#050608",
-          wall: "#1f2933",
+          floor: "#000000",
+          wall: "#1c1f2b",
           player: "#8be9fd",
           box: "#ffb86c",
           boxOnGoal: "#50fa7b",
           goal: "#6272a4",
-          grid: "rgba(255,255,255,0.04)",
+          grid: "rgba(255,255,255,0.08)",
           coin: "#f1fa8c",
           exit: "#bd93f9",
           hazard: "#ff5555",
@@ -316,8 +316,8 @@
           teleporter: "#8be9fd"
         },
         engine: {
-          mode: "turn",             // "turn" | "realtime"
-          primary: "puzzle",        // "puzzle" | "board" | "shooter" | "platformer" | "racing" | "factory"
+          mode: "turn",
+          primary: "puzzle",
           systems: ["puzzle", "rpg", "quests"],
           tickRate: 60
         },
@@ -337,14 +337,14 @@
           "O": "exit"
         },
         level: [
-          "##########",
-          "#..C..O..#",
-          "#..B..X..#",
-          "#........#",
-          "#....@...#",
-          "#........#",
-          "#..B..X..#",
-          "##########"
+          "########",
+          "#..C.O.#",
+          "#..B.X.#",
+          "#......#",
+          "#..@...#",
+          "#......#",
+          "#..B.X.#",
+          "########"
         ],
         rules: {
           type: "collectThenExit",
@@ -361,8 +361,8 @@
             touchEnemy: true
           },
           text: {
-            win: "All cargo aligned, all orbs collected, exit reached. Simulation complete.",
-            lose: "System integrity failure."
+            win: "Simulation complete.",
+            lose: "System failure."
           }
         },
         rpg: {
@@ -380,9 +380,7 @@
         ]
       };
 
-      // -----------------------------------------------------------------------
-      // Base grid drawing
-      // -----------------------------------------------------------------------
+      // Base grid drawing (retro hard edges)
       function drawBaseGrid(w) {
         const cfg = w.config;
         const p = (cfg.palette = cfg.palette || {});
@@ -414,9 +412,7 @@
         }
       }
 
-      // -----------------------------------------------------------------------
-      // RPG / Quests / Dialogue / Story
-      // -----------------------------------------------------------------------
+      // RPG / Quests
       function initRpgState(config) {
         return {
           stats: Object.assign(
@@ -435,15 +431,14 @@
         for (const q of world.rpg.quests) {
           if (q.state === "locked" && (!q.startFlag || flags[q.startFlag])) {
             q.state = "active";
-            if (q.startFlag) setStatus("Quest started: " + q.title);
           } else if (q.state === "active" && q.completeFlag && flags[q.completeFlag]) {
             q.state = "done";
             if (q.reward && q.reward.xp) world.rpg.stats.xp += q.reward.xp;
-            setStatus("Quest complete: " + q.title);
           }
         }
       }
 
+      // Dialogue / Story stubs (kept minimal)
       function initDialogueState(config) {
         if (!config.dialogue) return null;
         return {
@@ -455,7 +450,6 @@
       function startDialogue(world, nodeId) {
         if (!world.dialogue || !world.dialogue.nodes[nodeId]) return;
         world.dialogue.current = nodeId;
-        setStatus("Dialogue: " + nodeId);
       }
 
       function initStoryState(config) {
@@ -464,9 +458,7 @@
           : null;
       }
 
-      // -----------------------------------------------------------------------
-      // PUZZLE family
-      // -----------------------------------------------------------------------
+      // PUZZLE
       function buildPuzzleWorld(config) {
         const rows = config.level.length;
         const cols = config.level[0].length;
@@ -522,46 +514,19 @@
             const ch = config.level[r][c];
             const type = legend[ch];
             switch (type) {
-              case "wall":
-                w.walls[r][c] = true;
-                break;
-              case "box":
-                w.boxes[r][c] = true;
-                break;
-              case "goal":
-                w.goals[r][c] = true;
-                break;
-              case "player":
-                w.player = { r, c };
-                break;
-              case "coin":
-                w.coins[r][c] = true;
-                w.stats.coinsRemaining++;
-                break;
-              case "exit":
-                w.exits[r][c] = true;
-                break;
-              case "hazard":
-                w.hazards[r][c] = true;
-                break;
-              case "door":
-                w.doors[r][c] = true;
-                break;
-              case "key":
-                w.keys[r][c] = true;
-                break;
-              case "teleporter":
-                w.teleporters.push({ r, c });
-                break;
+              case "wall": w.walls[r][c] = true; break;
+              case "box": w.boxes[r][c] = true; break;
+              case "goal": w.goals[r][c] = true; break;
+              case "player": w.player = { r, c }; break;
+              case "coin": w.coins[r][c] = true; w.stats.coinsRemaining++; break;
+              case "exit": w.exits[r][c] = true; break;
+              case "hazard": w.hazards[r][c] = true; break;
+              case "door": w.doors[r][c] = true; break;
+              case "key": w.keys[r][c] = true; break;
+              case "teleporter": w.teleporters.push({ r, c }); break;
               case "enemy":
-              case "enemyH":
-                w.enemies.push({ r, c, axis: "h", dir: 1 });
-                break;
-              case "enemyV":
-                w.enemies.push({ r, c, axis: "v", dir: 1 });
-                break;
-              default:
-                break;
+              case "enemyH": w.enemies.push({ r, c, axis: "h", dir: 1 }); break;
+              case "enemyV": w.enemies.push({ r, c, axis: "v", dir: 1 }); break;
             }
           }
         }
@@ -578,9 +543,7 @@
         return false;
       }
 
-      function puzzleIsBlockedForEnemy(w, r, c) {
-        return puzzleIsBlocked(w, r, c);
-      }
+      function puzzleIsBlockedForEnemy(w, r, c) { return puzzleIsBlocked(w, r, c); }
 
       function puzzleCheckAllGoalsFilled(w) {
         for (let r = 0; r < w.rows; r++) {
@@ -597,23 +560,19 @@
         let index = -1;
         for (let i = 0; i < w.teleporters.length; i++) {
           const t = w.teleporters[i];
-          if (t.r === r && t.c === c) {
-            index = i;
-            break;
-          }
+          if (t.r === r && t.c === c) { index = i; break; }
         }
         if (index === -1) return;
         const nextIndex = (index + 1) % w.teleporters.length;
         const dest = w.teleporters[nextIndex];
         w.player.r = dest.r;
         w.player.c = dest.c;
-        setStatus("Teleported.");
       }
 
       function puzzleLoseAndReset(w, config, reason) {
         const rules = w.config.rules || {};
         const textLose = (rules.text && rules.text.lose) || "You lost.";
-        setStatus(reason || textLose, true);
+        setStatus(textLose + (reason ? " (" + reason + ")" : ""), true);
         return buildPuzzleWorld(clone(config));
       }
 
@@ -634,9 +593,7 @@
         if (winRules.allGoalsFilled) win = win || puzzleCheckAllGoalsFilled(w);
         if (winRules.collectAllCoins) win = win || (w.stats.coinsRemaining === 0);
         if (winRules.reachExit) win = win || onExit;
-        if (winRules.collectAllCoinsAndExit) {
-          win = win || (w.stats.coinsRemaining === 0 && onExit);
-        }
+        if (winRules.collectAllCoinsAndExit) win = win || (w.stats.coinsRemaining === 0 && onExit);
 
         if (win) {
           w.completed = true;
@@ -651,36 +608,28 @@
         const rules = w.config.rules || {};
         const allowPushBoxes = rules.allowPushBoxes !== false;
 
-        const pr = w.player.r;
-        const pc = w.player.c;
-        const nr = pr + dr;
-        const nc = pc + dc;
+        const pr = w.player.r, pc = w.player.c;
+        const nr = pr + dr, nc = pc + dc;
         if (!isInsideRC(w.rows, w.cols, nr, nc)) return w;
 
         if (w.doors[nr][nc]) {
           if (rules.needsKeyForDoors && w.stats.keys > 0) {
             w.doors[nr][nc] = false;
             w.stats.keys--;
-            setStatus("Door opened.");
           } else if (!rules.needsKeyForDoors) {
             w.doors[nr][nc] = false;
-            setStatus("Door opened.");
           } else {
-            setStatus("Door locked. Need a key.", true);
             return w;
           }
         }
 
         if (w.boxes[nr][nc]) {
           if (!allowPushBoxes) return w;
-          const br = nr + dr;
-          const bc = nc + dc;
+          const br = nr + dr, bc = nc + dc;
           if (puzzleIsBlocked(w, br, bc)) return w;
           w.boxes[nr][nc] = false;
           w.boxes[br][bc] = true;
-        } else if (puzzleIsBlocked(w, nr, nc)) {
-          return w;
-        }
+        } else if (puzzleIsBlocked(w, nr, nc)) return w;
 
         w.player.r = nr;
         w.player.c = nc;
@@ -688,23 +637,13 @@
 
         puzzleTeleportPlayerIfNeeded(w);
 
-        const r = w.player.r;
-        const c = w.player.c;
-
-        if (w.keys[r][c]) {
-          w.keys[r][c] = false;
-          w.stats.keys++;
-          setStatus("Key collected.");
-        }
-        if (w.coins[r][c]) {
-          w.coins[r][c] = false;
-          w.stats.coinsRemaining--;
-          setStatus("Coin collected.");
-        }
+        const r = w.player.r, c = w.player.c;
+        if (w.keys[r][c]) { w.keys[r][c] = false; w.stats.keys++; }
+        if (w.coins[r][c]) { w.coins[r][c] = false; w.stats.coinsRemaining--; }
 
         const loseRules = (rules.lose || {});
         if (w.hazards[r][c] && loseRules.touchHazard !== false) {
-          return puzzleLoseAndReset(w, currentConfigRef, "You stepped on a hazard.");
+          return puzzleLoseAndReset(w, currentConfigRef, "Hazard");
         }
         puzzleEvaluateWin(w);
         return w;
@@ -717,28 +656,20 @@
 
         for (const e of w.enemies) {
           let dr = 0, dc = 0;
-          if (e.axis === "h") dc = e.dir;
-          else dr = e.dir;
+          if (e.axis === "h") dc = e.dir; else dr = e.dir;
           let nr = e.r + dr, nc = e.c + dc;
           if (!isInsideRC(w.rows, w.cols, nr, nc) || puzzleIsBlockedForEnemy(w, nr, nc)) {
             e.dir = -e.dir;
-            if (e.axis === "h") dc = e.dir;
-            else dr = e.dir;
-            nr = e.r + dr;
-            nc = e.c + dc;
+            if (e.axis === "h") dc = e.dir; else dr = e.dir;
+            nr = e.r + dr; nc = e.c + dc;
             if (!isInsideRC(w.rows, w.cols, nr, nc) || puzzleIsBlockedForEnemy(w, nr, nc)) {
-              nr = e.r;
-              nc = e.c;
+              nr = e.r; nc = e.c;
             }
           }
-          e.r = nr;
-          e.c = nc;
+          e.r = nr; e.c = nc;
 
-          if (loseRules.touchEnemy !== false &&
-              w.player &&
-              e.r === w.player.r &&
-              e.c === w.player.c) {
-            return puzzleLoseAndReset(w, currentConfigRef, "You were caught by an enemy.");
+          if (loseRules.touchEnemy !== false && w.player && e.r === w.player.r && e.c === w.player.c) {
+            return puzzleLoseAndReset(w, currentConfigRef, "Enemy");
           }
         }
         return w;
@@ -751,231 +682,121 @@
 
         drawBaseGrid(w);
 
-        // goals
         const goalColor = p.goal || "#6272a4";
         for (let r = 0; r < w.rows; r++) {
           for (let c = 0; c < w.cols; c++) {
             if (w.goals[r][c]) {
-              const x = c * tile;
-              const y = r * tile;
-              const pad = tile * 0.25;
+              const x = c * tile, y = r * tile;
               ctx.fillStyle = goalColor;
-              ctx.beginPath();
-              ctx.roundRect(x + pad, y + pad, tile - pad * 2, tile - pad * 2, tile * 0.2);
-              ctx.fill();
+              ctx.fillRect(x + 4, y + 4, tile - 8, tile - 8);
             }
           }
         }
 
-        // hazards
         const hazardColor = p.hazard || "#ff5555";
         for (let r = 0; r < w.rows; r++) {
           for (let c = 0; c < w.cols; c++) {
             if (w.hazards[r][c]) {
-              const x = c * tile;
-              const y = r * tile;
+              const x = c * tile, y = r * tile;
               ctx.fillStyle = hazardColor;
-              ctx.beginPath();
-              const spikeCount = 4;
-              for (let i = 0; i < spikeCount; i++) {
-                const sx = x + (i + 0.5) * (tile / spikeCount);
-                const sy = y + tile * 0.25;
-                ctx.moveTo(sx - tile * 0.1, sy + tile * 0.3);
-                ctx.lineTo(sx, sy);
-                ctx.lineTo(sx + tile * 0.1, sy + tile * 0.3);
-              }
-              ctx.fill();
+              ctx.fillRect(x + 6, y + 6, tile - 12, tile - 12);
             }
           }
         }
 
-        // exits
         const exitColor = p.exit || "#bd93f9";
         for (let r = 0; r < w.rows; r++) {
           for (let c = 0; c < w.cols; c++) {
             if (w.exits[r][c]) {
-              const x = c * tile;
-              const y = r * tile;
-              const pad = tile * 0.2;
+              const x = c * tile, y = r * tile;
               ctx.strokeStyle = exitColor;
               ctx.lineWidth = 2;
-              ctx.beginPath();
-              ctx.roundRect(x + pad, y + pad, tile - pad * 2, tile - pad * 2, tile * 0.3);
-              ctx.stroke();
+              ctx.strokeRect(x + 4, y + 4, tile - 8, tile - 8);
             }
           }
         }
 
-        // doors
-        for (let r = 0; r < w.rows; r++) {
-          for (let c = 0; c < w.cols; c++) {
-            if (w.doors[r][c]) {
-              const x = c * tile;
-              const y = r * tile;
-              const pad = tile * 0.12;
-              ctx.fillStyle = p.doorLocked || "#44475a";
-              ctx.beginPath();
-              ctx.roundRect(x + pad, y + pad, tile - pad * 2, tile - pad * 2, tile * 0.18);
-              ctx.fill();
-            }
-          }
-        }
-
-        // walls
-        const wallColor = p.wall || "#1f2933";
+        const wallColor = p.wall || "#1c1f2b";
         for (let r = 0; r < w.rows; r++) {
           for (let c = 0; c < w.cols; c++) {
             if (w.walls[r][c]) {
-              const x = c * tile;
-              const y = r * tile;
-              const grad = ctx.createLinearGradient(x, y, x + tile, y + tile);
-              grad.addColorStop(0, wallColor);
-              grad.addColorStop(1, "#000000");
-              ctx.fillStyle = grad;
+              const x = c * tile, y = r * tile;
+              ctx.fillStyle = wallColor;
               ctx.fillRect(x, y, tile, tile);
             }
           }
         }
 
-        // coins
         const coinColor = p.coin || "#f1fa8c";
         for (let r = 0; r < w.rows; r++) {
           for (let c = 0; c < w.cols; c++) {
             if (w.coins[r][c]) {
               const x = c * tile + tile / 2;
               const y = r * tile + tile / 2;
-              const radius = tile * 0.22;
-              ctx.save();
-              const g = ctx.createRadialGradient(
-                x, y, radius * 0.2,
-                x, y, radius * 1.4
-              );
-              g.addColorStop(0, "rgba(241, 250, 140, 1)");
-              g.addColorStop(1, "rgba(241, 250, 140, 0)");
-              ctx.fillStyle = g;
-              ctx.beginPath();
-              ctx.arc(x, y, radius * 1.4, 0, Math.PI * 2);
-              ctx.fill();
               ctx.fillStyle = coinColor;
-              ctx.beginPath();
-              ctx.arc(x, y, radius, 0, Math.PI * 2);
-              ctx.fill();
-              ctx.restore();
+              ctx.fillRect(x - 3, y - 3, 6, 6);
             }
           }
         }
 
-        // keys
         const keyColor = p.key || "#50fa7b";
         for (let r = 0; r < w.rows; r++) {
           for (let c = 0; c < w.cols; c++) {
             if (w.keys[r][c]) {
-              const x = c * tile + tile * 0.3;
-              const y = r * tile + tile * 0.4;
-              ctx.strokeStyle = keyColor;
-              ctx.lineWidth = 2;
-              ctx.beginPath();
-              ctx.arc(x, y, tile * 0.15, 0, Math.PI * 2);
-              ctx.stroke();
-              ctx.beginPath();
-              ctx.moveTo(x + tile * 0.15, y);
-              ctx.lineTo(x + tile * 0.35, y);
-              ctx.moveTo(x + tile * 0.3, y);
-              ctx.lineTo(x + tile * 0.3, y + tile * 0.2);
-              ctx.stroke();
+              const x = c * tile + tile / 2;
+              const y = r * tile + tile / 2;
+              ctx.fillStyle = keyColor;
+              ctx.fillRect(x - 5, y - 2, 10, 4);
             }
           }
         }
 
-        // teleporters
         const teleColor = p.teleporter || "#8be9fd";
         for (const t of w.teleporters) {
           const x = t.c * tile + tile / 2;
           const y = t.r * tile + tile / 2;
-          const r = tile * 0.3;
-          ctx.save();
           ctx.strokeStyle = teleColor;
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.arc(x, y, r, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.arc(x, y, r * 0.5, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.restore();
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x - 6, y - 6, 12, 12);
         }
 
-        // boxes
         for (let r = 0; r < w.rows; r++) {
           for (let c = 0; c < w.cols; c++) {
             if (w.boxes[r][c]) {
-              const x = c * tile;
-              const y = r * tile;
+              const x = c * tile, y = r * tile;
               const onGoal = w.goals[r][c];
-              const color = onGoal
-                ? p.boxOnGoal || p.box || "#50fa7b"
-                : p.box || "#ffb86c";
-              const pad = tile * 0.18;
+              const color = onGoal ? p.boxOnGoal || p.box || "#50fa7b" : p.box || "#ffb86c";
               ctx.fillStyle = color;
-              ctx.beginPath();
-              ctx.roundRect(x + pad, y + pad, tile - pad * 2, tile - pad * 2, tile * 0.12);
-              ctx.fill();
-              ctx.strokeStyle = "rgba(0,0,0,0.35)";
-              ctx.lineWidth = 1;
-              ctx.beginPath();
-              ctx.roundRect(x + pad, y + pad, tile - pad * 2, tile - pad * 2, tile * 0.12);
-              ctx.stroke();
+              ctx.fillRect(x + 4, y + 4, tile - 8, tile - 8);
+              ctx.strokeStyle = "#000";
+              ctx.strokeRect(x + 4, y + 4, tile - 8, tile - 8);
             }
           }
         }
 
-        // enemies
         const enemyColor = p.enemy || "#ff79c6";
         for (const e of w.enemies) {
           const x = e.c * tile + tile / 2;
           const y = e.r * tile + tile / 2;
-          const r = tile * 0.25;
-          ctx.save();
           ctx.fillStyle = enemyColor;
-          ctx.beginPath();
-          ctx.arc(x, y, r, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
+          ctx.fillRect(x - 5, y - 5, 10, 10);
         }
 
-        // player
         if (w.player) {
           const x = w.player.c * tile + tile / 2;
           const y = w.player.r * tile + tile / 2;
-          const r = tile * 0.3;
           const playerColor = p.player || "#8be9fd";
-          ctx.save();
-          const g = ctx.createRadialGradient(
-            x, y, r * 0.2,
-            x, y, r * 1.6
-          );
-          g.addColorStop(0, "rgba(139, 233, 253, 0.9)");
-          g.addColorStop(1, "rgba(139, 233, 253, 0)");
-          ctx.fillStyle = g;
-          ctx.beginPath();
-          ctx.arc(x, y, r * 1.6, 0, Math.PI * 2);
-          ctx.fill();
           ctx.fillStyle = playerColor;
-          ctx.beginPath();
-          ctx.arc(x, y, r, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
+          ctx.fillRect(x - 6, y - 6, 12, 12);
         }
       }
 
-      // -----------------------------------------------------------------------
-      // BOARD family (chess / draughts / tactics)
-      // -----------------------------------------------------------------------
+      // BOARD
       function buildBoardWorld(config) {
         const rows = config.level.length;
         const cols = config.level[0].length;
         const boardCfg = config.board || {};
-        const cell = boardCfg.cellSize || config.tileSize || 48;
+        const cell = boardCfg.cellSize || config.tileSize || 32;
 
         canvas.width = cols * cell;
         canvas.height = rows * cell;
@@ -1008,11 +829,7 @@
       function boardTileAt(world, r, c) {
         return world.pieces.find(p => p.r === r && p.c === c) || null;
       }
-
-      function boardIsInside(world, r, c) {
-        return isInsideRC(world.rows, world.cols, r, c);
-      }
-
+      function boardIsInside(world, r, c) { return isInsideRC(world.rows, world.cols, r, c); }
       function boardComputeLegalMoves(world, piece) {
         const def = world.boardCfg.pieces[piece.symbol];
         if (!def || !def.move) return [];
@@ -1022,8 +839,7 @@
         const team = piece.team;
         const moves = [];
         for (const d of dirs) {
-          const dr = d[0];
-          const dc = d[1];
+          const dr = d[0], dc = d[1];
           for (let step = 1; step <= maxSteps; step++) {
             const nr = piece.r + dr * step;
             const nc = piece.c + dc * step;
@@ -1040,17 +856,14 @@
         }
         return moves;
       }
-
       function boardNextTeam(world) {
         const order = world.boardCfg.turnOrder || world.boardCfg.teams || ["white", "black"];
         world.currentTeamIndex = (world.currentTeamIndex + 1) % order.length;
       }
-
       function boardCurrentTeam(world) {
         const order = world.boardCfg.turnOrder || world.boardCfg.teams || ["white", "black"];
         return order[world.currentTeamIndex % order.length];
       }
-
       function boardHandleClick(world, x, y) {
         const cell = world.tileSize;
         const c = Math.floor(x / cell);
@@ -1063,7 +876,6 @@
         if (clickedPiece && clickedPiece.team === currentTeam) {
           world.selected = clickedPiece;
           world.legalMoves = boardComputeLegalMoves(world, clickedPiece);
-          setStatus("Selected " + clickedPiece.symbol + " (" + currentTeam + ")");
           return world;
         }
 
@@ -1079,10 +891,9 @@
 
             const captureSym = world.boardCfg.win && world.boardCfg.win.captureSymbol;
             if (captureSym && (!world.pieces.find(p => p.symbol === captureSym))) {
-              setStatus("Victory: captured " + captureSym);
+              setStatus("Victory", false);
             } else {
               boardNextTeam(world);
-              setStatus("Moved. Next: " + boardCurrentTeam(world));
             }
 
             world.selected = null;
@@ -1090,12 +901,10 @@
             return world;
           }
         }
-
         world.selected = null;
         world.legalMoves = [];
         return world;
       }
-
       function drawBoardWorld(world) {
         const cell = world.tileSize;
         const cfg = world.config;
@@ -1109,8 +918,7 @@
         const dark = p.wall || "#050608";
         for (let r = 0; r < world.rows; r++) {
           for (let c = 0; c < world.cols; c++) {
-            const x = c * cell;
-            const y = r * cell;
+            const x = c * cell, y = r * cell;
             const isLight = (r + c) % 2 === 0;
             ctx.fillStyle = isLight ? light : dark;
             ctx.fillRect(x, y, cell, cell);
@@ -1118,17 +926,15 @@
         }
 
         if (world.selected) {
-          ctx.fillStyle = "rgba(80, 250, 123, 0.2)";
+          ctx.fillStyle = "rgba(80,250,123,0.3)";
           for (const m of world.legalMoves) {
-            ctx.beginPath();
-            ctx.rect(m.c * cell, m.r * cell, cell, cell);
-            ctx.fill();
+            ctx.fillRect(m.c * cell, m.r * cell, cell, cell);
           }
         }
 
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.font = Math.floor(cell * 0.5) + "px system-ui, sans-serif";
+        ctx.font = Math.floor(cell * 0.6) + "px monospace";
 
         for (const piece of world.pieces) {
           const def = world.boardCfg.pieces[piece.symbol] || {};
@@ -1137,17 +943,12 @@
           const x = piece.c * cell + cell / 2;
           const y = piece.r * cell + cell / 2;
 
-          ctx.fillStyle = "rgba(0,0,0,0.35)";
-          ctx.beginPath();
-          ctx.arc(x, y + cell * 0.1, cell * 0.35, Math.PI, 0);
-          ctx.fill();
-
           ctx.fillStyle = color;
           ctx.beginPath();
-          ctx.arc(x, y, cell * 0.32, 0, Math.PI * 2);
+          ctx.rect(x - cell * 0.35, y - cell * 0.35, cell * 0.7, cell * 0.7);
           ctx.fill();
 
-          ctx.fillStyle = "#050608";
+          ctx.fillStyle = "#000";
           ctx.fillText(piece.symbol, x, y + 1);
         }
 
@@ -1157,15 +958,11 @@
           const y = s.r * cell + cell / 2;
           ctx.strokeStyle = "#8be9fd";
           ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(x, y, cell * 0.35, 0, Math.PI * 2);
-          ctx.stroke();
+          ctx.strokeRect(x - cell * 0.4, y - cell * 0.4, cell * 0.8, cell * 0.8);
         }
       }
 
-      // -----------------------------------------------------------------------
-      // SHOOTER family
-      // -----------------------------------------------------------------------
+      // SHOOTER
       function buildShooterWorld(config) {
         const rows = config.level.length;
         const cols = config.level[0].length;
@@ -1182,9 +979,8 @@
           for (let c = 0; c < cols; c++) {
             walls[r][c] = false;
             const type = legend[config.level[r][c]];
-            if (type === "wall") {
-              walls[r][c] = true;
-            } else if (type === "player") {
+            if (type === "wall") walls[r][c] = true;
+            else if (type === "player") {
               player = { x: c * tileSize + tileSize / 2, y: r * tileSize + tileSize / 2 };
             } else if (type && type.startsWith("enemy")) {
               enemies.push({ x: c * tileSize + tileSize / 2, y: r * tileSize + tileSize / 2, hp: 1 });
@@ -1205,8 +1001,8 @@
           enemies,
           bullets: [],
           shooterCfg: {
-            playerSpeed: shooterCfg.playerSpeed || 6,
-            bulletSpeed: shooterCfg.bulletSpeed || 14,
+            playerSpeed: shooterCfg.playerSpeed || 4,
+            bulletSpeed: shooterCfg.bulletSpeed || 8,
             fireCooldownMs: shooterCfg.fireCooldownMs || 150
           },
           lastFireDir: { x: 1, y: 0 },
@@ -1226,14 +1022,12 @@
 
         if (vx !== 0 || vy !== 0) {
           const len = Math.hypot(vx, vy);
-          vx /= len;
-          vy /= len;
+          vx /= len; vy /= len;
           world.player.x += vx * speed;
           world.player.y += vy * speed;
         }
 
-        let fdX = world.lastFireDir.x;
-        let fdY = world.lastFireDir.y;
+        let fdX = world.lastFireDir.x, fdY = world.lastFireDir.y;
         if (keyState["ArrowUp"]) { fdX = 0; fdY = -1; }
         else if (keyState["ArrowDown"]) { fdX = 0; fdY = 1; }
         else if (keyState["ArrowLeft"]) { fdX = -1; fdY = 0; }
@@ -1248,8 +1042,8 @@
           world.bullets.push({
             x: world.player.x,
             y: world.player.y,
-            vx: world.lastFireDir.x * cfg.bulletSpeed,
-            vy: world.lastFireDir.y * cfg.bulletSpeed
+            vx: world.lastFireDir.x * cfg.bulletSpeed / 4,
+            vy: world.lastFireDir.y * cfg.bulletSpeed / 4
           });
         }
 
@@ -1269,25 +1063,10 @@
           for (const e of world.enemies) {
             if (e.hp <= 0) continue;
             const d = Math.hypot(e.x - b.x, e.y - b.y);
-            if (d < world.tileSize * 0.4) {
-              e.hp = 0;
-            }
+            if (d < world.tileSize * 0.3) e.hp = 0;
           }
         }
         world.enemies = world.enemies.filter(e => e.hp > 0);
-
-        for (const e of world.enemies) {
-          const dx = world.player.x - e.x;
-          const dy = world.player.y - e.y;
-          const d = Math.hypot(dx, dy) || 1;
-          const step = 1.5;
-          e.x += (dx / d) * step;
-          e.y += (dy / d) * step;
-          const dist = Math.hypot(e.x - world.player.x, e.y - world.player.y);
-          if (dist < world.tileSize * 0.4) {
-            setStatus("Shooter: hit by enemy.", true);
-          }
-        }
       }
 
       function drawShooterWorld(world) {
@@ -1297,16 +1076,12 @@
 
         drawBaseGrid(world);
 
-        const wallColor = p.wall || "#1f2933";
+        const wallColor = p.wall || "#1c1f2b";
         for (let r = 0; r < world.rows; r++) {
           for (let c = 0; c < world.cols; c++) {
             if (world.walls[r][c]) {
-              const x = c * tile;
-              const y = r * tile;
-              const grad = ctx.createLinearGradient(x, y, x + tile, y + tile);
-              grad.addColorStop(0, wallColor);
-              grad.addColorStop(1, "#000000");
-              ctx.fillStyle = grad;
+              const x = c * tile, y = r * tile;
+              ctx.fillStyle = wallColor;
               ctx.fillRect(x, y, tile, tile);
             }
           }
@@ -1315,40 +1090,21 @@
         const enemyColor = p.enemy || "#ff79c6";
         for (const e of world.enemies) {
           ctx.fillStyle = enemyColor;
-          ctx.beginPath();
-          ctx.arc(e.x, e.y, tile * 0.3, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.fillRect(e.x - 5, e.y - 5, 10, 10);
         }
 
         ctx.fillStyle = p.coin || "#f1fa8c";
         for (const b of world.bullets) {
-          ctx.beginPath();
-          ctx.arc(b.x, b.y, tile * 0.12, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.fillRect(b.x - 2, b.y - 2, 4, 4);
         }
 
-        const x = world.player.x;
-        const y = world.player.y;
-        const r = tile * 0.35;
+        const x = world.player.x, y = world.player.y;
         const playerColor = p.player || "#8be9fd";
-        ctx.save();
-        const g = ctx.createRadialGradient(x, y, r * 0.2, x, y, r * 1.6);
-        g.addColorStop(0, "rgba(139, 233, 253, 0.9)");
-        g.addColorStop(1, "rgba(139, 233, 253, 0)");
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.arc(x, y, r * 1.6, 0, Math.PI * 2);
-        ctx.fill();
         ctx.fillStyle = playerColor;
-        ctx.beginPath();
-        ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
+        ctx.fillRect(x - 6, y - 6, 12, 12);
       }
 
-      // -----------------------------------------------------------------------
-      // PLATFORMER family
-      // -----------------------------------------------------------------------
+      // PLATFORMER
       function buildPlatformerWorld(config) {
         const rows = config.level.length;
         const cols = config.level[0].length;
@@ -1357,14 +1113,11 @@
         canvas.height = rows * tileSize;
 
         const legend = config.legend || {};
-        const solids = [];
-        const spikes = [];
+        const solids = [], spikes = [];
         for (let r = 0; r < rows; r++) {
-          solids[r] = [];
-          spikes[r] = [];
+          solids[r] = []; spikes[r] = [];
           for (let c = 0; c < cols; c++) {
-            solids[r][c] = false;
-            spikes[r][c] = false;
+            solids[r][c] = false; spikes[r][c] = false;
             const type = legend[config.level[r][c]];
             if (type === "solid") solids[r][c] = true;
             else if (type === "spike") spikes[r][c] = true;
@@ -1372,11 +1125,9 @@
         }
 
         let spawn = { x: tileSize * 1.5, y: tileSize * 1.5 };
-        for (let r = 0; r < rows; r++) {
-          for (let c = 0; c < cols; c++) {
-            if (legend[config.level[r][c]] === "pfPlayer") {
-              spawn = { x: c * tileSize + tileSize / 2, y: r * tileSize + tileSize / 2 };
-            }
+        for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+          if (legend[config.level[r][c]] === "pfPlayer") {
+            spawn = { x: c * tileSize + tileSize / 2, y: r * tileSize + tileSize / 2 };
           }
         }
 
@@ -1405,10 +1156,10 @@
 
       function updatePlatformer(world, dtMs) {
         const cfg = world.pfCfg;
-        const gravity = cfg.gravity ?? 0.7;
+        const gravity = cfg.gravity ?? 0.8;
         const moveSpeed = cfg.moveSpeed ?? 0.4;
-        const jumpImpulse = cfg.jumpImpulse ?? -12;
-        const maxFall = cfg.maxFallSpeed ?? 18;
+        const jumpImpulse = cfg.jumpImpulse ?? -10;
+        const maxFall = cfg.maxFallSpeed ?? 16;
 
         const keys = cfg.controls || {};
         const leftKeys = keys.left || ["ArrowLeft", "a", "A"];
@@ -1479,7 +1230,6 @@
 
         const cinfo = platformerCollide(world, p.x, p.y);
         if (cinfo.spike) {
-          setStatus("Platformer: hit spike, respawning.");
           const fresh = buildPlatformerWorld(clone(world.config));
           Object.assign(world, fresh);
           return;
@@ -1505,47 +1255,26 @@
 
         for (let r = 0; r < world.rows; r++) {
           for (let c = 0; c < world.cols; c++) {
-            const x = c * tile - cam.x;
-            const y = r * tile - cam.y;
+            const x = c * tile - cam.x, y = r * tile - cam.y;
             if (x + tile < 0 || y + tile < 0 || x > canvas.width || y > canvas.height) continue;
             if (world.solids[r][c]) {
-              ctx.fillStyle = p.wall || "#1f2933";
+              ctx.fillStyle = p.wall || "#1c1f2b";
               ctx.fillRect(x, y, tile, tile);
             }
             if (world.spikes[r][c]) {
               ctx.fillStyle = p.hazard || "#ff5555";
-              ctx.beginPath();
-              ctx.moveTo(x, y + tile);
-              ctx.lineTo(x + tile * 0.5, y);
-              ctx.lineTo(x + tile, y + tile);
-              ctx.closePath();
-              ctx.fill();
+              ctx.fillRect(x, y + tile * 0.5, tile, tile * 0.5);
             }
           }
         }
 
         const pl = world.player;
-        const px = pl.x - cam.x;
-        const py = pl.y - cam.y;
-        const r = tile * 0.35;
-        ctx.save();
-        const g = ctx.createRadialGradient(px, py, r * 0.2, px, py, r * 1.6);
-        g.addColorStop(0, "rgba(139, 233, 253, 0.9)");
-        g.addColorStop(1, "rgba(139, 233, 253, 0)");
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.arc(px, py, r * 1.6, 0, Math.PI * 2);
-        ctx.fill();
+        const px = pl.x - cam.x, py = pl.y - cam.y;
         ctx.fillStyle = p.player || "#8be9fd";
-        ctx.beginPath();
-        ctx.arc(px, py, r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
+        ctx.fillRect(px - tile * 0.4, py - tile * 0.4, tile * 0.8, tile * 0.8);
       }
 
-      // -----------------------------------------------------------------------
-      // RACING family
-      // -----------------------------------------------------------------------
+      // RACING
       function buildRacingWorld(config) {
         const rows = config.level.length;
         const cols = config.level[0].length;
@@ -1555,8 +1284,7 @@
 
         const legend = config.legend || {};
         let startPos = { x: tileSize * 1.5, y: tileSize * 1.5 };
-        const walls = [];
-        const checkpoints = [];
+        const walls = [], checkpoints = [];
         for (let r = 0; r < rows; r++) {
           walls[r] = [];
           for (let c = 0; c < cols; c++) {
@@ -1591,8 +1319,7 @@
         const turnSpeed = carCfg.turnSpeed ?? 0.005;
         const maxSpeed = carCfg.maxSpeed ?? 0.9;
         const friction = carCfg.friction ?? 0.001;
-        const c = world.car;
-        const dt = dtMs;
+        const c = world.car, dt = dtMs;
 
         const forward = keyState["ArrowUp"];
         const backward = keyState["ArrowDown"];
@@ -1631,13 +1358,11 @@
         const tileChar = world.config.level[tr]?.[tc];
         const ttype = legend[tileChar];
 
-        if (ttype === "checkpoint") {
-          world.state.passedCheckpoints.add(tr + "," + tc);
-        }
+        if (ttype === "checkpoint") world.state.passedCheckpoints.add(tr + "," + tc);
         if (ttype === "startFinish" && world.state.passedCheckpoints.size > 0) {
           world.state.laps++;
           world.state.passedCheckpoints.clear();
-          setStatus("Lap " + world.state.laps);
+          setStatus("Lap " + world.state.laps, false);
         }
       }
 
@@ -1652,21 +1377,16 @@
         const legend = cfg.legend || {};
         for (let r = 0; r < world.rows; r++) {
           for (let c = 0; c < world.cols; c++) {
-            const x = c * tile;
-            const y = r * tile;
+            const x = c * tile, y = r * tile;
             const t = legend[cfg.level[r][c]];
             if (t === "track" || t === "startFinish") {
-              ctx.fillStyle = "#1b1d27";
-              ctx.fillRect(x, y, tile, tile);
+              ctx.fillStyle = "#22252f"; ctx.fillRect(x, y, tile, tile);
             } else if (t === "offTrack") {
-              ctx.fillStyle = "#050608";
-              ctx.fillRect(x, y, tile, tile);
+              ctx.fillStyle = "#050608"; ctx.fillRect(x, y, tile, tile);
             } else if (t === "wall") {
-              ctx.fillStyle = p.wall || "#1f2933";
-              ctx.fillRect(x, y, tile, tile);
+              ctx.fillStyle = p.wall || "#1c1f2b"; ctx.fillRect(x, y, tile, tile);
             } else if (t === "checkpoint") {
-              ctx.fillStyle = "#44475a";
-              ctx.fillRect(x, y, tile, tile);
+              ctx.fillStyle = "#44475a"; ctx.fillRect(x, y, tile, tile);
             }
           }
         }
@@ -1676,19 +1396,16 @@
         ctx.translate(c.x, c.y);
         ctx.rotate(c.angle);
         ctx.fillStyle = p.player || "#8be9fd";
-        const w = tile * 0.7;
-        const h = tile * 0.4;
+        const w = tile * 0.8, h = tile * 0.5;
         ctx.fillRect(-w / 2, -h / 2, w, h);
         ctx.restore();
       }
 
-      // -----------------------------------------------------------------------
-      // FACTORY / Factorio-like
-      // -----------------------------------------------------------------------
+      // FACTORY
       function buildFactoryWorld(config) {
         const rows = config.level.length;
         const cols = config.level[0].length;
-        const tileSize = config.tileSize || 32;
+        const tileSize = config.tileSize || 24;
         canvas.width = cols * tileSize;
         canvas.height = rows * tileSize;
 
@@ -1701,14 +1418,11 @@
           grid[r] = [];
           for (let c = 0; c < cols; c++) {
             const ch = config.level[r][c];
-            const code = legend[ch];      // e.g. "beltRight", "minerIron"
+            const code = legend[ch];
             const def = buildingDefs[code];
             if (def) {
               grid[r][c] = {
-                r,
-                c,
-                code,
-                def,
+                r, c, code, def,
                 items: [],
                 progress: 0
               };
@@ -1738,7 +1452,6 @@
         const fCfg = world.factoryCfg;
         const recipes = fCfg.recipes || {};
 
-        // Miners
         for (let r = 0; r < rows; r++) {
           for (let c = 0; c < cols; c++) {
             const cell = grid[r][c];
@@ -1749,7 +1462,6 @@
           }
         }
 
-        // Furnaces / Assemblers
         for (let r = 0; r < rows; r++) {
           for (let c = 0; c < cols; c++) {
             const cell = grid[r][c];
@@ -1802,7 +1514,6 @@
           }
         }
 
-        // Belts
         const newItemGrid = [];
         for (let r = 0; r < rows; r++) {
           newItemGrid[r] = [];
@@ -1818,10 +1529,8 @@
               continue;
             }
             const dir = cell.def.dir || [0, 1];
-            const dr = dir[0];
-            const dc = dir[1];
-            const nr = r + dr;
-            const nc = c + dc;
+            const dr = dir[0], dc = dir[1];
+            const nr = r + dr, nc = c + dc;
             if (isInsideRC(rows, cols, nr, nc)) {
               for (const it of itemsHere) newItemGrid[nr][nc].push(it);
             } else {
@@ -1855,72 +1564,50 @@
         ctx.fillStyle = bg;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        ctx.fillStyle = p.floor || bg;
+        ctx.fillStyle = p.floor || "#000";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         const grid = world.grid;
         for (let r = 0; r < world.rows; r++) {
           for (let c = 0; c < world.cols; c++) {
             const cell = grid[r][c];
-            const x = c * tile;
-            const y = r * tile;
+            const x = c * tile, y = r * tile;
 
-            ctx.strokeStyle = "rgba(255,255,255,0.05)";
+            ctx.strokeStyle = "rgba(255,255,255,0.08)";
             ctx.strokeRect(x + 0.5, y + 0.5, tile - 1, tile - 1);
 
             if (!cell) continue;
             const def = cell.def;
 
             if (def.type === "belt") {
-              ctx.fillStyle = "#1f2933";
-              ctx.fillRect(x + 4, y + tile * 0.4, tile - 8, tile * 0.2);
-
-              ctx.save();
-              ctx.translate(x + tile / 2, y + tile / 2);
-              const dir = def.dir || [0, 1];
-              let angle = 0;
-              if (dir[0] === -1 && dir[1] === 0) angle = -Math.PI / 2;
-              else if (dir[0] === 1 && dir[1] === 0) angle = Math.PI / 2;
-              else if (dir[0] === 0 && dir[1] === -1) angle = Math.PI;
-              ctx.rotate(angle);
-              ctx.fillStyle = "#8be9fd";
-              ctx.beginPath();
-              ctx.moveTo(0, -4);
-              ctx.lineTo(tile * 0.2, 0);
-              ctx.lineTo(0, 4);
-              ctx.closePath();
-              ctx.fill();
-              ctx.restore();
+              ctx.fillStyle = "#1c1f2b";
+              ctx.fillRect(x + 2, y + tile * 0.4, tile - 4, tile * 0.2);
             } else if (def.type === "miner") {
               ctx.fillStyle = "#44475a";
-              ctx.fillRect(x + 4, y + 4, tile - 8, tile - 8);
+              ctx.fillRect(x + 2, y + 2, tile - 4, tile - 4);
             } else if (def.type === "assembler" || def.type === "furnace") {
               ctx.fillStyle = "#bd93f9";
-              ctx.fillRect(x + 4, y + 4, tile - 8, tile - 8);
+              ctx.fillRect(x + 2, y + 2, tile - 4, tile - 4);
             } else {
-              ctx.fillStyle = "#1f2933";
-              ctx.fillRect(x + 6, y + 6, tile - 12, tile - 12);
+              ctx.fillStyle = "#1c1f2b";
+              ctx.fillRect(x + 3, y + 3, tile - 6, tile - 6);
             }
 
             const items = cell.items || [];
             let idx = 0;
             for (const it of items) {
-              const ix = x + tile * 0.2 + (idx % 2) * tile * 0.3;
-              const iy = y + tile * 0.2 + Math.floor(idx / 2) * tile * 0.3;
+              const ix = x + 4 + (idx % 2) * (tile * 0.4);
+              const iy = y + 4 + Math.floor(idx / 2) * (tile * 0.4);
               idx++;
               const colorMap = world.factoryCfg.itemColors || {};
               ctx.fillStyle = colorMap[it.type] || "#f1fa8c";
-              ctx.beginPath();
-              ctx.arc(ix, iy, tile * 0.08, 0, Math.PI * 2);
-              ctx.fill();
+              ctx.fillRect(ix, iy, 4, 4);
             }
           }
         }
       }
 
-      // -----------------------------------------------------------------------
-      // Extra system init & update (RPG / quests / sim / etc.)
-      // -----------------------------------------------------------------------
+      // Extra systems
       function initExtraSystems(world, config, systems) {
         world.systems = {};
 
@@ -1940,62 +1627,10 @@
           world.story = initStoryState(config);
           world.systems.story = true;
         }
-
-        if (systems.includes("roguelike") || config.roguelike) {
-          world.roguelike = { config: config.roguelike || {}, depth: 1 };
-          world.systems.roguelike = true;
-        }
-
-        if (systems.includes("stealth") || config.stealth) {
-          world.stealth = { config: config.stealth || {} };
-          world.systems.stealth = true;
-        }
-
-        if (systems.includes("towerDefense") || config.towerDefense) {
-          world.towerDefense = {
-            config: config.towerDefense || {},
-            towers: [],
-            creeps: []
-          };
-          world.systems.towerDefense = true;
-        }
-
-        if (systems.includes("rhythm") || config.rhythm) {
-          world.rhythm = { config: config.rhythm || {}, beatTime: 0 };
-          world.systems.rhythm = true;
-        }
-
-        if (systems.includes("exploration") || config.exploration) {
-          world.exploration = {
-            config: config.exploration || {},
-            discovered: new Set()
-          };
-          world.systems.exploration = true;
-        }
-
-        if (systems.includes("cards") || config.cards) {
-          world.cards = { config: config.cards || {}, deck: [], hand: [] };
-          world.systems.cards = true;
-        }
-
         if (systems.includes("sim") || config.sim) {
-          world.sim = {
-            config: config.sim || {},
-            totals: {}
-          };
+          world.sim = { config: config.sim || {}, totals: {} };
           world.systems.sim = true;
         }
-
-        if (systems.includes("ruleSystem") || config.rules2) {
-          world.rules2 = config.rules2 || [];
-          world.systems.ruleSystem = true;
-        }
-
-        if (systems.includes("combat2d") || config.combat2d) {
-          world.combat2d = { config: config.combat2d || {} };
-          world.systems.combat2d = true;
-        }
-
         if (systems.includes("factory") || config.factory) {
           world.systems.factory = true;
         }
@@ -2003,13 +1638,8 @@
 
       function updateExtraSystems(world, dtMs) {
         if (!world.systems) return;
-
         if (world.systems.quests) updateQuests(world);
-        if (world.systems.rhythm) {
-          world.rhythm.beatTime += dtMs;
-        }
 
-        // Simple SimCity-like totals
         if (world.systems.sim && world.sim && world.sim.config) {
           const simCfg = world.sim.config;
           const legend = world.config.legend || {};
@@ -2030,9 +1660,7 @@
         }
       }
 
-      // -----------------------------------------------------------------------
-      // Engine switching / main loop
-      // -----------------------------------------------------------------------
+      // Engine
       let currentConfig = null;
       let world = null;
       let engineMode = "turn";
@@ -2072,7 +1700,7 @@
           else if (world.kind === "factory") drawFactoryWorld(world);
           else drawPuzzleWorld(world);
 
-          setStatus("Config applied. mode=" + engineMode + ", primary=" + enginePrimary);
+          // Do not overwrite status text here; keep whatever was there (default: Ready.)
         } catch (err) {
           setStatus(err.message, true);
         }
@@ -2145,7 +1773,6 @@
         if (engineMode === "turn") handleKeyTurnBased(e);
       });
 
-      // boot
       codeEl.value = JSON.stringify(defaultConfig, null, 2);
       applyConfigFromEditor();
       requestAnimationFrame(ts => {
