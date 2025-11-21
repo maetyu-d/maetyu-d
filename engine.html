@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Atomic Mini Game Engine – Retro</title>
+  <title>Atomic Mini Game Engine – Hybrid</title>
   <style>
     :root {
       --bg: #050608;
@@ -222,7 +222,9 @@
 
   <script>
     (function () {
-      // Polyfill for roundRect (for tile rounding)
+      // ---------------------------------------------------------------------
+      // roundRect polyfill
+      // ---------------------------------------------------------------------
       if (typeof CanvasRenderingContext2D !== "undefined" &&
           !CanvasRenderingContext2D.prototype.roundRect) {
         CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
@@ -245,7 +247,9 @@
         };
       }
 
-      // DOM and canvas setup
+      // ---------------------------------------------------------------------
+      // DOM + canvas setup
+      // ---------------------------------------------------------------------
       const canvas = document.getElementById("game");
       const ctx = canvas.getContext("2d");
       ctx.imageSmoothingEnabled = false;
@@ -294,7 +298,9 @@
       window.addEventListener("keydown", e => keyState[e.key] = true);
       window.addEventListener("keyup", e => keyState[e.key] = false);
 
-      // Default config
+      // ---------------------------------------------------------------------
+      // Default config (simple puzzle)
+      // ---------------------------------------------------------------------
       const defaultConfig = {
         tileSize: 32,
         backgroundColor: "#000000",
@@ -305,7 +311,7 @@
           box: "#ffb86c",
           boxOnGoal: "#50fa7b",
           goal: "#6272a4",
-          grid: "rgba(255,255,255,0.08)",
+          grid: "rgba(255,255,255,0.10)",
           coin: "#f1fa8c",
           exit: "#bd93f9",
           hazard: "#ff5555",
@@ -380,7 +386,9 @@
         ]
       };
 
-      // Base grid drawing (retro hard edges)
+      // ---------------------------------------------------------------------
+      // Shared drawing: retro grid
+      // ---------------------------------------------------------------------
       function drawBaseGrid(w) {
         const cfg = w.config;
         const p = (cfg.palette = cfg.palette || {});
@@ -412,7 +420,9 @@
         }
       }
 
-      // RPG / Quests
+      // ---------------------------------------------------------------------
+      // RPG / Quests (lightweight)
+      // ---------------------------------------------------------------------
       function initRpgState(config) {
         return {
           stats: Object.assign(
@@ -438,7 +448,6 @@
         }
       }
 
-      // Dialogue / Story stubs (kept minimal)
       function initDialogueState(config) {
         if (!config.dialogue) return null;
         return {
@@ -458,7 +467,9 @@
           : null;
       }
 
-      // PUZZLE
+      // ---------------------------------------------------------------------
+      // PUZZLE WORLD
+      // ---------------------------------------------------------------------
       function buildPuzzleWorld(config) {
         const rows = config.level.length;
         const cols = config.level[0].length;
@@ -668,7 +679,8 @@
           }
           e.r = nr; e.c = nc;
 
-          if (loseRules.touchEnemy !== false && w.player && e.r === w.player.r && e.c === w.player.c) {
+          if (loseRules.touchEnemy !== false && w.player &&
+              e.r === w.player.r && e.c === w.player.c) {
             return puzzleLoseAndReset(w, currentConfigRef, "Enemy");
           }
         }
@@ -791,7 +803,9 @@
         }
       }
 
-      // BOARD
+      // ---------------------------------------------------------------------
+      // BOARD WORLD
+      // ---------------------------------------------------------------------
       function buildBoardWorld(config) {
         const rows = config.level.length;
         const cols = config.level[0].length;
@@ -830,6 +844,7 @@
         return world.pieces.find(p => p.r === r && p.c === c) || null;
       }
       function boardIsInside(world, r, c) { return isInsideRC(world.rows, world.cols, r, c); }
+
       function boardComputeLegalMoves(world, piece) {
         const def = world.boardCfg.pieces[piece.symbol];
         if (!def || !def.move) return [];
@@ -856,14 +871,17 @@
         }
         return moves;
       }
+
       function boardNextTeam(world) {
         const order = world.boardCfg.turnOrder || world.boardCfg.teams || ["white", "black"];
         world.currentTeamIndex = (world.currentTeamIndex + 1) % order.length;
       }
+
       function boardCurrentTeam(world) {
         const order = world.boardCfg.turnOrder || world.boardCfg.teams || ["white", "black"];
         return order[world.currentTeamIndex % order.length];
       }
+
       function boardHandleClick(world, x, y) {
         const cell = world.tileSize;
         const c = Math.floor(x / cell);
@@ -905,6 +923,7 @@
         world.legalMoves = [];
         return world;
       }
+
       function drawBoardWorld(world) {
         const cell = world.tileSize;
         const cfg = world.config;
@@ -944,9 +963,7 @@
           const y = piece.r * cell + cell / 2;
 
           ctx.fillStyle = color;
-          ctx.beginPath();
-          ctx.rect(x - cell * 0.35, y - cell * 0.35, cell * 0.7, cell * 0.7);
-          ctx.fill();
+          ctx.fillRect(x - cell * 0.35, y - cell * 0.35, cell * 0.7, cell * 0.7);
 
           ctx.fillStyle = "#000";
           ctx.fillText(piece.symbol, x, y + 1);
@@ -962,7 +979,9 @@
         }
       }
 
-      // SHOOTER
+      // ---------------------------------------------------------------------
+      // SHOOTER WORLD
+      // ---------------------------------------------------------------------
       function buildShooterWorld(config) {
         const rows = config.level.length;
         const cols = config.level[0].length;
@@ -1104,7 +1123,9 @@
         ctx.fillRect(x - 6, y - 6, 12, 12);
       }
 
-      // PLATFORMER
+      // ---------------------------------------------------------------------
+      // PLATFORMER WORLD (factory-powered jump)
+      // ---------------------------------------------------------------------
       function buildPlatformerWorld(config) {
         const rows = config.level.length;
         const cols = config.level[0].length;
@@ -1142,7 +1163,8 @@
           spikes,
           player: { x: spawn.x, y: spawn.y, vx: 0, vy: 0, onGround: false },
           camera: { x: 0, y: 0 },
-          pfCfg
+          pfCfg,
+          factorySim: null   // filled later if config.factory exists
         };
       }
 
@@ -1154,11 +1176,37 @@
         return { solid: world.solids[r][c], spike: world.spikes[r][c] };
       }
 
+      // This version reads power from world.factorySim to modify jump
       function updatePlatformer(world, dtMs) {
         const cfg = world.pfCfg;
+
+        // --- Factory-powered jump logic -----------------------------------
+        let baseJump = cfg.jumpImpulse ?? -10;
+        let extraBoost = 0;
+
+        if (world.factorySim) {
+          const sim = world.factorySim;
+          const powerItem = sim.factoryCfg.powerItem || "power_cell";
+          const boostPerItem = sim.factoryCfg.powerBoostPerItem ?? 0.6;
+          const maxBoost = sim.factoryCfg.powerMaxBoost ?? 12;
+
+          let powerCount = 0;
+          for (let r = 0; r < sim.rows; r++) {
+            for (let c = 0; c < sim.cols; c++) {
+              const cell = sim.grid[r][c];
+              if (!cell || !cell.items) continue;
+              for (const it of cell.items) {
+                if (it.type === powerItem) powerCount++;
+              }
+            }
+          }
+
+          extraBoost = Math.min(powerCount * boostPerItem, maxBoost);
+        }
+
         const gravity = cfg.gravity ?? 0.8;
         const moveSpeed = cfg.moveSpeed ?? 0.4;
-        const jumpImpulse = cfg.jumpImpulse ?? -10;
+        const jumpImpulse = baseJump - extraBoost;   // more power => more height (more negative)
         const maxFall = cfg.maxFallSpeed ?? 16;
 
         const keys = cfg.controls || {};
@@ -1230,7 +1278,11 @@
 
         const cinfo = platformerCollide(world, p.x, p.y);
         if (cinfo.spike) {
+          // Respawn and rebuild the factory sim as well
           const fresh = buildPlatformerWorld(clone(world.config));
+          if (world.config.factory) {
+            fresh.factorySim = buildFactorySimForPlatformer(world.config);
+          }
           Object.assign(world, fresh);
           return;
         }
@@ -1274,7 +1326,9 @@
         ctx.fillRect(px - tile * 0.4, py - tile * 0.4, tile * 0.8, tile * 0.8);
       }
 
-      // RACING
+      // ---------------------------------------------------------------------
+      // RACING WORLD
+      // ---------------------------------------------------------------------
       function buildRacingWorld(config) {
         const rows = config.level.length;
         const cols = config.level[0].length;
@@ -1401,7 +1455,52 @@
         ctx.restore();
       }
 
-      // FACTORY
+      // ---------------------------------------------------------------------
+      // FACTORY WORLD + FACTORY SUB-SIM
+      // ---------------------------------------------------------------------
+
+      // Sub-sim (no drawing) used inside e.g. platformer
+      function buildFactorySimForPlatformer(config) {
+        const rows = config.level.length;
+        const cols = config.level[0].length;
+
+        const legend = config.legend || {};
+        const fCfg = config.factory || {};
+        const buildingDefs = fCfg.buildings || {};
+        const grid = [];
+
+        for (let r = 0; r < rows; r++) {
+          grid[r] = [];
+          for (let c = 0; c < cols; c++) {
+            const ch = config.level[r][c];
+            const code = legend[ch];
+            const def = buildingDefs[code];
+            if (def) {
+              grid[r][c] = {
+                r, c, code, def,
+                items: [],
+                progress: 0
+              };
+            } else {
+              grid[r][c] = null;
+            }
+          }
+        }
+
+        return {
+          kind: "factorySim",
+          rows,
+          cols,
+          tileSize: config.tileSize || 24,
+          config,
+          factoryCfg: fCfg,
+          grid,
+          tickMs: fCfg.tickMs || 200,
+          tickAccum: 0
+        };
+      }
+
+      // Full factory world (primary= "factory"), drawn to canvas
       function buildFactoryWorld(config) {
         const rows = config.level.length;
         const cols = config.level[0].length;
@@ -1452,6 +1551,7 @@
         const fCfg = world.factoryCfg;
         const recipes = fCfg.recipes || {};
 
+        // Miners
         for (let r = 0; r < rows; r++) {
           for (let c = 0; c < cols; c++) {
             const cell = grid[r][c];
@@ -1462,6 +1562,7 @@
           }
         }
 
+        // Furnaces / assemblers
         for (let r = 0; r < rows; r++) {
           for (let c = 0; c < cols; c++) {
             const cell = grid[r][c];
@@ -1514,6 +1615,7 @@
           }
         }
 
+        // Belts
         const newItemGrid = [];
         for (let r = 0; r < rows; r++) {
           newItemGrid[r] = [];
@@ -1607,7 +1709,9 @@
         }
       }
 
-      // Extra systems
+      // ---------------------------------------------------------------------
+      // EXTRA SYSTEMS (sim, rpg, quests, factorySim tick)
+      // ---------------------------------------------------------------------
       function initExtraSystems(world, config, systems) {
         world.systems = {};
 
@@ -1627,10 +1731,12 @@
           world.story = initStoryState(config);
           world.systems.story = true;
         }
+
         if (systems.includes("sim") || config.sim) {
           world.sim = { config: config.sim || {}, totals: {} };
           world.systems.sim = true;
         }
+
         if (systems.includes("factory") || config.factory) {
           world.systems.factory = true;
         }
@@ -1638,6 +1744,7 @@
 
       function updateExtraSystems(world, dtMs) {
         if (!world.systems) return;
+
         if (world.systems.quests) updateQuests(world);
 
         if (world.systems.sim && world.sim && world.sim.config) {
@@ -1658,9 +1765,16 @@
           }
           world.sim.totals = totals;
         }
+
+        // Tick background factory sim (for hybrid platformer)
+        if (world.factorySim) {
+          updateFactory(world.factorySim, dtMs);
+        }
       }
 
-      // Engine
+      // ---------------------------------------------------------------------
+      // ENGINE SWITCHING / MAIN LOOP
+      // ---------------------------------------------------------------------
       let currentConfig = null;
       let world = null;
       let engineMode = "turn";
@@ -1691,6 +1805,11 @@
             world = buildPuzzleWorld(clone(config));
           }
 
+          // If we're in platformer mode and a factory exists, create a hidden sub-sim
+          if (world && world.kind === "platformer" && config.factory) {
+            world.factorySim = buildFactorySimForPlatformer(config);
+          }
+
           initExtraSystems(world, config, systems);
 
           if (world.kind === "board") drawBoardWorld(world);
@@ -1700,7 +1819,6 @@
           else if (world.kind === "factory") drawFactoryWorld(world);
           else drawPuzzleWorld(world);
 
-          // Do not overwrite status text here; keep whatever was there (default: Ready.)
         } catch (err) {
           setStatus(err.message, true);
         }
@@ -1773,6 +1891,7 @@
         if (engineMode === "turn") handleKeyTurnBased(e);
       });
 
+      // Boot
       codeEl.value = JSON.stringify(defaultConfig, null, 2);
       applyConfigFromEditor();
       requestAnimationFrame(ts => {
