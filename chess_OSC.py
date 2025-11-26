@@ -12,6 +12,7 @@ import struct
 # - Audio buffer size 4096
 # - Sends OSC messages on chess moves to UDP port 9001
 # - Improved OSC packing + console debug
+# - WINDOWED by default (1280x720, resizable)
 # =====================================================
 
 BOARD_W = 8
@@ -853,10 +854,9 @@ def main():
 
     init_osc()
 
-    info = pygame.display.Info()
-    sw, sh = info.current_w, info.current_h
-
-    screen = pygame.display.set_mode((sw, sh), pygame.FULLSCREEN)
+    # WINDOWED (1280x720) instead of fullscreen
+    sw, sh = 1280, 720
+    screen = pygame.display.set_mode((sw, sh), pygame.RESIZABLE)
     pygame.display.set_caption("Chess + Bitwise Audio Grid (MD Dream FM + DSL + OSC)")
 
     clock = pygame.time.Clock()
