@@ -1,8 +1,4 @@
-
-"""
-Sokubit
-----------------------------------------------
-"""
+# Sokubit
 
 import math
 import random
