@@ -1,23 +1,7 @@
 
 """
-BitGrid Hybrid + Sokoban + Fullscreen Pygame Visuals
-Fixed Camera + Pseudo-Shader Trippy Background
+Sokubit
 ----------------------------------------------
-
-- Full hybrid BitGrid audio engine (nasty <-> beautiful).
-- Procedural 16x16 Sokoban (walls, boxes, goals, player).
-- Neon opcode colours with temporal wobble.
-- Per-cell mutation pulses.
-- Additive trail afterimages of the grid.
-
-Background is now "shader-like":
-- Low-res procedural plasma-style field in UV space, updated each frame.
-- Domain-warped radial + angular patterns (very trippy).
-- Scaled up to fullscreen for a GPU-shader vibe.
-
-Still:
-- NO camera rotation.
-- NO camera zoom.
 """
 
 import math
