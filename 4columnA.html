@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>10k Tree Bots — p5.js Version</title>
+  <title>10k Tree Bots — Brutalist Feedback p5.js</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
   <style>
     html, body {
@@ -23,14 +23,21 @@
 // ============================================
 // 10k WORLD, 4-COLUMN SPLIT VIEW, p5.js
 // --------------------------------------------
-// COL 0: ORANGE (side)  — baseline bots, own tree
-// COL 1: ORANGE (iso)   — baseline bots, own tree
-// COL 2: GREEN (side)   — disabled-gait bots, own tree
-// COL 3: GREEN (iso)    — disabled-gait bots, own tree
+// Brutalist + feedback-enhanced version.
 //
-// Two fully independent trees (orange / green).
-// Green bots have disabled gait (leg length discrepancy).
-// Beautiful-ish graphics: gradient BG, tinted columns, glows, trails.
+// COL 0: ORANGE (side)
+// COL 1: ORANGE (iso)
+// COL 2: GREEN (side, disabled gait)
+// COL 3: GREEN (iso, disabled gait)
+//
+// Features:
+// - Two independent trees (orange / green).
+// - Disabled gait + fatigue for green bots.
+// - Video-feedback-like persistence (no hard clear).
+// - Brutalist blocks & grid vibes.
+// - Depth-faded nodes/links per level.
+// - Chromatic aberration on links.
+// - 3D-ish particle dust across levels.
 // ============================================
 
 // ------- WORLD & VIEW CONSTANTS -------
@@ -51,13 +58,13 @@ let viewCols = 4;
 let viewWidth;
 let viewHeight;
 
-// Projection scales (will be set in setup based on canvas size)
+// Projection scales (set in setup)
 let SIDE_SCALE_X, SIDE_SCALE_Z;
 let MARGIN_FACTOR = 0.8;
 let ISO_MARGIN = PLANE_HALF * MARGIN_FACTOR;
 let ISO_SCALE;
 
-// Colors (in RGB here, but we’ll use alpha & layering)
+// Colors
 let COLOR_NODE, COLOR_NODE_ACTIVE, COLOR_BOT_ORANGE, COLOR_BOT_LIME;
 let COLOR_STRUCTURE, COLOR_LINK, COLOR_TEXT, COLOR_LEVEL_OUTLINE, COLOR_BOT_FOCUS;
 let COLOR_COL_BG;
@@ -89,7 +96,7 @@ class Bot {
     this.level = level;
     this.targetNode = null;
     this.reached = false;
-    this.trail = []; // for drawing trails
+    this.trail = [];
     this.maxTrail = 40;
   }
   get pos() {
@@ -103,7 +110,6 @@ class Bot {
   }
   update(dt) {
     if (!this.targetNode || this.reached) return;
-
     const tx = this.targetNode.x;
     const ty = this.targetNode.y;
     const dx = tx - this.x;
@@ -114,7 +120,6 @@ class Bot {
       this.reached = true;
       return;
     }
-
     if (dist <= BOT_RADIUS) {
       this.x = tx;
       this.y = ty;
@@ -136,9 +141,7 @@ class Bot {
   }
   addTrailPoint() {
     this.trail.push({ x: this.x, y: this.y, level: this.level });
-    if (this.trail.length > this.maxTrail) {
-      this.trail.shift();
-    }
+    if (this.trail.length > this.maxTrail) this.trail.shift();
   }
 }
 
@@ -165,7 +168,6 @@ class DisabledBot extends Bot {
       this.reached = true;
       return;
     }
-
     if (dist <= BOT_RADIUS) {
       this.x = tx;
       this.y = ty;
@@ -174,12 +176,11 @@ class DisabledBot extends Bot {
       return;
     }
 
-    // Advance gait
+    // Gait
     this.gaitPhase += this.gaitFreq * dt * TWO_PI;
 
     const dirX = dx / dist;
     const dirY = dy / dist;
-
     const latX = -dirY;
     const latY = dirX;
 
@@ -201,7 +202,7 @@ class DisabledBot extends Bot {
     const speed = BOT_SPEED * this.baseSpeedFactor * fatigueFactor;
     let step = speed * dt;
 
-    // Occasional stumble: sideways kick
+    // Stumble: sideways kick
     if (random() < this.stumbleChance) {
       const stumbleMag = step * 0.6;
       moveX += latX * this.legDiff * stumbleMag;
@@ -250,22 +251,56 @@ class LinkSegment {
   }
 }
 
+// Dust particles in world space (x,y,level)
+class Dust {
+  constructor() {
+    this.reset();
+  }
+  reset(aroundNode = null) {
+    if (aroundNode) {
+      this.x = aroundNode.x + random(-PLANE_HALF * 0.05, PLANE_HALF * 0.05);
+      this.y = aroundNode.y + random(-PLANE_HALF * 0.05, PLANE_HALF * 0.05);
+      this.level = aroundNode.level + random(-2, 2);
+    } else {
+      this.x = random(-PLANE_HALF, PLANE_HALF);
+      this.y = random(-PLANE_HALF, PLANE_HALF);
+      this.level = random(0, MAX_LEVELS - 1);
+    }
+    this.vx = random(-10, 10);
+    this.vy = random(-10, 10);
+  }
+  update(dt, attractNodes) {
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    this.level += random(-0.2, 0.2);
+
+    if (this.x < -PLANE_HALF * 1.1 || this.x > PLANE_HALF * 1.1 ||
+        this.y < -PLANE_HALF * 1.1 || this.y > PLANE_HALF * 1.1 ||
+        this.level < 0 || this.level > MAX_LEVELS - 1) {
+
+      // Occasionally respawn near a current target node for extra drama
+      if (attractNodes && attractNodes.length > 0 && random() < 0.7) {
+        const n = random(attractNodes);
+        this.reset(n);
+      } else {
+        this.reset();
+      }
+    }
+  }
+}
+
 // ------- GLOBAL STATE -------
-// Arrays-of-level-arrays for nodes
 let nodesOrange = [];
 let nodesGreen = [];
 
-// Bots
 let botsOrange = [];
 let botsGreen = [];
 
-// Structure segments and links
 let structOrange = [];
 let structGreen = [];
 let linksOrange = [];
 let linksGreen = [];
 
-// Per-tree state
 let curLvlOrange = 0;
 let curLvlGreen = 0;
 let tgtOrange = null;
@@ -277,6 +312,9 @@ let prunedGreen = false;
 
 let paused = false;
 
+// Dust
+const NUM_DUST = 400;
+let dustParticles = [];
 
 // ==============================
 // UTILS
@@ -356,43 +394,42 @@ function sideProject(x, y, levelIndex, colIndex) {
   return { x: sx, y: sy };
 }
 
+// Depth fade factor  (1 at level 0, ~0.15 at top)
+function depthAlpha(levelIndex) {
+  const t = constrain(levelIndex / (MAX_LEVELS - 1), 0, 1);
+  return 1.0 - 0.85 * t;
+}
+
 // ==============================
 // DRAW HELPERS
 // ==============================
 
 function drawColumnBackgrounds() {
-  // Soft vertical gradient across whole canvas
-  noFill();
-  for (let y = 0; y < height; y++) {
-    const t = y / height;
-    const c1 = color(12, 8, 26);
-    const c2 = color(2, 2, 8);
-    const c = lerpColor(c1, c2, t);
-    stroke(c);
-    line(0, y, width, y);
-  }
-
-  // Tinted translucent rectangles per column
+  // Brutalist flat base, no gradient. Feedback is handled by translucent cover in draw().
   noStroke();
   for (let c = 0; c < viewCols; c++) {
     fill(
       red(COLOR_COL_BG[c]),
       green(COLOR_COL_BG[c]),
       blue(COLOR_COL_BG[c]),
-      120
+      60
     );
     rect(c * viewWidth, 0, viewWidth, height);
   }
 
-  // Vertical separators with glow
-  for (let c = 1; c < viewCols; c++) {
+  // column labels baseline bars
+  stroke(80, 80, 100, 200);
+  strokeWeight(2);
+  for (let c = 0; c <= viewCols; c++) {
     const x = c * viewWidth;
-    stroke(90, 90, 120, 220);
-    strokeWeight(2);
     line(x, 0, x, height);
-    stroke(90, 90, 120, 80);
-    strokeWeight(6);
-    line(x, 0, x, height);
+  }
+
+  // horizontal brutalist grid
+  stroke(40, 40, 60, 60);
+  strokeWeight(1);
+  for (let y = 80; y < height; y += 40) {
+    line(0, y, width, y);
   }
 }
 
@@ -401,7 +438,13 @@ function drawLevelOutlineSide(levelIndex, colIndex) {
   const xRight = PLANE_HALF * MARGIN_FACTOR;
   const p1 = sideProject(xLeft, 0, levelIndex, colIndex);
   const p2 = sideProject(xRight, 0, levelIndex, colIndex);
-  stroke(COLOR_LEVEL_OUTLINE);
+  const a = depthAlpha(levelIndex);
+  stroke(
+    red(COLOR_LEVEL_OUTLINE),
+    green(COLOR_LEVEL_OUTLINE),
+    blue(COLOR_LEVEL_OUTLINE),
+    80 * a
+  );
   strokeWeight(1);
   line(p1.x, p1.y, p2.x, p2.y);
 }
@@ -415,44 +458,66 @@ function drawLevelOutlineIso(levelIndex, colIndex) {
     { x: -r, y: 0 }
   ];
   const pts = corners.map(c => isoProject(c.x, c.y, levelIndex, colIndex));
+  const a = depthAlpha(levelIndex);
   noFill();
-  stroke(COLOR_LEVEL_OUTLINE);
+  stroke(
+    red(COLOR_LEVEL_OUTLINE),
+    green(COLOR_LEVEL_OUTLINE),
+    blue(COLOR_LEVEL_OUTLINE),
+    80 * a
+  );
   strokeWeight(1);
   beginShape();
   for (const p of pts) vertex(p.x, p.y);
   endShape(CLOSE);
 }
 
-function drawNodeGlow(px, py, isActive, baseRadius) {
+function drawNodeGlow(px, py, isActive, baseRadius, levelIndex) {
+  const depth = depthAlpha(levelIndex);
   noStroke();
   if (isActive) {
     for (let i = 4; i >= 1; i--) {
       const rr = baseRadius * (i * 1.6);
-      const alpha = 12 * i;
+      const alpha = 14 * i * depth;
       fill(255, 255, 255, alpha);
       ellipse(px, py, rr, rr);
     }
-    fill(COLOR_NODE_ACTIVE);
-    ellipse(px, py, baseRadius * 1.6, baseRadius * 1.6);
+    fill(
+      red(COLOR_NODE_ACTIVE),
+      green(COLOR_NODE_ACTIVE),
+      blue(COLOR_NODE_ACTIVE),
+      220 * depth
+    );
+    ellipse(px, py, baseRadius * 1.8, baseRadius * 1.8);
   } else {
     for (let i = 3; i >= 1; i--) {
       const rr = baseRadius * (i * 1.4);
-      const alpha = 10 * i;
-      fill(120, 180, 255, alpha);
+      const alpha = 12 * i * depth;
+      fill(130, 190, 255, alpha);
       ellipse(px, py, rr, rr);
     }
-    fill(COLOR_NODE);
-    ellipse(px, py, baseRadius * 1.4, baseRadius * 1.4);
+    fill(
+      red(COLOR_NODE),
+      green(COLOR_NODE),
+      blue(COLOR_NODE),
+      220 * depth
+    );
+    ellipse(px, py, baseRadius * 1.5, baseRadius * 1.5);
   }
 }
 
-function drawBotTrail(bot, projectFunc, colIndex, color) {
+function drawBotTrail(bot, projectFunc, colIndex, colorBase) {
+  if (!bot.trail || bot.trail.length < 2) return;
   noFill();
-  stroke(red(color), green(color), blue(color), 80);
-  strokeWeight(1.5);
+  const aMax = 80;
   beginShape();
-  for (const p of bot.trail) {
+  for (let i = 0; i < bot.trail.length; i++) {
+    const p = bot.trail[i];
     const sp = projectFunc(p.x, p.y, p.level, colIndex);
+    const depth = depthAlpha(p.level);
+    const t = i / (bot.trail.length - 1);
+    const a = aMax * t * depth;
+    stroke(red(colorBase), green(colorBase), blue(colorBase), a);
     vertex(sp.x, sp.y);
   }
   endShape();
@@ -465,33 +530,100 @@ function drawBots(bots, projectFunc, colIndex, botColor) {
     const cxMin = colIndex * viewWidth;
     const cxMax = (colIndex + 1) * viewWidth;
     if (sp.x < cxMin || sp.x > cxMax) continue;
-    fill(botColor);
+
+    const depth = depthAlpha(b.level);
+
+    fill(
+      red(botColor),
+      green(botColor),
+      blue(botColor),
+      220 * depth
+    );
     ellipse(sp.x, sp.y, 6, 6);
-    // small halo
-    fill(red(botColor), green(botColor), blue(botColor), 80);
+
+    fill(
+      red(botColor),
+      green(botColor),
+      blue(botColor),
+      80 * depth
+    );
     ellipse(sp.x, sp.y, 12, 12);
   }
 }
 
 function drawBotsFocus(bots, projectFunc, colIndex) {
   if (!bots || bots.length === 0) return;
-  let sumX = 0, sumY = 0;
+  let sumX = 0, sumY = 0, lvl = bots[0].level;
   for (const b of bots) {
     sumX += b.x;
     sumY += b.y;
   }
   const avgX = sumX / bots.length;
   const avgY = sumY / bots.length;
-  const sp = projectFunc(avgX, avgY, bots[0].level, colIndex);
+  const sp = projectFunc(avgX, avgY, lvl, colIndex);
   const cxMin = colIndex * viewWidth;
   const cxMax = (colIndex + 1) * viewWidth;
   if (sp.x < cxMin || sp.x > cxMax) return;
+  const depth = depthAlpha(lvl);
   noFill();
-  stroke(COLOR_BOT_FOCUS);
+  stroke(
+    red(COLOR_BOT_FOCUS),
+    green(COLOR_BOT_FOCUS),
+    blue(COLOR_BOT_FOCUS),
+    160 * depth
+  );
   strokeWeight(1.5);
   ellipse(sp.x, sp.y, 14, 14);
 }
 
+// Chromatic aberration link
+function drawChromaticLink(p1, p2, depth) {
+  const baseAlpha = 180 * depth;
+
+  // Red offset
+  stroke(255, 60, 80, baseAlpha * 0.7);
+  strokeWeight(2.5);
+  line(p1.x + 1.5, p1.y - 1.5, p2.x + 1.5, p2.y - 1.5);
+
+  // Cyan offset
+  stroke(60, 255, 255, baseAlpha * 0.7);
+  strokeWeight(2.5);
+  line(p1.x - 1.5, p1.y + 1.5, p2.x - 1.5, p2.y + 1.5);
+
+  // Core white
+  stroke(230, 230, 255, baseAlpha);
+  strokeWeight(2);
+  line(p1.x, p1.y, p2.x, p2.y);
+}
+
+// Structures: brutalist thick lines
+function drawStructureSegment(seg, projectFunc, colIndex) {
+  const baseDepth = depthAlpha(seg.baseLevel);
+  const topDepth = depthAlpha(seg.topLevel);
+  const d = 0.5 * (baseDepth + topDepth);
+  const p1 = projectFunc(seg.x, seg.y, seg.baseLevel, colIndex);
+  const p2 = projectFunc(seg.x, seg.y, seg.topLevel, colIndex);
+  stroke(
+    red(COLOR_STRUCTURE),
+    green(COLOR_STRUCTURE),
+    blue(COLOR_STRUCTURE),
+    220 * d
+  );
+  strokeWeight(4);
+  line(p1.x, p1.y, p2.x, p2.y);
+}
+
+// Dust
+function drawDust(projectFunc, colIndex) {
+  noStroke();
+  for (const d of dustParticles) {
+    const depth = depthAlpha(floor(d.level));
+    const sp = projectFunc(d.x, d.y, d.level, colIndex);
+    const a = 40 * depth;
+    fill(200, 220, 255, a);
+    rect(sp.x, sp.y, 2, 2);
+  }
+}
 
 // ==============================
 // DRAW SCENE
@@ -506,48 +638,38 @@ function drawScene() {
   // -------- ORANGE TREE: COL 0 (side) --------
   let col = 0;
 
-  // Outlines
+  // Dust (side view, orange columns share same dust)
+  drawDust(sideProject, col);
+
   for (let lvl = 0; lvl < nodesOrange.length; lvl++) {
     if (!nodesOrange[lvl] || nodesOrange[lvl].length === 0) continue;
     drawLevelOutlineSide(lvl, col);
   }
 
-  // Structures
-  stroke(COLOR_STRUCTURE);
-  strokeWeight(3);
   for (const seg of structOrange) {
-    const p1 = sideProject(seg.x, seg.y, seg.baseLevel, col);
-    const p2 = sideProject(seg.x, seg.y, seg.topLevel, col);
-    line(p1.x, p1.y, p2.x, p2.y);
+    drawStructureSegment(seg, sideProject, col);
   }
 
-  // Links
-  stroke(COLOR_LINK);
-  strokeWeight(1.5);
   for (const link of linksOrange) {
     const p1 = sideProject(link.x1, link.y1, link.level1, col);
     const p2 = sideProject(link.x2, link.y2, link.level2, col);
-    line(p1.x, p1.y, p2.x, p2.y);
+    const depth = 0.5 * (depthAlpha(link.level1) + depthAlpha(link.level2));
+    drawChromaticLink(p1, p2, depth);
   }
 
-  // Nodes
   for (const lvlNodes of nodesOrange) {
     for (const node of lvlNodes) {
       const sp = sideProject(node.x, node.y, node.level, col);
       const cxMin = col * viewWidth;
       const cxMax = (col + 1) * viewWidth;
       if (sp.x < cxMin || sp.x > cxMax) continue;
-      drawNodeGlow(sp.x, sp.y, node === tgtOrange, 4);
+      drawNodeGlow(sp.x, sp.y, node === tgtOrange, 4, node.level);
     }
   }
 
-  // Bot trails (light)
-  strokeWeight(1);
   for (const b of botsOrange) {
-    stroke(255, 140, 0, 50);
     drawBotTrail(b, sideProject, col, COLOR_BOT_ORANGE);
   }
-  // Bots
   drawBots(botsOrange, sideProject, col, COLOR_BOT_ORANGE);
   drawBotsFocus(botsOrange, sideProject, col);
 
@@ -559,26 +681,22 @@ function drawScene() {
 
   // -------- ORANGE TREE: COL 1 (iso) --------
   col = 1;
+  drawDust(isoProject, col);
 
   for (let lvl = 0; lvl < nodesOrange.length; lvl++) {
     if (!nodesOrange[lvl] || nodesOrange[lvl].length === 0) continue;
     drawLevelOutlineIso(lvl, col);
   }
 
-  stroke(COLOR_STRUCTURE);
-  strokeWeight(3);
   for (const seg of structOrange) {
-    const p1 = isoProject(seg.x, seg.y, seg.baseLevel, col);
-    const p2 = isoProject(seg.x, seg.y, seg.topLevel, col);
-    line(p1.x, p1.y, p2.x, p2.y);
+    drawStructureSegment(seg, isoProject, col);
   }
 
-  stroke(COLOR_LINK);
-  strokeWeight(1.5);
   for (const link of linksOrange) {
     const p1 = isoProject(link.x1, link.y1, link.level1, col);
     const p2 = isoProject(link.x2, link.y2, link.level2, col);
-    line(p1.x, p1.y, p2.x, p2.y);
+    const depth = 0.5 * (depthAlpha(link.level1) + depthAlpha(link.level2));
+    drawChromaticLink(p1, p2, depth);
   }
 
   for (const lvlNodes of nodesOrange) {
@@ -587,7 +705,7 @@ function drawScene() {
       const cxMin = col * viewWidth;
       const cxMax = (col + 1) * viewWidth;
       if (sp.x < cxMin || sp.x > cxMax) continue;
-      drawNodeGlow(sp.x, sp.y, node === tgtOrange, 5);
+      drawNodeGlow(sp.x, sp.y, node === tgtOrange, 5, node.level);
     }
   }
 
@@ -605,26 +723,22 @@ function drawScene() {
 
   // -------- GREEN TREE: COL 2 (side) --------
   col = 2;
+  drawDust(sideProject, col);
 
   for (let lvl = 0; lvl < nodesGreen.length; lvl++) {
     if (!nodesGreen[lvl] || nodesGreen[lvl].length === 0) continue;
     drawLevelOutlineSide(lvl, col);
   }
 
-  stroke(COLOR_STRUCTURE);
-  strokeWeight(3);
   for (const seg of structGreen) {
-    const p1 = sideProject(seg.x, seg.y, seg.baseLevel, col);
-    const p2 = sideProject(seg.x, seg.y, seg.topLevel, col);
-    line(p1.x, p1.y, p2.x, p2.y);
+    drawStructureSegment(seg, sideProject, col);
   }
 
-  stroke(COLOR_LINK);
-  strokeWeight(1.5);
   for (const link of linksGreen) {
     const p1 = sideProject(link.x1, link.y1, link.level1, col);
     const p2 = sideProject(link.x2, link.y2, link.level2, col);
-    line(p1.x, p1.y, p2.x, p2.y);
+    const depth = 0.5 * (depthAlpha(link.level1) + depthAlpha(link.level2));
+    drawChromaticLink(p1, p2, depth);
   }
 
   for (const lvlNodes of nodesGreen) {
@@ -633,7 +747,7 @@ function drawScene() {
       const cxMin = col * viewWidth;
       const cxMax = (col + 1) * viewWidth;
       if (sp.x < cxMin || sp.x > cxMax) continue;
-      drawNodeGlow(sp.x, sp.y, node === tgtGreen, 4);
+      drawNodeGlow(sp.x, sp.y, node === tgtGreen, 4, node.level);
     }
   }
 
@@ -650,26 +764,22 @@ function drawScene() {
 
   // -------- GREEN TREE: COL 3 (iso) --------
   col = 3;
+  drawDust(isoProject, col);
 
   for (let lvl = 0; lvl < nodesGreen.length; lvl++) {
     if (!nodesGreen[lvl] || nodesGreen[lvl].length === 0) continue;
     drawLevelOutlineIso(lvl, col);
   }
 
-  stroke(COLOR_STRUCTURE);
-  strokeWeight(3);
   for (const seg of structGreen) {
-    const p1 = isoProject(seg.x, seg.y, seg.baseLevel, col);
-    const p2 = isoProject(seg.x, seg.y, seg.topLevel, col);
-    line(p1.x, p1.y, p2.x, p2.y);
+    drawStructureSegment(seg, isoProject, col);
   }
 
-  stroke(COLOR_LINK);
-  strokeWeight(1.5);
   for (const link of linksGreen) {
     const p1 = isoProject(link.x1, link.y1, link.level1, col);
     const p2 = isoProject(link.x2, link.y2, link.level2, col);
-    line(p1.x, p1.y, p2.x, p2.y);
+    const depth = 0.5 * (depthAlpha(link.level1) + depthAlpha(link.level2));
+    drawChromaticLink(p1, p2, depth);
   }
 
   for (const lvlNodes of nodesGreen) {
@@ -678,7 +788,7 @@ function drawScene() {
       const cxMin = col * viewWidth;
       const cxMax = (col + 1) * viewWidth;
       if (sp.x < cxMin || sp.x > cxMax) continue;
-      drawNodeGlow(sp.x, sp.y, node === tgtGreen, 5);
+      drawNodeGlow(sp.x, sp.y, node === tgtGreen, 5, node.level);
     }
   }
 
@@ -698,16 +808,16 @@ function drawScene() {
   const botsAtTargetGreen = botsGreen.filter(b => b.reached).length;
 
   const infoLines = [
-    "4-COLUMN VIEW — TWO INDEPENDENT TREES (p5.js)",
-    `ORANGE:   Level ${curLvlOrange + 1} / ${MAX_LEVELS}, Levels built: ${builtOrange}, Bots at target: ${botsAtTargetOrange}/${botsOrange.length}`,
-    `GREEN (DISABLED): Level ${curLvlGreen + 1} / ${MAX_LEVELS}, Levels built: ${builtGreen}, Bots at target: ${botsAtTargetGreen}/${botsGreen.length}`,
-    "SPACE: toggle pause"
+    "4-COLUMN — DUAL TREES — BRUTALIST FEEDBACK",
+    `ORANGE: Level ${curLvlOrange + 1}/${MAX_LEVELS}  |  Built: ${builtOrange}  |  Bots at target: ${botsAtTargetOrange}/${botsOrange.length}`,
+    `GREEN (DISABLED): Level ${curLvlGreen + 1}/${MAX_LEVELS}  |  Built: ${builtGreen}  |  Bots at target: ${botsAtTargetGreen}/${botsGreen.length}`,
+    "SPACE: pause / play"
   ];
 
   textAlign(LEFT, TOP);
-  let yy = height - 22 * infoLines.length - 30;
+  let yy = height - 22 * infoLines.length - 40;
   for (const line of infoLines) {
-    fill(240, 240, 255, 220);
+    fill(240, 240, 255, 230);
     text(line, 10, yy);
     yy += 22;
   }
@@ -724,47 +834,33 @@ function drawScene() {
     const banner = `ORANGE: ${orangeTitle}    |    GREEN: ${greenTitle}`;
     const tw = textWidth(banner);
     const bx = (width - tw) / 2;
-    const by = height - 20;
+    const by = height - 24;
 
-    // soft bar behind text
     noStroke();
-    fill(0, 0, 0, 180);
-    rect(bx - 10, by - 4, tw + 20, 20, 8);
+    fill(0, 0, 0, 200);
+    rect(bx - 12, by - 6, tw + 24, 24, 4);
 
     fill(255);
     textAlign(LEFT, TOP);
-    text(banner, bx, by);
+    text(banner, bx, by - 2);
   }
 }
 
 
 // ==============================
-// MAIN UPDATE LOGIC
+// TREE STEP LOGIC
 // ==============================
 
-function stepTree(
-  nodes,
-  bots,
-  structArr,
-  linksArr,
-  curLvl,
-  tgt,
-  built,
-  pruned,
-  tag
-) {
+function stepTree(nodes, bots, structArr, linksArr, curLvl, tgt, built, pruned, tag) {
   let levelComplete = false;
 
-  // prune unused nodes once first bot reaches
   if (!pruned && anyBotReached(bots) && tgt) {
     if (curLvl > 0 && nodes[curLvl - 1].length === 1) {
       const prevNode = nodes[curLvl - 1][0];
-      linksArr.push(
-        new LinkSegment(
-          prevNode.x, prevNode.y, prevNode.level,
-          tgt.x,       tgt.y,       tgt.level
-        )
-      );
+      linksArr.push(new LinkSegment(
+        prevNode.x, prevNode.y, prevNode.level,
+        tgt.x,      tgt.y,      tgt.level
+      ));
     }
     nodes[curLvl] = [tgt];
     pruned = true;
@@ -779,7 +875,6 @@ function stepTree(
       structArr.push(new StructureSegment(tgt.x, tgt.y, baseLevel, topLevel));
       built++;
 
-      // expand children
       let children;
       if (!tgt.childrenTitles || tgt.childrenTitles.length === 0) {
         children = generateSyntheticTitles(curLvl + 1, MAX_LINKS_PER_LEVEL, tag);
@@ -793,15 +888,12 @@ function stepTree(
       if (nextLevelIndex >= nodes.length) {
         const unique = [...new Set(children)].slice(0, MAX_LINKS_PER_LEVEL);
         const nextNodes = layoutLevel(unique, nextLevelIndex);
-        for (const n of nextNodes) {
-          n.childrenTitles = [];
-        }
+        for (const n of nextNodes) n.childrenTitles = [];
         nodes.push(nextNodes);
       }
 
       curLvl = nextLevelIndex;
 
-      // move bots up around previous target
       const jitter = PLANE_HALF * 0.1;
       for (const b of bots) {
         b.x = tgt.x + random(-jitter, jitter);
@@ -810,7 +902,7 @@ function stepTree(
         b.reached = false;
         b.trail = [];
         if (b instanceof DisabledBot) {
-          b.fatigue *= 0.5; // mild recovery between levels
+          b.fatigue *= 0.5; // partial recovery
         }
       }
 
@@ -829,35 +921,33 @@ function stepTree(
 // ==============================
 
 function setup() {
-  // A bit wider for nicer aspect; tweak if you want
   createCanvas(1400, 900);
   viewWidth = width / 4;
   viewHeight = height;
+  frameRate(60);
+  smooth(8);
 
-  // Projection scales based on actual canvas
   SIDE_SCALE_X = (viewWidth * 0.45) / PLANE_HALF;
   SIDE_SCALE_Z = (height * 0.7) / TOTAL_TOWER_HEIGHT;
   ISO_MARGIN = PLANE_HALF * MARGIN_FACTOR;
   ISO_SCALE = (viewWidth * 0.45) / (2.0 * ISO_MARGIN * 2.0);
 
   textFont("monospace", 14);
-  smooth();
 
-  // Base colors
-  COLOR_NODE = color(80, 160, 255);
+  COLOR_NODE = color(90, 170, 255);
   COLOR_NODE_ACTIVE = color(255, 255, 255);
   COLOR_BOT_ORANGE = color(255, 140, 0);
   COLOR_BOT_LIME = color(0, 255, 120);
-  COLOR_STRUCTURE = color(230, 230, 230);
+  COLOR_STRUCTURE = color(240, 240, 240);
   COLOR_LINK = color(200, 150, 255);
-  COLOR_TEXT = color(230, 230, 240);
-  COLOR_LEVEL_OUTLINE = color(50, 50, 80);
+  COLOR_TEXT = color(235, 235, 245);
+  COLOR_LEVEL_OUTLINE = color(80, 80, 110);
   COLOR_BOT_FOCUS = color(255, 60, 60);
   COLOR_COL_BG = [
-    color(20, 20, 40),
-    color(35, 18, 50),
-    color(12, 32, 45),
-    color(40, 38, 16)
+    color(18, 18, 32),
+    color(26, 16, 40),
+    color(12, 26, 36),
+    color(36, 34, 18)
   ];
 
   // ORANGE ROOT
@@ -879,19 +969,32 @@ function setup() {
   tgtGreen  = chooseTarget(nodesGreen,  curLvlGreen);
   if (tgtOrange) assignBotsToNode(botsOrange, tgtOrange);
   if (tgtGreen)  assignBotsToNode(botsGreen,  tgtGreen);
+
+  // Dust
+  for (let i = 0; i < NUM_DUST; i++) {
+    dustParticles.push(new Dust());
+  }
 }
 
 function draw() {
-  background(0); // we overwrite with our gradient
+  // Video-feedback style fade: do NOT hard-clear, just darken slightly
+  noStroke();
+  fill(5, 6, 12, 40);  // tweak alpha for longer/shorter persistence
+  rect(0, 0, width, height);
 
-  const dt = deltaTime / 1000.0;
+  // Clamp dt for smoother motion and stable speeds
+  let dt = deltaTime / 1000.0;
+  dt = min(dt, 1.0 / 60.0);
 
   if (!paused) {
-    // Update bots
     for (const b of botsOrange) b.update(dt);
     for (const b of botsGreen) b.update(dt);
 
-    // Step orange tree
+    const attract = [];
+    if (tgtOrange) attract.push(tgtOrange);
+    if (tgtGreen) attract.push(tgtGreen);
+    for (const d of dustParticles) d.update(dt, attract);
+
     let resO = stepTree(
       nodesOrange,
       botsOrange,
@@ -904,15 +1007,14 @@ function draw() {
       "O"
     );
     nodesOrange = resO.nodes;
-    botsOrange = resO.bots;
+    botsOrange  = resO.bots;
     structOrange = resO.structArr;
-    linksOrange = resO.linksArr;
+    linksOrange  = resO.linksArr;
     curLvlOrange = resO.curLvl;
-    tgtOrange = resO.tgt;
-    builtOrange = resO.built;
+    tgtOrange    = resO.tgt;
+    builtOrange  = resO.built;
     prunedOrange = resO.pruned;
 
-    // Step green tree
     let resG = stepTree(
       nodesGreen,
       botsGreen,
@@ -925,12 +1027,12 @@ function draw() {
       "G"
     );
     nodesGreen = resG.nodes;
-    botsGreen = resG.bots;
+    botsGreen  = resG.bots;
     structGreen = resG.structArr;
-    linksGreen = resG.linksArr;
+    linksGreen  = resG.linksArr;
     curLvlGreen = resG.curLvl;
-    tgtGreen = resG.tgt;
-    builtGreen = resG.built;
+    tgtGreen    = resG.tgt;
+    builtGreen  = resG.built;
     prunedGreen = resG.pruned;
   }
 
@@ -938,10 +1040,10 @@ function draw() {
 }
 
 function keyPressed() {
-  if (key === ' ') {
-    paused = !paused;
-  }
+  if (key === ' ') paused = !paused;
 }
+
 </script>
 </body>
 </html>
+
