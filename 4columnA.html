@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>10k Tree Bots — p5.js Version</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #05060b;
+      color: #eee;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+<script>
+// ============================================
+// 10k WORLD, 4-COLUMN SPLIT VIEW, p5.js
+// --------------------------------------------
+// COL 0: ORANGE (side)  — baseline bots, own tree
+// COL 1: ORANGE (iso)   — baseline bots, own tree
+// COL 2: GREEN (side)   — disabled-gait bots, own tree
+// COL 3: GREEN (iso)    — disabled-gait bots, own tree
+//
+// Two fully independent trees (orange / green).
+// Green bots have disabled gait (leg length discrepancy).
+// Beautiful-ish graphics: gradient BG, tinted columns, glows, trails.
+// ============================================
+
+// ------- WORLD & VIEW CONSTANTS -------
+const WORLD_SIZE = 10000;
+const PLANE_HALF = WORLD_SIZE * 0.4;
+
+const MAX_LEVELS = 100;
+const MAX_LINKS_PER_LEVEL = 12;
+
+const NUM_BOTS_PER_GROUP = 100;
+const BOT_SPEED = 600;      // world units per second for orange
+const BOT_RADIUS = 200;     // "reached" radius
+
+const TOTAL_TOWER_HEIGHT = WORLD_SIZE * 0.4;
+const LEVEL_HEIGHT_3D = TOTAL_TOWER_HEIGHT / MAX_LEVELS;
+
+let viewCols = 4;
+let viewWidth;
+let viewHeight;
+
+// Projection scales (will be set in setup based on canvas size)
+let SIDE_SCALE_X, SIDE_SCALE_Z;
+let MARGIN_FACTOR = 0.8;
+let ISO_MARGIN = PLANE_HALF * MARGIN_FACTOR;
+let ISO_SCALE;
+
+// Colors (in RGB here, but we’ll use alpha & layering)
+let COLOR_NODE, COLOR_NODE_ACTIVE, COLOR_BOT_ORANGE, COLOR_BOT_LIME;
+let COLOR_STRUCTURE, COLOR_LINK, COLOR_TEXT, COLOR_LEVEL_OUTLINE, COLOR_BOT_FOCUS;
+let COLOR_COL_BG;
+
+// Banner timing
+let bannerUntilTime = 0;
+let lastOrangeTitle = "";
+let lastGreenTitle = "";
+
+// ------- DATA STRUCTURES -------
+class Node {
+  constructor(title, x, y, level) {
+    this.title = title;
+    this.x = x;
+    this.y = y;
+    this.level = level;
+    this.childrenTitles = [];
+    this.expanded = false;
+  }
+  get pos() {
+    return { x: this.x, y: this.y };
+  }
+}
+
+class Bot {
+  constructor(x, y, level) {
+    this.x = x;
+    this.y = y;
+    this.level = level;
+    this.targetNode = null;
+    this.reached = false;
+    this.trail = []; // for drawing trails
+    this.maxTrail = 40;
+  }
+  get pos() {
+    return { x: this.x, y: this.y };
+  }
+  setTarget(node) {
+    this.targetNode = node;
+    this.reached = false;
+    this.level = node.level;
+    this.trail = [];
+  }
+  update(dt) {
+    if (!this.targetNode || this.reached) return;
+
+    const tx = this.targetNode.x;
+    const ty = this.targetNode.y;
+    const dx = tx - this.x;
+    const dy = ty - this.y;
+    const dist = Math.hypot(dx, dy);
+
+    if (dist < 1e-6) {
+      this.reached = true;
+      return;
+    }
+
+    if (dist <= BOT_RADIUS) {
+      this.x = tx;
+      this.y = ty;
+      this.reached = true;
+      this.addTrailPoint();
+      return;
+    }
+
+    const step = BOT_SPEED * dt;
+    if (step >= dist) {
+      this.x = tx;
+      this.y = ty;
+      this.reached = true;
+    } else {
+      this.x += (dx / dist) * step;
+      this.y += (dy / dist) * step;
+    }
+    this.addTrailPoint();
+  }
+  addTrailPoint() {
+    this.trail.push({ x: this.x, y: this.y, level: this.level });
+    if (this.trail.length > this.maxTrail) {
+      this.trail.shift();
+    }
+  }
+}
+
+class DisabledBot extends Bot {
+  constructor(x, y, level) {
+    super(x, y, level);
+    this.gaitPhase = random(0, TWO_PI);
+    this.gaitFreq = random(1.2, 2.0);
+    this.legDiff = random(0.12, 0.3);
+    this.fatigue = 0.0;
+    this.baseSpeedFactor = random(0.55, 0.75);
+    this.stumbleChance = 0.003;
+  }
+  update(dt) {
+    if (!this.targetNode || this.reached) return;
+
+    const tx = this.targetNode.x;
+    const ty = this.targetNode.y;
+    const dx = tx - this.x;
+    const dy = ty - this.y;
+    const dist = Math.hypot(dx, dy);
+
+    if (dist < 1e-6) {
+      this.reached = true;
+      return;
+    }
+
+    if (dist <= BOT_RADIUS) {
+      this.x = tx;
+      this.y = ty;
+      this.reached = true;
+      this.addTrailPoint();
+      return;
+    }
+
+    // Advance gait
+    this.gaitPhase += this.gaitFreq * dt * TWO_PI;
+
+    const dirX = dx / dist;
+    const dirY = dy / dist;
+
+    const latX = -dirY;
+    const latY = dirX;
+
+    const wobbleAmp = this.legDiff * (0.6 + 0.6 * this.fatigue);
+    const wobble = Math.sin(this.gaitPhase) * wobbleAmp;
+
+    let moveX = dirX + latX * wobble;
+    let moveY = dirY + latY * wobble;
+    let moveLen = Math.hypot(moveX, moveY);
+    if (moveLen < 1e-6) {
+      moveX = dirX;
+      moveY = dirY;
+      moveLen = 1.0;
+    }
+    moveX /= moveLen;
+    moveY /= moveLen;
+
+    const fatigueFactor = max(0.3, 1.0 - this.fatigue * 0.7);
+    const speed = BOT_SPEED * this.baseSpeedFactor * fatigueFactor;
+    let step = speed * dt;
+
+    // Occasional stumble: sideways kick
+    if (random() < this.stumbleChance) {
+      const stumbleMag = step * 0.6;
+      moveX += latX * this.legDiff * stumbleMag;
+      moveY += latY * this.legDiff * stumbleMag;
+      const m2 = Math.hypot(moveX, moveY);
+      if (m2 > 1e-6) {
+        moveX /= m2;
+        moveY /= m2;
+      }
+    }
+
+    if (step >= dist) {
+      this.x = tx;
+      this.y = ty;
+      this.reached = true;
+    } else {
+      this.x += moveX * step;
+      this.y += moveY * step;
+    }
+
+    this.addTrailPoint();
+
+    const effort = step * (1.0 + Math.abs(wobble) * 3.0 + this.legDiff * 2.0);
+    this.fatigue += effort * 0.00002;
+    if (this.fatigue > 1.0) this.fatigue = 1.0;
+  }
+}
+
+class StructureSegment {
+  constructor(x, y, baseLevel, topLevel) {
+    this.x = x;
+    this.y = y;
+    this.baseLevel = baseLevel;
+    this.topLevel = topLevel;
+  }
+}
+
+class LinkSegment {
+  constructor(x1, y1, level1, x2, y2, level2) {
+    this.x1 = x1;
+    this.y1 = y1;
+    this.level1 = level1;
+    this.x2 = x2;
+    this.y2 = y2;
+    this.level2 = level2;
+  }
+}
+
+// ------- GLOBAL STATE -------
+// Arrays-of-level-arrays for nodes
+let nodesOrange = [];
+let nodesGreen = [];
+
+// Bots
+let botsOrange = [];
+let botsGreen = [];
+
+// Structure segments and links
+let structOrange = [];
+let structGreen = [];
+let linksOrange = [];
+let linksGreen = [];
+
+// Per-tree state
+let curLvlOrange = 0;
+let curLvlGreen = 0;
+let tgtOrange = null;
+let tgtGreen = null;
+let builtOrange = 0;
+let builtGreen = 0;
+let prunedOrange = false;
+let prunedGreen = false;
+
+let paused = false;
+
+
+// ==============================
+// UTILS
+// ==============================
+
+function generateSyntheticTitles(levelIndex, count, tag) {
+  const arr = [];
+  for (let i = 0; i < count; i++) {
+    arr.push(`${tag}L${levelIndex}-N${i}`);
+  }
+  return arr;
+}
+
+function layoutLevel(nodeTitles, levelIndex) {
+  const nodes = [];
+  if (!nodeTitles || nodeTitles.length === 0) return nodes;
+  const margin = PLANE_HALF * MARGIN_FACTOR;
+  for (const t of nodeTitles) {
+    const x = random(-margin, margin);
+    const y = random(-margin, margin);
+    nodes.push(new Node(t, x, y, levelIndex));
+  }
+  return nodes;
+}
+
+function initializeBots(num, level, disabled) {
+  const arr = [];
+  const jitter = PLANE_HALF * 0.1;
+  for (let i = 0; i < num; i++) {
+    const bx = random(-jitter, jitter);
+    const by = random(-jitter, jitter);
+    if (disabled) arr.push(new DisabledBot(bx, by, level));
+    else arr.push(new Bot(bx, by, level));
+  }
+  return arr;
+}
+
+function assignBotsToNode(bots, node) {
+  for (const b of bots) b.setTarget(node);
+}
+
+function allBotsReached(bots) {
+  return bots.every(b => b.reached);
+}
+
+function anyBotReached(bots) {
+  return bots.some(b => b.reached);
+}
+
+function chooseTarget(nodesPerLevel, levelIndex) {
+  if (levelIndex >= nodesPerLevel.length) return null;
+  const lvlNodes = nodesPerLevel[levelIndex];
+  if (!lvlNodes || lvlNodes.length === 0) return null;
+  return random(lvlNodes);
+}
+
+function levelToHeight(levelIndex) {
+  return levelIndex * LEVEL_HEIGHT_3D;
+}
+
+// Projections
+function isoProject(x, y, levelIndex, colIndex) {
+  const z = levelToHeight(levelIndex);
+  const isoX = x - y;
+  const isoY = (x + y) * 0.5 - z * 1.2;
+  const ix = isoX * ISO_SCALE;
+  const iy = isoY * ISO_SCALE;
+  const sx = colIndex * viewWidth + viewWidth / 2 + ix;
+  const sy = height * 0.75 + iy;
+  return { x: sx, y: sy };
+}
+
+function sideProject(x, y, levelIndex, colIndex) {
+  const z = levelToHeight(levelIndex);
+  const sx = colIndex * viewWidth + viewWidth / 2 + x * SIDE_SCALE_X;
+  const sy = height * 0.8 - z * SIDE_SCALE_Z;
+  return { x: sx, y: sy };
+}
+
+// ==============================
+// DRAW HELPERS
+// ==============================
+
+function drawColumnBackgrounds() {
+  // Soft vertical gradient across whole canvas
+  noFill();
+  for (let y = 0; y < height; y++) {
+    const t = y / height;
+    const c1 = color(12, 8, 26);
+    const c2 = color(2, 2, 8);
+    const c = lerpColor(c1, c2, t);
+    stroke(c);
+    line(0, y, width, y);
+  }
+
+  // Tinted translucent rectangles per column
+  noStroke();
+  for (let c = 0; c < viewCols; c++) {
+    fill(
+      red(COLOR_COL_BG[c]),
+      green(COLOR_COL_BG[c]),
+      blue(COLOR_COL_BG[c]),
+      120
+    );
+    rect(c * viewWidth, 0, viewWidth, height);
+  }
+
+  // Vertical separators with glow
+  for (let c = 1; c < viewCols; c++) {
+    const x = c * viewWidth;
+    stroke(90, 90, 120, 220);
+    strokeWeight(2);
+    line(x, 0, x, height);
+    stroke(90, 90, 120, 80);
+    strokeWeight(6);
+    line(x, 0, x, height);
+  }
+}
+
+function drawLevelOutlineSide(levelIndex, colIndex) {
+  const xLeft = -PLANE_HALF * MARGIN_FACTOR;
+  const xRight = PLANE_HALF * MARGIN_FACTOR;
+  const p1 = sideProject(xLeft, 0, levelIndex, colIndex);
+  const p2 = sideProject(xRight, 0, levelIndex, colIndex);
+  stroke(COLOR_LEVEL_OUTLINE);
+  strokeWeight(1);
+  line(p1.x, p1.y, p2.x, p2.y);
+}
+
+function drawLevelOutlineIso(levelIndex, colIndex) {
+  const r = PLANE_HALF * MARGIN_FACTOR;
+  const corners = [
+    { x: 0, y: -r },
+    { x: r, y: 0 },
+    { x: 0, y: r },
+    { x: -r, y: 0 }
+  ];
+  const pts = corners.map(c => isoProject(c.x, c.y, levelIndex, colIndex));
+  noFill();
+  stroke(COLOR_LEVEL_OUTLINE);
+  strokeWeight(1);
+  beginShape();
+  for (const p of pts) vertex(p.x, p.y);
+  endShape(CLOSE);
+}
+
+function drawNodeGlow(px, py, isActive, baseRadius) {
+  noStroke();
+  if (isActive) {
+    for (let i = 4; i >= 1; i--) {
+      const rr = baseRadius * (i * 1.6);
+      const alpha = 12 * i;
+      fill(255, 255, 255, alpha);
+      ellipse(px, py, rr, rr);
+    }
+    fill(COLOR_NODE_ACTIVE);
+    ellipse(px, py, baseRadius * 1.6, baseRadius * 1.6);
+  } else {
+    for (let i = 3; i >= 1; i--) {
+      const rr = baseRadius * (i * 1.4);
+      const alpha = 10 * i;
+      fill(120, 180, 255, alpha);
+      ellipse(px, py, rr, rr);
+    }
+    fill(COLOR_NODE);
+    ellipse(px, py, baseRadius * 1.4, baseRadius * 1.4);
+  }
+}
+
+function drawBotTrail(bot, projectFunc, colIndex, color) {
+  noFill();
+  stroke(red(color), green(color), blue(color), 80);
+  strokeWeight(1.5);
+  beginShape();
+  for (const p of bot.trail) {
+    const sp = projectFunc(p.x, p.y, p.level, colIndex);
+    vertex(sp.x, sp.y);
+  }
+  endShape();
+}
+
+function drawBots(bots, projectFunc, colIndex, botColor) {
+  noStroke();
+  for (const b of bots) {
+    const sp = projectFunc(b.x, b.y, b.level, colIndex);
+    const cxMin = colIndex * viewWidth;
+    const cxMax = (colIndex + 1) * viewWidth;
+    if (sp.x < cxMin || sp.x > cxMax) continue;
+    fill(botColor);
+    ellipse(sp.x, sp.y, 6, 6);
+    // small halo
+    fill(red(botColor), green(botColor), blue(botColor), 80);
+    ellipse(sp.x, sp.y, 12, 12);
+  }
+}
+
+function drawBotsFocus(bots, projectFunc, colIndex) {
+  if (!bots || bots.length === 0) return;
+  let sumX = 0, sumY = 0;
+  for (const b of bots) {
+    sumX += b.x;
+    sumY += b.y;
+  }
+  const avgX = sumX / bots.length;
+  const avgY = sumY / bots.length;
+  const sp = projectFunc(avgX, avgY, bots[0].level, colIndex);
+  const cxMin = colIndex * viewWidth;
+  const cxMax = (colIndex + 1) * viewWidth;
+  if (sp.x < cxMin || sp.x > cxMax) return;
+  noFill();
+  stroke(COLOR_BOT_FOCUS);
+  strokeWeight(1.5);
+  ellipse(sp.x, sp.y, 14, 14);
+}
+
+
+// ==============================
+// DRAW SCENE
+// ==============================
+
+function drawScene() {
+  drawColumnBackgrounds();
+
+  const orangeTitle = tgtOrange ? tgtOrange.title : "None";
+  const greenTitle = tgtGreen ? tgtGreen.title : "None";
+
+  // -------- ORANGE TREE: COL 0 (side) --------
+  let col = 0;
+
+  // Outlines
+  for (let lvl = 0; lvl < nodesOrange.length; lvl++) {
+    if (!nodesOrange[lvl] || nodesOrange[lvl].length === 0) continue;
+    drawLevelOutlineSide(lvl, col);
+  }
+
+  // Structures
+  stroke(COLOR_STRUCTURE);
+  strokeWeight(3);
+  for (const seg of structOrange) {
+    const p1 = sideProject(seg.x, seg.y, seg.baseLevel, col);
+    const p2 = sideProject(seg.x, seg.y, seg.topLevel, col);
+    line(p1.x, p1.y, p2.x, p2.y);
+  }
+
+  // Links
+  stroke(COLOR_LINK);
+  strokeWeight(1.5);
+  for (const link of linksOrange) {
+    const p1 = sideProject(link.x1, link.y1, link.level1, col);
+    const p2 = sideProject(link.x2, link.y2, link.level2, col);
+    line(p1.x, p1.y, p2.x, p2.y);
+  }
+
+  // Nodes
+  for (const lvlNodes of nodesOrange) {
+    for (const node of lvlNodes) {
+      const sp = sideProject(node.x, node.y, node.level, col);
+      const cxMin = col * viewWidth;
+      const cxMax = (col + 1) * viewWidth;
+      if (sp.x < cxMin || sp.x > cxMax) continue;
+      drawNodeGlow(sp.x, sp.y, node === tgtOrange, 4);
+    }
+  }
+
+  // Bot trails (light)
+  strokeWeight(1);
+  for (const b of botsOrange) {
+    stroke(255, 140, 0, 50);
+    drawBotTrail(b, sideProject, col, COLOR_BOT_ORANGE);
+  }
+  // Bots
+  drawBots(botsOrange, sideProject, col, COLOR_BOT_ORANGE);
+  drawBotsFocus(botsOrange, sideProject, col);
+
+  fill(COLOR_TEXT);
+  noStroke();
+  textAlign(LEFT, TOP);
+  text("orange (side)", 5, 5);
+  text("active: " + orangeTitle, 5, 25);
+
+  // -------- ORANGE TREE: COL 1 (iso) --------
+  col = 1;
+
+  for (let lvl = 0; lvl < nodesOrange.length; lvl++) {
+    if (!nodesOrange[lvl] || nodesOrange[lvl].length === 0) continue;
+    drawLevelOutlineIso(lvl, col);
+  }
+
+  stroke(COLOR_STRUCTURE);
+  strokeWeight(3);
+  for (const seg of structOrange) {
+    const p1 = isoProject(seg.x, seg.y, seg.baseLevel, col);
+    const p2 = isoProject(seg.x, seg.y, seg.topLevel, col);
+    line(p1.x, p1.y, p2.x, p2.y);
+  }
+
+  stroke(COLOR_LINK);
+  strokeWeight(1.5);
+  for (const link of linksOrange) {
+    const p1 = isoProject(link.x1, link.y1, link.level1, col);
+    const p2 = isoProject(link.x2, link.y2, link.level2, col);
+    line(p1.x, p1.y, p2.x, p2.y);
+  }
+
+  for (const lvlNodes of nodesOrange) {
+    for (const node of lvlNodes) {
+      const sp = isoProject(node.x, node.y, node.level, col);
+      const cxMin = col * viewWidth;
+      const cxMax = (col + 1) * viewWidth;
+      if (sp.x < cxMin || sp.x > cxMax) continue;
+      drawNodeGlow(sp.x, sp.y, node === tgtOrange, 5);
+    }
+  }
+
+  for (const b of botsOrange) {
+    drawBotTrail(b, isoProject, col, COLOR_BOT_ORANGE);
+  }
+  drawBots(botsOrange, isoProject, col, COLOR_BOT_ORANGE);
+  drawBotsFocus(botsOrange, isoProject, col);
+
+  fill(COLOR_TEXT);
+  noStroke();
+  textAlign(LEFT, TOP);
+  text("orange (iso)", viewWidth + 5, 5);
+  text("active: " + orangeTitle, viewWidth + 5, 25);
+
+  // -------- GREEN TREE: COL 2 (side) --------
+  col = 2;
+
+  for (let lvl = 0; lvl < nodesGreen.length; lvl++) {
+    if (!nodesGreen[lvl] || nodesGreen[lvl].length === 0) continue;
+    drawLevelOutlineSide(lvl, col);
+  }
+
+  stroke(COLOR_STRUCTURE);
+  strokeWeight(3);
+  for (const seg of structGreen) {
+    const p1 = sideProject(seg.x, seg.y, seg.baseLevel, col);
+    const p2 = sideProject(seg.x, seg.y, seg.topLevel, col);
+    line(p1.x, p1.y, p2.x, p2.y);
+  }
+
+  stroke(COLOR_LINK);
+  strokeWeight(1.5);
+  for (const link of linksGreen) {
+    const p1 = sideProject(link.x1, link.y1, link.level1, col);
+    const p2 = sideProject(link.x2, link.y2, link.level2, col);
+    line(p1.x, p1.y, p2.x, p2.y);
+  }
+
+  for (const lvlNodes of nodesGreen) {
+    for (const node of lvlNodes) {
+      const sp = sideProject(node.x, node.y, node.level, col);
+      const cxMin = col * viewWidth;
+      const cxMax = (col + 1) * viewWidth;
+      if (sp.x < cxMin || sp.x > cxMax) continue;
+      drawNodeGlow(sp.x, sp.y, node === tgtGreen, 4);
+    }
+  }
+
+  for (const b of botsGreen) {
+    drawBotTrail(b, sideProject, col, COLOR_BOT_LIME);
+  }
+  drawBots(botsGreen, sideProject, col, COLOR_BOT_LIME);
+  drawBotsFocus(botsGreen, sideProject, col);
+
+  fill(COLOR_TEXT);
+  noStroke();
+  text("green (side)", 2 * viewWidth + 5, 5);
+  text("active: " + greenTitle, 2 * viewWidth + 5, 25);
+
+  // -------- GREEN TREE: COL 3 (iso) --------
+  col = 3;
+
+  for (let lvl = 0; lvl < nodesGreen.length; lvl++) {
+    if (!nodesGreen[lvl] || nodesGreen[lvl].length === 0) continue;
+    drawLevelOutlineIso(lvl, col);
+  }
+
+  stroke(COLOR_STRUCTURE);
+  strokeWeight(3);
+  for (const seg of structGreen) {
+    const p1 = isoProject(seg.x, seg.y, seg.baseLevel, col);
+    const p2 = isoProject(seg.x, seg.y, seg.topLevel, col);
+    line(p1.x, p1.y, p2.x, p2.y);
+  }
+
+  stroke(COLOR_LINK);
+  strokeWeight(1.5);
+  for (const link of linksGreen) {
+    const p1 = isoProject(link.x1, link.y1, link.level1, col);
+    const p2 = isoProject(link.x2, link.y2, link.level2, col);
+    line(p1.x, p1.y, p2.x, p2.y);
+  }
+
+  for (const lvlNodes of nodesGreen) {
+    for (const node of lvlNodes) {
+      const sp = isoProject(node.x, node.y, node.level, col);
+      const cxMin = col * viewWidth;
+      const cxMax = (col + 1) * viewWidth;
+      if (sp.x < cxMin || sp.x > cxMax) continue;
+      drawNodeGlow(sp.x, sp.y, node === tgtGreen, 5);
+    }
+  }
+
+  for (const b of botsGreen) {
+    drawBotTrail(b, isoProject, col, COLOR_BOT_LIME);
+  }
+  drawBots(botsGreen, isoProject, col, COLOR_BOT_LIME);
+  drawBotsFocus(botsGreen, isoProject, col);
+
+  fill(COLOR_TEXT);
+  noStroke();
+  text("green (iso)", 3 * viewWidth + 5, 5);
+  text("active: " + greenTitle, 3 * viewWidth + 5, 25);
+
+  // ----- TEXT OVERLAY -----
+  const botsAtTargetOrange = botsOrange.filter(b => b.reached).length;
+  const botsAtTargetGreen = botsGreen.filter(b => b.reached).length;
+
+  const infoLines = [
+    "4-COLUMN VIEW — TWO INDEPENDENT TREES (p5.js)",
+    `ORANGE:   Level ${curLvlOrange + 1} / ${MAX_LEVELS}, Levels built: ${builtOrange}, Bots at target: ${botsAtTargetOrange}/${botsOrange.length}`,
+    `GREEN (DISABLED): Level ${curLvlGreen + 1} / ${MAX_LEVELS}, Levels built: ${builtGreen}, Bots at target: ${botsAtTargetGreen}/${botsGreen.length}`,
+    "SPACE: toggle pause"
+  ];
+
+  textAlign(LEFT, TOP);
+  let yy = height - 22 * infoLines.length - 30;
+  for (const line of infoLines) {
+    fill(240, 240, 255, 220);
+    text(line, 10, yy);
+    yy += 22;
+  }
+
+  // ----- BANNER -----
+  const now = millis() / 1000.0;
+  if (orangeTitle !== lastOrangeTitle || greenTitle !== lastGreenTitle) {
+    lastOrangeTitle = orangeTitle;
+    lastGreenTitle = greenTitle;
+    bannerUntilTime = now + 1.0;
+  }
+
+  if (now <= bannerUntilTime) {
+    const banner = `ORANGE: ${orangeTitle}    |    GREEN: ${greenTitle}`;
+    const tw = textWidth(banner);
+    const bx = (width - tw) / 2;
+    const by = height - 20;
+
+    // soft bar behind text
+    noStroke();
+    fill(0, 0, 0, 180);
+    rect(bx - 10, by - 4, tw + 20, 20, 8);
+
+    fill(255);
+    textAlign(LEFT, TOP);
+    text(banner, bx, by);
+  }
+}
+
+
+// ==============================
+// MAIN UPDATE LOGIC
+// ==============================
+
+function stepTree(
+  nodes,
+  bots,
+  structArr,
+  linksArr,
+  curLvl,
+  tgt,
+  built,
+  pruned,
+  tag
+) {
+  let levelComplete = false;
+
+  // prune unused nodes once first bot reaches
+  if (!pruned && anyBotReached(bots) && tgt) {
+    if (curLvl > 0 && nodes[curLvl - 1].length === 1) {
+      const prevNode = nodes[curLvl - 1][0];
+      linksArr.push(
+        new LinkSegment(
+          prevNode.x, prevNode.y, prevNode.level,
+          tgt.x,       tgt.y,       tgt.level
+        )
+      );
+    }
+    nodes[curLvl] = [tgt];
+    pruned = true;
+  }
+
+  if (allBotsReached(bots)) {
+    levelComplete = true;
+
+    if (built < MAX_LEVELS - 1) {
+      const baseLevel = curLvl;
+      const topLevel = curLvl + 1;
+      structArr.push(new StructureSegment(tgt.x, tgt.y, baseLevel, topLevel));
+      built++;
+
+      // expand children
+      let children;
+      if (!tgt.childrenTitles || tgt.childrenTitles.length === 0) {
+        children = generateSyntheticTitles(curLvl + 1, MAX_LINKS_PER_LEVEL, tag);
+        tgt.childrenTitles = children;
+        tgt.expanded = true;
+      } else {
+        children = tgt.childrenTitles;
+      }
+
+      const nextLevelIndex = curLvl + 1;
+      if (nextLevelIndex >= nodes.length) {
+        const unique = [...new Set(children)].slice(0, MAX_LINKS_PER_LEVEL);
+        const nextNodes = layoutLevel(unique, nextLevelIndex);
+        for (const n of nextNodes) {
+          n.childrenTitles = [];
+        }
+        nodes.push(nextNodes);
+      }
+
+      curLvl = nextLevelIndex;
+
+      // move bots up around previous target
+      const jitter = PLANE_HALF * 0.1;
+      for (const b of bots) {
+        b.x = tgt.x + random(-jitter, jitter);
+        b.y = tgt.y + random(-jitter, jitter);
+        b.level = curLvl;
+        b.reached = false;
+        b.trail = [];
+        if (b instanceof DisabledBot) {
+          b.fatigue *= 0.5; // mild recovery between levels
+        }
+      }
+
+      tgt = chooseTarget(nodes, curLvl);
+      if (tgt) assignBotsToNode(bots, tgt);
+      pruned = false;
+    }
+  }
+
+  return { nodes, bots, structArr, linksArr, curLvl, tgt, built, pruned, levelComplete };
+}
+
+
+// ==============================
+// P5 SETUP & DRAW
+// ==============================
+
+function setup() {
+  // A bit wider for nicer aspect; tweak if you want
+  createCanvas(1400, 900);
+  viewWidth = width / 4;
+  viewHeight = height;
+
+  // Projection scales based on actual canvas
+  SIDE_SCALE_X = (viewWidth * 0.45) / PLANE_HALF;
+  SIDE_SCALE_Z = (height * 0.7) / TOTAL_TOWER_HEIGHT;
+  ISO_MARGIN = PLANE_HALF * MARGIN_FACTOR;
+  ISO_SCALE = (viewWidth * 0.45) / (2.0 * ISO_MARGIN * 2.0);
+
+  textFont("monospace", 14);
+  smooth();
+
+  // Base colors
+  COLOR_NODE = color(80, 160, 255);
+  COLOR_NODE_ACTIVE = color(255, 255, 255);
+  COLOR_BOT_ORANGE = color(255, 140, 0);
+  COLOR_BOT_LIME = color(0, 255, 120);
+  COLOR_STRUCTURE = color(230, 230, 230);
+  COLOR_LINK = color(200, 150, 255);
+  COLOR_TEXT = color(230, 230, 240);
+  COLOR_LEVEL_OUTLINE = color(50, 50, 80);
+  COLOR_BOT_FOCUS = color(255, 60, 60);
+  COLOR_COL_BG = [
+    color(20, 20, 40),
+    color(35, 18, 50),
+    color(12, 32, 45),
+    color(40, 38, 16)
+  ];
+
+  // ORANGE ROOT
+  const rootLinksOrange = generateSyntheticTitles(0, MAX_LINKS_PER_LEVEL, "O");
+  const level0Orange = layoutLevel(rootLinksOrange, 0);
+  for (const n of level0Orange) n.childrenTitles = [];
+  nodesOrange.push(level0Orange);
+
+  // GREEN ROOT
+  const rootLinksGreen = generateSyntheticTitles(0, MAX_LINKS_PER_LEVEL, "G");
+  const level0Green = layoutLevel(rootLinksGreen, 0);
+  for (const n of level0Green) n.childrenTitles = [];
+  nodesGreen.push(level0Green);
+
+  botsOrange = initializeBots(NUM_BOTS_PER_GROUP, 0, false);
+  botsGreen = initializeBots(NUM_BOTS_PER_GROUP, 0, true);
+
+  tgtOrange = chooseTarget(nodesOrange, curLvlOrange);
+  tgtGreen  = chooseTarget(nodesGreen,  curLvlGreen);
+  if (tgtOrange) assignBotsToNode(botsOrange, tgtOrange);
+  if (tgtGreen)  assignBotsToNode(botsGreen,  tgtGreen);
+}
+
+function draw() {
+  background(0); // we overwrite with our gradient
+
+  const dt = deltaTime / 1000.0;
+
+  if (!paused) {
+    // Update bots
+    for (const b of botsOrange) b.update(dt);
+    for (const b of botsGreen) b.update(dt);
+
+    // Step orange tree
+    let resO = stepTree(
+      nodesOrange,
+      botsOrange,
+      structOrange,
+      linksOrange,
+      curLvlOrange,
+      tgtOrange,
+      builtOrange,
+      prunedOrange,
+      "O"
+    );
+    nodesOrange = resO.nodes;
+    botsOrange = resO.bots;
+    structOrange = resO.structArr;
+    linksOrange = resO.linksArr;
+    curLvlOrange = resO.curLvl;
+    tgtOrange = resO.tgt;
+    builtOrange = resO.built;
+    prunedOrange = resO.pruned;
+
+    // Step green tree
+    let resG = stepTree(
+      nodesGreen,
+      botsGreen,
+      structGreen,
+      linksGreen,
+      curLvlGreen,
+      tgtGreen,
+      builtGreen,
+      prunedGreen,
+      "G"
+    );
+    nodesGreen = resG.nodes;
+    botsGreen = resG.bots;
+    structGreen = resG.structArr;
+    linksGreen = resG.linksArr;
+    curLvlGreen = resG.curLvl;
+    tgtGreen = resG.tgt;
+    builtGreen = resG.built;
+    prunedGreen = resG.pruned;
+  }
+
+  drawScene();
+}
+
+function keyPressed() {
+  if (key === ' ') {
+    paused = !paused;
+  }
+}
+</script>
+</body>
+</html>
