@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Gyroid War – Trails, Toggles, Shockwave Overlay</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+</head>
+<body>
+<script>
+// =====================================
+// CONFIG / STATE
+// =====================================
+let boardN = 8;
+let boardPositions = [];      // [i][j] -> p5.Vector (x,y,z)
+let corridorSquares = [];     // [i][j] boolean: near Hilbert tunnel
+let corridorPoints = [];      // 3D points along Hilbert-like curves
+
+let pieces = [];
+let currentSide = 0;          // 0 = Lime/Cyan, 1 = Magenta
+let selectedIndex = -1;
+let legalMoves = [];
+
+// HUD / minimap
+let miniX = 20;
+let miniY = 20;
+let miniSize = 220;
+
+// Gyroid settings
+let gyroidSpan = 180;
+let corridorInfluenceRadius = 60;
+let hilbertOrder = 3;
+let hilbertLayers = 4;
+let hilbertVerticalOffset = 40;
+let angle = 0;
+let timeSeconds = 0;
+
+// Camera & zoom
+let camX = 0;
+let camY = 0;
+let camZ = 500;
+let zoomFactor = 1.0;
+let zoomStep = 1.1;
+let zoomMin = 0.05;
+let zoomMax = 80.0;
+let panSpeed = 20;
+
+// Explosions
+let explosions = []; // {i,j,age,maxAge}
+
+// Screen-space for hit testing (main view)
+let pieceScreenPositions = []; // index -> {x,y}
+let moveScreenPositions  = []; // {x,y,i,j}
+
+// background / visibility toggles
+let bgIsWhite = false;           // false = black, true = white
+let highContrastPieces = false;  // H toggle
+let legacyOverlay = false;       // S toggle: overlay shockwave-style gyroid
+
+// first-frame flag for true clear
+let firstFrame = true;
+
+// =====================================
+// DEPTH TEST CONTROL
+// =====================================
+function disableDepthTest() {
+  const gl = drawingContext;
+  if (gl && gl.disable && gl.DEPTH_TEST !== undefined) {
+    gl.disable(gl.DEPTH_TEST);
+    if (gl.depthMask) gl.depthMask(false);
+  }
+}
+
+// =====================================
+// SETUP
+// =====================================
+function setup() {
+  createCanvas(windowWidth, windowHeight, WEBGL);
+  ortho(-width/2, width/2, -height/2, height/2, -50000, 50000);
+  disableDepthTest();
+  textFont('monospace');
+
+  initBoardPositions();
+  initHilbertCorridors();
+  initCorridorSquares();
+  initPieces();
+}
+
+// =====================================
+// GYROID + HILBERT
+// =====================================
+function gyroidZ(x, y) {
+  // Simple gyroid-ish combination
+  return sin(x) * cos(y) + sin(y + angle) * cos(x * 1.3);
+}
+
+function initBoardPositions() {
+  boardPositions = new Array(boardN);
+  for (let i = 0; i < boardN; i++) {
+    boardPositions[i] = new Array(boardN);
+    for (let j = 0; j < boardN; j++) {
+      let x = map(i, 0, boardN - 1, -gyroidSpan, gyroidSpan);
+      let y = map(j, 0, boardN - 1, -gyroidSpan, gyroidSpan);
+      let z = gyroidZ(x * 0.01, y * 0.01) * 120;
+      boardPositions[i][j] = createVector(x, y, z);
+    }
+  }
+}
+
+// 2D Hilbert curve generator
+function hilbert2D(order, x, y, xi, xj, yi, yj, points) {
+  if (order <= 0) {
+    points.push(createVector(x + (xi + yi) / 2, y + (xj + yj) / 2));
+  } else {
+    hilbert2D(order-1, x, y,              yi/2,  yj/2,  xi/2,  xj/2,  points);
+    hilbert2D(order-1, x+xi/2, y+xj/2,    xi/2,  xj/2,  yi/2,  yj/2,  points);
+    hilbert2D(order-1, x+xi/2+yi/2, y+xj/2+yj/2, xi/2,  xj/2,  yi/2,  yj/2,  points);
+    hilbert2D(order-1, x+xi/2+yi, y+xj/2+yj,
+              -yi/2, -yj/2, -xi/2, -xj/2, points);
+  }
+}
+
+function initHilbertCorridors() {
+  corridorPoints = [];
+  let basePoints = [];
+  let paramSpan = 1.8;
+  let size = paramSpan * 2;
+
+  hilbert2D(
+    hilbertOrder,
+    -paramSpan, -paramSpan,
+    size, 0,
+    0, size,
+    basePoints
+  );
+
+  let paramToWorld = gyroidSpan / paramSpan;
+
+  for (let layer = 0; layer < hilbertLayers; layer++) {
+    let vOffset = (layer - (hilbertLayers - 1) / 2) * hilbertVerticalOffset;
+    for (let p of basePoints) {
+      let x = p.x * paramToWorld;
+      let y = p.y * paramToWorld;
+      let z = gyroidZ(x * 0.01, y * 0.01) * 120 + vOffset;
+      corridorPoints.push(createVector(x, y, z));
+    }
+  }
+}
+
+function initCorridorSquares() {
+  corridorSquares = new Array(boardN);
+  let r2 = corridorInfluenceRadius * corridorInfluenceRadius;
+  for (let i = 0; i < boardN; i++) {
+    corridorSquares[i] = new Array(boardN);
+    for (let j = 0; j < boardN; j++) {
+      let pos = boardPositions[i][j];
+      let close = false;
+      for (let cp of corridorPoints) {
+        let dx = pos.x - cp.x;
+        let dy = pos.y - cp.y;
+        let dz = pos.z - cp.z;
+        if (dx*dx + dy*dy + dz*dz < r2) {
+          close = true;
+          break;
+        }
+      }
+      corridorSquares[i][j] = close;
+    }
+  }
+}
+
+// =====================================
+// PIECES / MOVES
+// =====================================
+function initPieces() {
+  pieces = [];
+  for (let i = 0; i < boardN; i++) {
+    pieces.push({i, j: 0, side: 0, alive: true});
+    pieces.push({i, j: 1, side: 0, alive: true});
+  }
+  for (let i = 0; i < boardN; i++) {
+    pieces.push({i, j: boardN - 1, side: 1, alive: true});
+    pieces.push({i, j: boardN - 2, side: 1, alive: true});
+  }
+}
+
+function pieceAt(i, j) {
+  for (let k = 0; k < pieces.length; k++) {
+    let p = pieces[k];
+    if (p.alive && p.i === i && p.j === j) return k;
+  }
+  return -1;
+}
+
+function computeLegalMoves(p) {
+  let R = corridorSquares[p.i][p.j] ? 2 : 1;
+  let res = [];
+  for (let di = -R; di <= R; di++) {
+    for (let dj = -R; dj <= R; dj++) {
+      if (!di && !dj) continue;
+      if (abs(di) + abs(dj) > R) continue;
+      let ni = p.i + di, nj = p.j + dj;
+      if (ni < 0 || nj < 0 || ni >= boardN || nj >= boardN) continue;
+      let idx = pieceAt(ni, nj);
+      if (idx !== -1 && pieces[idx].side === p.side) continue;
+      res.push({i: ni, j: nj});
+    }
+  }
+  return res;
+}
+
+function switchTurn() {
+  currentSide = 1 - currentSide;
+  selectedIndex = -1;
+  legalMoves = [];
+}
+
+function spawnExplosion(i, j) {
+  explosions.push({i, j, age: 0, maxAge: 90});
+}
+
+// =====================================
+// 3D -> 2D PROJECTION (main view picking)
+// =====================================
+function project3DtoScreen(x, y, z) {
+  let ax = -PI/3;
+  let ay =  PI/4;
+
+  // rotateY
+  let cay = Math.cos(ay), say = Math.sin(ay);
+  let rx = x * cay + z * say;
+  let rz = -x * say + z * cay;
+  let ry = y;
+
+  // rotateX
+  let cax = Math.cos(ax), sax = Math.sin(ax);
+  let ry2 = ry * cax - rz * sax;
+  let rz2 = ry * sax + rz * cax;
+  let rx2 = rx;
+
+  // scale + pan
+  rx2 *= zoomFactor;
+  ry2 *= zoomFactor;
+  rx2 += camX;
+  ry2 += camY;
+
+  let sx = width / 2 + rx2;
+  let sy = height / 2 + ry2;
+  return {x: sx, y: sy};
+}
+
+// =====================================
+// DRAW LOOP
+// =====================================
+function draw() {
+  disableDepthTest();
+
+  // True clear on first frame so black/white is solid
+  if (firstFrame) {
+    push();
+    resetMatrix();
+    translate(-width / 2, -height / 2);
+    noStroke();
+    if (bgIsWhite) {
+      fill(255);
+    } else {
+      fill(0);
+    }
+    rect(0, 0, width, height);
+    pop();
+    firstFrame = false;
+  }
+
+  // Background with accumulating trails
+  push();
+  resetMatrix();
+  translate(-width / 2, -height / 2);
+  noStroke();
+  if (bgIsWhite) {
+    fill(255, 255, 255, 3);  // pale trails on white
+  } else {
+    fill(0, 0, 0, 2);        // true black trails – very slow fade
+  }
+  rect(0, 0, width, height);
+  pop();
+
+  timeSeconds = millis() * 0.001;
+  angle = TWO_PI * (timeSeconds / 60.0); // slow global phase drift
+
+  // Recompute board / corridors (phase changes z)
+  initBoardPositions();
+  initHilbertCorridors();
+  initCorridorSquares();
+
+  pieceScreenPositions = new Array(pieces.length);
+  moveScreenPositions  = [];
+
+  push();
+  translate(camX, camY, -camZ);
+  scale(zoomFactor);
+  rotateX(-PI/3);
+  rotateY(PI/4);
+
+  drawGyroidBoardWireframe3D();
+  drawHilbertCorridorsWireframe3D();
+  drawPiecesWireframe3D();
+  drawMoveHints3D();
+  drawExplosions3D();
+
+  // Optional legacy-style overlay (S toggle)
+  if (legacyOverlay) {
+    push();
+    blendMode(ADD);
+    drawLegacyOverlayGyroid3D();
+    blendMode(BLEND);
+    pop();
+  }
+
+  pop();
+
+  drawHUD2D();
+}
+
+// =====================================
+// 3D RENDERING
+// =====================================
+function drawGyroidBoardWireframe3D() {
+  // gyroid mesh
+  push();
+  let s = gyroidSpan;
+  let step = 18;
+  strokeWeight(1);
+  noFill();
+
+  colorMode(HSB, 360, 100, 100, 255);
+  let baseHue = (timeSeconds * 4) % 360; // slow drift
+
+  for (let x = -s; x <= s; x += step) {
+    beginShape();
+    for (let y = -s; y <= s; y += step) {
+      let z = gyroidZ(x * 0.01, y * 0.01) * 120;
+      let h = (baseHue + (x + s) * 0.2 + (y + s) * 0.1) % 360;
+      if (highContrastPieces) {
+        stroke(h, 30, 25, 60);
+      } else {
+        stroke(h, 50, 40, 120);
+      }
+      vertex(x, y, z);
+    }
+    endShape();
+  }
+  for (let y = -s; y <= s; y += step) {
+    beginShape();
+    for (let x = -s; x <= s; x += step) {
+      let z = gyroidZ(x * 0.01, y * 0.01) * 120;
+      let h = (baseHue + (x + s) * 0.2 + (y + s) * 0.1 + 60) % 360;
+      if (highContrastPieces) {
+        stroke(h, 30, 25, 60);
+      } else {
+        stroke(h, 50, 40, 120);
+      }
+      vertex(x, y, z);
+    }
+    endShape();
+  }
+  colorMode(RGB, 255);
+  pop();
+
+  // board grid
+  strokeWeight(2);
+  for (let i = 0; i < boardN; i++) {
+    for (let j = 0; j < boardN; j++) {
+      let p = boardPositions[i][j];
+      if (i < boardN - 1) {
+        let q = boardPositions[i + 1][j];
+        let corridorEdge = corridorSquares[i][j] || corridorSquares[i + 1][j];
+        if (highContrastPieces) {
+          stroke(corridorEdge ? color(0, 120, 200, 90) : color(100, 100, 120, 80));
+        } else {
+          stroke(corridorEdge ? color(0, 220, 255, 180) : color(180, 180, 200, 160));
+        }
+        line(p.x, p.y, p.z, q.x, q.y, q.z);
+      }
+      if (j < boardN - 1) {
+        let q = boardPositions[i][j + 1];
+        let corridorEdge = corridorSquares[i][j] || corridorSquares[i][j + 1];
+        if (highContrastPieces) {
+          stroke(corridorEdge ? color(0, 120, 200, 90) : color(100, 100, 120, 80));
+        } else {
+          stroke(corridorEdge ? color(0, 220, 255, 180) : color(180, 180, 200, 160));
+        }
+        line(p.x, p.y, p.z, q.x, q.y, q.z);
+      }
+    }
+  }
+}
+
+function drawHilbertCorridorsWireframe3D() {
+  let per = floor(corridorPoints.length / hilbertLayers);
+  strokeWeight(2);
+  noFill();
+  colorMode(HSB, 360, 100, 100, 255);
+  let baseHue = (timeSeconds * 6) % 360;
+
+  for (let l = 0; l < hilbertLayers; l++) {
+    beginShape();
+    for (let k = 0; k < per; k++) {
+      let p = corridorPoints[l * per + k];
+      let t = k / per;
+      let h = (baseHue + l * 40 + t * 180) % 360;
+      if (highContrastPieces) {
+        stroke(h, 60, 40, 90);
+      } else {
+        stroke(h, 100, 100, 220);
+      }
+      vertex(p.x, p.y, p.z);
+    }
+    endShape();
+  }
+  colorMode(RGB, 255);
+}
+
+function drawPiecesWireframe3D() {
+  for (let idx = 0; idx < pieces.length; idx++) {
+    let p = pieces[idx];
+    if (!p.alive) continue;
+    let v = boardPositions[p.i][p.j];
+
+    // store screen pos for picking
+    let sp = project3DtoScreen(v.x, v.y, v.z);
+    pieceScreenPositions[idx] = {x: sp.x, y: sp.y};
+
+    push();
+    translate(v.x, v.y, v.z + 12);
+    noFill();
+    colorMode(HSB, 360, 100, 100, 255);
+    if (highContrastPieces) {
+      // high-contrast: bright cores with thicker lines
+      if (p.side) {
+        stroke(320, 100, 100, 255); // hot magenta
+      } else {
+        stroke(90, 100, 100, 255);  // vivid green-cyan
+      }
+      strokeWeight(4);
+    } else {
+      if (p.side) {
+        stroke(290, 90, 100, 240); // magenta/UV
+      } else {
+        stroke(120, 90, 100, 240); // lime/cyan
+      }
+      strokeWeight(2.5);
+    }
+
+    if (idx === selectedIndex) {
+      push();
+      rotateX(HALF_PI);
+      ellipse(0, 0, 28, 28);
+      pop();
+      translate(0, 0, 6);
+    }
+
+    let r = 10, h = 30, seg = 16;
+    for (let a = 0; a < TWO_PI; a += TWO_PI / seg) {
+      line(r * cos(a), r * sin(a), -h/2,
+           r * cos(a), r * sin(a),  h/2);
+    }
+    colorMode(RGB, 255);
+    pop();
+  }
+}
+
+function drawMoveHints3D() {
+  moveScreenPositions = [];
+  if (selectedIndex === -1 || !legalMoves.length) return;
+
+  stroke(255, 230, 80);
+  strokeWeight(2);
+  noFill();
+
+  for (let m of legalMoves) {
+    let v = boardPositions[m.i][m.j];
+    let sp = project3DtoScreen(v.x, v.y, v.z);
+    moveScreenPositions.push({x: sp.x, y: sp.y, i: m.i, j: m.j});
+
+    push();
+    translate(v.x, v.y, v.z + 6);
+    let r = 16;
+    ellipse(0, 0, r * 2, r * 2);
+    let c = r * 0.6;
+    line(-c, 0, 0, c, 0, 0);
+    line(0, -c, 0, 0, c, 0);
+    pop();
+  }
+}
+
+function drawExplosions3D() {
+  for (let idx = explosions.length - 1; idx >= 0; idx--) {
+    let e = explosions[idx];
+    e.age++;
+    if (e.age > e.maxAge) {
+      explosions.splice(idx, 1);
+      continue;
+    }
+
+    let tNorm = e.age / e.maxAge;
+    let v = boardPositions[e.i][e.j];
+    push();
+    translate(v.x, v.y, v.z + 10);
+
+    let baseRadius = 20;
+    let radius = baseRadius + tNorm * 300;
+    let alpha = 255 * (1.0 - tNorm);
+
+    noFill();
+    stroke(255, 200, 120, alpha);
+    strokeWeight(2);
+
+    ellipse(0, 0, radius * 2, radius * 2);
+    push();
+    rotateX(HALF_PI);
+    ellipse(0, 0, radius * 1.6, radius * 1.6);
+    pop();
+    push();
+    rotateY(HALF_PI);
+    ellipse(0, 0, radius * 1.4, radius * 1.4);
+    pop();
+
+    pop();
+  }
+}
+
+// =====================================
+// LEGACY SHOCKWAVE OVERLAY (simplified)
+// =====================================
+// Simple shockwave-displaced gyroid based on explosions array
+function shockwaveOffsetAt(x, y, z) {
+  let dz = 0;
+  for (let e of explosions) {
+    let center = boardPositions[e.i][e.j];
+    let dx = x - center.x;
+    let dy = y - center.y;
+    let dist = sqrt(dx*dx + dy*dy);
+    let tNorm = e.age / e.maxAge;
+    let waveRadius = 40 + tNorm * 260;
+    let bandWidth = 50;
+    let falloff = exp(-sq(dist - waveRadius) / (2 * sq(bandWidth)));
+    dz += 80 * falloff * (1.0 - tNorm);
+  }
+  return dz;
+}
+
+function drawLegacyOverlayGyroid3D() {
+  let s = gyroidSpan;
+  let step = 18;
+  strokeWeight(1.5);
+  noFill();
+  stroke(255, 255, 255, 180);
+
+  for (let x = -s; x <= s; x += step) {
+    beginShape();
+    for (let y = -s; y <= s; y += step) {
+      let baseZ = gyroidZ(x * 0.01, y * 0.01) * 120;
+      let dz = shockwaveOffsetAt(x, y, baseZ);
+      vertex(x, y, baseZ + dz);
+    }
+    endShape();
+  }
+  for (let y = -s; y <= s; y += step) {
+    beginShape();
+    for (let x = -s; x <= s; x += step) {
+      let baseZ = gyroidZ(x * 0.01, y * 0.01) * 120;
+      let dz = shockwaveOffsetAt(x, y, baseZ);
+      vertex(x, y, baseZ + dz);
+    }
+    endShape();
+  }
+}
+
+// =====================================
+// HUD / MINIMAP (2D overlay)
+// =====================================
+function drawHUD2D() {
+  push();
+  resetMatrix();
+  translate(-width / 2, -height / 2);
+
+  noStroke();
+  fill(10, 10, 20, 200);
+  rect(miniX - 10, miniY - 10, miniSize + 20, miniSize + 80, 6);
+
+  let c = miniSize / boardN;
+
+  // tiles
+  for (let i = 0; i < boardN; i++) {
+    for (let j = 0; j < boardN; j++) {
+      fill(corridorSquares[i][j] ? color(15, 80, 120) : ((i + j) % 2 ? 20 : 30));
+      rect(miniX + i * c,
+           miniY + (boardN - 1 - j) * c,
+           c, c);
+    }
+  }
+
+  // legal moves
+  if (selectedIndex !== -1) {
+    fill(200, 220, 80, 180);
+    noStroke();
+    for (let m of legalMoves) {
+      rect(miniX + m.i * c + 3,
+           miniY + (boardN - 1 - m.j) * c + 3,
+           c - 6, c - 6, 2);
+    }
+  }
+
+  // pieces
+  for (let k = 0; k < pieces.length; k++) {
+    let p = pieces[k];
+    if (!p.alive) continue;
+    let x = miniX + p.i * c + c / 2;
+    let y = miniY + (boardN - 1 - p.j) * c + c / 2;
+    fill(p.side ? color(200, 80, 160) : color(120, 220, 200));
+    noStroke();
+    ellipse(x, y, c * 0.6, c * 0.6);
+    if (k === selectedIndex) {
+      noFill();
+      stroke(255, 230, 80);
+      strokeWeight(2);
+      ellipse(x, y, c * 0.85, c * 0.85);
+      strokeWeight(1);
+    }
+  }
+
+  fill(230);
+  noStroke();
+  textSize(14);
+  let whiteAlive = pieces.some(p => p.alive && p.side === 0);
+  let blackAlive = pieces.some(p => p.alive && p.side === 1);
+  if (!whiteAlive || !blackAlive) {
+    text("Game Over", miniX, miniY + miniSize + 10);
+  } else {
+    text((currentSide === 0 ? "Lime/Cyan" : "Magenta") + " to move",
+         miniX, miniY + miniSize + 10);
+  }
+
+  textSize(11);
+  text(
+    "Controls:\n" +
+    "= / +  Zoom in\n" +
+    "-      Zoom out\n" +
+    "Arrows Pan\n" +
+    "Permanent trails (ultra slow fade).\n" +
+    "B = toggle black/white BG\n" +
+    "H = high-contrast pieces\n" +
+    "S = shockwave overlay\n" +
+    "P = export large PNG\n" +
+    "Click minimap or main view\n" +
+    "to select & move.",
+    miniX, miniY + miniSize + 30
+  );
+
+  pop();
+}
+
+// =====================================
+// HIT TEST HELPERS
+// =====================================
+function findNearestPieceAtScreen(mx, my, maxDist) {
+  let best = -1;
+  let bestD2 = maxDist * maxDist;
+  for (let i = 0; i < pieceScreenPositions.length; i++) {
+    let sp = pieceScreenPositions[i];
+    if (!sp) continue;
+    if (!pieces[i].alive) continue;
+    let dx = mx - sp.x;
+    let dy = my - sp.y;
+    let d2 = dx*dx + dy*dy;
+    if (d2 < bestD2) {
+      bestD2 = d2;
+      best = i;
+    }
+  }
+  return best;
+}
+
+function findNearestMoveAtScreen(mx, my, maxDist) {
+  let best = -1;
+  let bestD2 = maxDist * maxDist;
+  for (let idx = 0; idx < moveScreenPositions.length; idx++) {
+    let sp = moveScreenPositions[idx];
+    let dx = mx - sp.x;
+    let dy = my - sp.y;
+    let d2 = dx*dx + dy*dy;
+    if (d2 < bestD2) {
+      bestD2 = d2;
+      best = idx;
+    }
+  }
+  return best;
+}
+
+// =====================================
+// INPUT
+// =====================================
+function mousePressed() {
+  // minimap is in screen coordinates (2D overlay)
+  let inMini =
+    mouseX >= miniX && mouseX <= miniX + miniSize &&
+    mouseY >= miniY && mouseY <= miniY + miniSize;
+
+  if (inMini) {
+    handleMiniClick();
+  } else {
+    handleMainViewClick();
+  }
+}
+
+function handleMiniClick() {
+  let c = miniSize / boardN;
+  let i = floor((mouseX - miniX) / c);
+  let j = boardN - 1 - floor((mouseY - miniY) / c);
+  if (i < 0 || j < 0 || i >= boardN || j >= boardN) return;
+
+  let id = pieceAt(i, j);
+  if (selectedIndex === -1) {
+    if (id !== -1 && pieces[id].side === currentSide) {
+      selectedIndex = id;
+      legalMoves = computeLegalMoves(pieces[id]);
+    }
+  } else {
+    if (id !== -1 && pieces[id].side === currentSide) {
+      selectedIndex = id;
+      legalMoves = computeLegalMoves(pieces[id]);
+      return;
+    }
+    if (legalMoves.some(m => m.i === i && m.j === j)) {
+      if (id !== -1 && pieces[id].alive && pieces[id].side !== currentSide) {
+        pieces[id].alive = false;
+        spawnExplosion(i, j);
+      }
+      pieces[selectedIndex].i = i;
+      pieces[selectedIndex].j = j;
+      switchTurn();
+    } else {
+      selectedIndex = -1;
+      legalMoves = [];
+    }
+  }
+}
+
+function handleMainViewClick() {
+  let pickRadiusPiece = 28;
+  let pickRadiusMove  = 24;
+  let mx = mouseX;
+  let my = mouseY;
+
+  if (selectedIndex === -1) {
+    let idx = findNearestPieceAtScreen(mx, my, pickRadiusPiece);
+    if (idx !== -1 && pieces[idx].side === currentSide) {
+      selectedIndex = idx;
+      legalMoves = computeLegalMoves(pieces[idx]);
+    }
+  } else {
+    let idxPiece = findNearestPieceAtScreen(mx, my, pickRadiusPiece);
+    if (idxPiece !== -1 && pieces[idxPiece].side === currentSide) {
+      selectedIndex = idxPiece;
+      legalMoves = computeLegalMoves(pieces[idxPiece]);
+      return;
+    }
+
+    let idxMove = findNearestMoveAtScreen(mx, my, pickRadiusMove);
+    if (idxMove !== -1) {
+      let target = moveScreenPositions[idxMove];
+      let i = target.i;
+      let j = target.j;
+      let id = pieceAt(i, j);
+      if (id !== -1 && pieces[id].alive && pieces[id].side !== currentSide) {
+        pieces[id].alive = false;
+        spawnExplosion(i, j);
+      }
+      pieces[selectedIndex].i = i;
+      pieces[selectedIndex].j = j;
+      switchTurn();
+      return;
+    }
+
+    selectedIndex = -1;
+    legalMoves = [];
+  }
+}
+
+// =====================================
+// KEYBOARD
+// =====================================
+function keyPressed() {
+  if (key === "=" || key === "+") {
+    zoomFactor *= zoomStep;
+  }
+  if (key === "-") {
+    zoomFactor /= zoomStep;
+  }
+  zoomFactor = constrain(zoomFactor, zoomMin, zoomMax);
+
+  if (keyCode === LEFT_ARROW)  camX += panSpeed;
+  if (keyCode === RIGHT_ARROW) camX -= panSpeed;
+  if (keyCode === UP_ARROW)    camY += panSpeed;
+  if (keyCode === DOWN_ARROW)  camY -= panSpeed;
+
+  // Toggle background between black and white (affects gameplay + export)
+  if (key === 'b' || key === 'B') {
+    bgIsWhite = !bgIsWhite;
+  }
+
+  // Toggle high-contrast piece visibility mode
+  if (key === 'h' || key === 'H') {
+    highContrastPieces = !highContrastPieces;
+  }
+
+  // Toggle shockwave overlay
+  if (key === 's' || key === 'S') {
+    legacyOverlay = !legacyOverlay;
+  }
+
+  // Press 'P' to export a large PNG snapshot (upscaled from current canvas)
+  // Export only the main gyroid view by CROPPING OUT the minimap/HUD panel.
+  if (key === 'p' || key === 'P') {
+    let scaleFactor = 4; // 4x resolution
+    let bigW = width * scaleFactor;
+    let bigH = height * scaleFactor;
+    let pg = createGraphics(bigW, bigH);
+
+    // Capture current canvas as an image
+    let snap = get();
+
+    // Compute HUD panel bounds in source space
+    let hudX = (miniX - 10);
+    let hudY = (miniY - 10);
+    let hudW = (miniSize + 20);
+    let hudH = (miniSize + 80);
+
+    // Define the source rect as everything to the right of the HUD panel
+    let srcX = hudX + hudW;
+    let srcY = 0;
+    let srcW = width - srcX;
+    let srcH = height;
+
+    // Draw that cropped region scaled up to the full export size
+    pg.image(snap, 0, 0, bigW, bigH, srcX, srcY, srcW, srcH);
+
+    // Save the large PNG
+    pg.save('gyroid_war_trails_large.png');
+  }
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  ortho(-width/2, width/2, -height/2, height/2, -50000, 50000);
+  disableDepthTest();
+}
+</script>
+</body>
+</html>
