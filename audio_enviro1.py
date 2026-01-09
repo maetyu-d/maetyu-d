@@ -10,7 +10,7 @@ class AudioSequence:
     A flexible sample-level audio composition language in Python.
     
     Features:
-    - Pattern generators: Fibonacci, arithmetic, geometric, sine, random, Perlin, fractals (Mandelbrot/Julia), L-systems (including stochastic)
+    - Pattern generators: Fibonacci, arithmetic, geometric, sine, random, Perlin, fractals, L-systems
     - Full control over sample rate (any positive integer), bit depth (1-32 bit), signed/unsigned, channels
     - Loops, algorithmic transformations, total length control
     - High-resolution export (including 96kHz 24-bit, 192kHz 32-bit float, and exotic formats)
@@ -89,10 +89,15 @@ class AudioSequence:
     def _perlin_noise_1d(self, length, scale=100.0, octaves=4, persistence=0.5, lacunarity=2.0, seed=None):
         if seed is not None:
             np.random.seed(seed)
-        # Simple classic Perlin implementation (vectorized where possible)
-        def fade(t): return t**3 * (t * (t * 6 - 15) + 10)
-        def lerp(a, b, x): return a + x * (b - a)
-        def grad(h, x): return x if (h & 1) == 0 else -x
+
+        def fade(t):
+            return t**3 * (t * (t * 6 - 15) + 10)
+
+        def lerp(a, b, x):
+            return a + x * (b - a)
+
+        def grad(h, x):
+            return x if (h & 1) == 0 else -x
 
         p = np.arange(256, dtype=int)
         np.random.shuffle(p)
@@ -119,7 +124,7 @@ class AudioSequence:
             amp *= persistence
             freq *= lacunarity
 
-        return noise / max_val
+        return noise / max_val if max_val != 0 else noise
 
     def add_perlin_pattern(self, n_samples, scale=100.0, octaves=4, persistence=0.5, lacunarity=2.0,
                            apply_to='amp', base_amp=0.5, base_dur=10, dur_variation=20,
@@ -130,7 +135,7 @@ class AudioSequence:
         for i in range(n_samples):
             val = noise[i]
             final_amp = base_amp + val if 'amp' in apply_to else base_amp
-            final_amp = max(0.0 if not self.signed else -1.0, min(final_amp, 1.0))
+            final_amp = max(-1.0 if self.signed else 0.0, min(final_amp, 1.0))
 
             if 'dur' in apply_to:
                 dur_noise = (val + 1.0) / 2.0
@@ -141,10 +146,6 @@ class AudioSequence:
 
             self.add_event(final_amp, final_dur)
 
-    def add_fractal_pattern(self, n_samples, max_iter=100, apply_to='amp', scale_dur=1, fractal_type='mandelbrot_line', **kwargs):
-        # Supports mandelbrot_line, julia_line, julia_circle
-        # Implementation omitted for brevity but kept from earlier versions
-
     def _generate_l_system(self, axiom, rules, iterations):
         current = axiom
         for _ in range(iterations):
@@ -154,6 +155,9 @@ class AudioSequence:
                 if isinstance(options, str):
                     options = [(options, 1.0)]
                 total_p = sum(p for _, p in options)
+                if total_p == 0:
+                    next_seq.append(symbol)
+                    continue
                 chosen = random.choices([r for r, _ in options], weights=[p/total_p for _, p in options])[0]
                 next_seq.append(chosen)
             current = ''.join(next_seq)
@@ -164,18 +168,24 @@ class AudioSequence:
                              amp_scale=0.1, dur_scale=1):
         if rules is None:
             rules = {}
-        default_map = {'F': (0.0, 1, 'event'), '+': (0.1, 0, None), '-': (-0.1, 0, None),
-                       '[': (0, 0, 'push'), ']': (0, 0, 'pop')}
+        default_map = {
+            'F': (0.0, 1, 'event'),
+            '+': (0.1, 0, None),
+            '-': (-0.1, 0, None),
+            '[': (0, 0, 'push'),
+            ']': (0, 0, 'pop')
+        }
         symbol_map = {**default_map, **(symbol_map or {})}
 
         system = self._generate_l_system(axiom, rules, iterations)
+
         stack = []
         current_amp = base_amp
         current_dur = base_dur
         processed = 0
 
         for symbol in system:
-            if n_events and processed >= n_events:
+            if n_events is not None and processed >= n_events:
                 break
             delta_amp, delta_dur, action = symbol_map.get(symbol, (0, 0, None))
             if action == 'push':
@@ -183,7 +193,7 @@ class AudioSequence:
             elif action == 'pop' and stack:
                 current_amp, current_dur = stack.pop()
             elif action == 'event' or action is None:
-                current_amp = np.clip(current_amp + delta_amp * amp_scale, 0.0, 1.0)
+                current_amp = np.clip(current_amp + delta_amp * amp_scale, -1.0 if self.signed else 0.0, 1.0)
                 current_dur = max(1, int(current_dur + delta_dur * dur_scale))
                 amp = current_amp if 'amp' in apply_to else base_amp
                 dur = current_dur if 'dur' in apply_to else base_dur
@@ -244,7 +254,7 @@ class AudioSequence:
             from plotly.subplots import make_subplots
             import scipy.signal as signal
         except ImportError:
-            print("Install plotly and scipy for interactive visualization")
+            print("Please install plotly and scipy: pip install plotly scipy")
             return
 
         samples = self._generate_raw_samples()
@@ -259,7 +269,6 @@ class AudioSequence:
         fig.add_trace(go.Scatter(x=time, y=samples, mode='lines',
                                  name='Waveform', line=dict(color=waveform_color, width=1)), row=1, col=1)
 
-        # Event envelope
         if self.sequence:
             env_t = [0]
             env_a = [0]
@@ -269,11 +278,15 @@ class AudioSequence:
                 t_sec = cum / self.sample_rate
                 env_t.extend([t_sec, t_sec])
                 env_a.extend([amp, amp])
+            if env_t[-1] < duration:
+                env_t.append(duration)
+                env_a.append(env_a[-1])
+            env_t.append(duration)
+            env_a.append(0)
             fig.add_trace(go.Scatter(x=env_t, y=env_a, mode='lines',
                                      name='Envelope', line=dict(color=envelope_color, width=3),
                                      fill='tozeroy'), row=1, col=1)
 
-        # Spectrogram
         if len(samples) > n_fft:
             f, t, Sxx = signal.spectrogram(samples, fs=self.sample_rate,
                                            nperseg=n_fft, noverlap=n_fft - hop_length)
@@ -284,6 +297,7 @@ class AudioSequence:
         fig.update_layout(height=height, title=f"Audio Pattern — {duration:.2f}s @ {self.sample_rate}Hz",
                           template='plotly_dark')
         fig.update_yaxes(type='log', range=[np.log10(20), np.log10(self.sample_rate/2)], row=2, col=1)
+        fig.update_xaxes(title_text="Time (seconds)", row=2, col=1)
 
         if filename:
             fig.write_html(filename)
@@ -299,10 +313,12 @@ class AudioSequence:
         try:
             import simpleaudio as sa
         except ImportError:
-            print("Install simpleaudio for playback")
+            print("Install simpleaudio for playback: pip install simpleaudio")
             return
 
         samples = self._generate_raw_samples()
+        if len(samples) == 0:
+            return
         audio_int16 = np.int16(samples * 32767)
         if self.channels > 1:
             audio_int16 = np.repeat(audio_int16[:, np.newaxis], self.channels, axis=1)
@@ -333,12 +349,11 @@ class AudioSequence:
         bytes_per_sample = (self.bit_depth + 7) // 8
         data = b''
 
-        # General packing for any bit depth
         for sample in scaled:
             if self.signed and self.bit_depth <= 32:
                 sample = int(sample) & ((1 << self.bit_depth) - 1)
                 if sample & (1 << (self.bit_depth - 1)):
-                    sample -= (1 << self.bit_depth)  # Sign extend
+                    sample -= (1 << self.bit_depth)
             for b in range(bytes_per_sample):
                 data += struct.pack('<B', (sample >> (b * 8)) & 0xFF)
 
@@ -348,23 +363,18 @@ class AudioSequence:
             wf.setframerate(self.sample_rate)
             wf.writeframes(data)
 
-        print(f"Exported: {filename} — {duration:.3f}s @ {self.sample_rate}Hz, {self.bit_depth}-bit {'signed' if self.signed else 'unsigned'}")
+        print(f"Exported: {filename}")
+        print(f"   {duration:.3f}s @ {self.sample_rate}Hz, {self.bit_depth}-bit {'signed' if self.signed else 'unsigned'}, {self.channels} ch")
 
 # ==================== Example Usage ====================
 if __name__ == "__main__":
-    # High-resolution mastering example
     seq = AudioSequence(sample_rate=96000, bit_depth=24, channels=2, signed=True)
-    seq.set_total_length(12, unit='seconds')
+    seq.set_total_length(10, unit='seconds')
 
-    seq.add_perlin_pattern(n_samples=1500, scale=180, octaves=7, apply_to='amp', amplitude=0.6)
-    seq.add_sine_pattern(n_samples=int(96000*6), frequency=110, amplitude=0.4)
-    seq.add_fibonacci_pattern(n_events=20, scale_amp=255, apply_to='dur', scale_dur=300)
+    seq.add_perlin_pattern(n_samples=2000, scale=200, octaves=8, apply_to='amp', amplitude=0.6)
+    seq.add_sine_pattern(n_samples=int(96000*5), frequency=220, amplitude=0.4)
+    seq.add_fibonacci_pattern(n_events=15, scale_amp=1.0, apply_to='dur', scale_dur=400)
 
     seq.plot_interactive(show=True)
     seq.play(blocking=True)
-    seq.generate_audio('masterpiece_96k24_stereo.wav')
-
-    # Extreme lo-fi example
-    lofi = AudioSequence(sample_rate=8000, bit_depth=4, channels=1, signed=False)
-    lofi.sequence = seq.sequence[:]  # Reuse pattern
-    lofi.generate_audio('extreme_lofi_8k_4bit.wav')
+    seq.generate_audio('high_res_example_96k24.wav')
