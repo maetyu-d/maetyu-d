@@ -97,7 +97,7 @@ class AudioSequence:
             return a + x * (b - a)
 
         def grad(h, x):
-            return x if (h & 1) == 0 else -x
+            return np.where((h & 1) == 0, x, -x)
 
         p = np.arange(256, dtype=int)
         np.random.shuffle(p)
@@ -377,4 +377,4 @@ if __name__ == "__main__":
 
     seq.plot_interactive(show=True)
     seq.play(blocking=True)
-    seq.generate_audio('high_res_example_96k24.wav')
+    seq.generate_audio('high_res_example_96k24_fixed.wav')
