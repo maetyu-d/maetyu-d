@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>MorphGrid City — Apple II HGR</title>
+<style>
+html,body{
+  margin:0;
+  background:#000;
+  color:#fff;
+  overflow:hidden;
+  font-family: monospace;
+}
+canvas{
+  display:block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+#hud{
+  position:fixed;
+  left:8px;
+  top:8px;
+  font-size:12px;
+  line-height:1.4;
+  color:#fff;
+  background:#000;
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud"></div>
+
+<script>
+/* ==========================================================
+   Apple II–style MorphGrid City
+   Single-file edition
+   ========================================================== */
+
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+ctx.imageSmoothingEnabled = false;
+
+function resize(){
+  canvas.width = innerWidth;
+  canvas.height = innerHeight;
+}
+addEventListener("resize", resize);
+resize();
+
+/* ---------------- Apple II HGR palette ---------------- */
+const A2 = {
+  BLACK:  [0,0,0],
+  WHITE:  [255,255,255],
+  PURPLE: [192,0,192],
+  GREEN:  [0,192,0],
+  BLUE:   [0,0,192],
+  ORANGE: [255,128,0]
+};
+
+function a2(rgb){
+  let best=A2.BLACK, bd=1e9;
+  for(const k in A2){
+    const c=A2[k];
+    const d=(rgb[0]-c[0])**2+(rgb[1]-c[1])**2+(rgb[2]-c[2])**2;
+    if(d<bd){bd=d; best=c;}
+  }
+  return `rgb(${best[0]},${best[1]},${best[2]})`;
+}
+
+/* ---------------- World setup ---------------- */
+const GW=166, GH=122;
+const CELL=18;
+
+const tiles=[];
+for(let i=0;i<GW*GH;i++){
+  tiles.push({
+    type:0,
+    flood:0,
+    pop:0,
+    lvl:0,
+    traffic:0
+  });
+}
+
+const T={EMPTY:0,ROAD:1,RES:2,COM:3,IND:4,PARK:5};
+
+/* ---------------- Morph ---------------- */
+let morph=0;
+let autoMorph=true;
+
+/* ---------------- Camera ---------------- */
+let cam={x:GW*CELL/2,y:GH*CELL/2,zoom:1};
+
+/* ---------------- Apple II scanline jitter ---------------- */
+function artifactX(y){
+  return ((y&1)?1:-1)*0.5;
+}
+
+/* ---------------- Flood (ultra rare) ---------------- */
+let floodTimer=0;
+function updateFlood(){
+  if(floodTimer>0){
+    floodTimer--;
+    for(const t of tiles) if(t.flood && Math.random()<0.01) t.flood=0;
+    return;
+  }
+  if(Math.random()>0.000001) return; // ~1000x rarer
+
+  floodTimer=600;
+  const cx=(Math.random()*GW)|0;
+  const cy=(Math.random()*GH)|0;
+  for(let y=-2;y<=2;y++)
+    for(let x=-2;x<=2;x++){
+      const nx=cx+x, ny=cy+y;
+      if(nx>=0&&ny>=0&&nx<GW&&ny<GH)
+        if(Math.random()<0.3) tiles[nx+ny*GW].flood=1;
+    }
+}
+
+/* ---------------- Rendering ---------------- */
+function draw(){
+  ctx.fillStyle="#000";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  ctx.save();
+  ctx.translate(canvas.width/2,canvas.height/2);
+  ctx.scale(cam.zoom,cam.zoom);
+  ctx.translate(-cam.x,-cam.y);
+
+  const sx=Math.floor((cam.x-canvas.width/2/cam.zoom)/CELL)-1;
+  const sy=Math.floor((cam.y-canvas.height/2/cam.zoom)/CELL)-1;
+  const ex=sx+canvas.width/cam.zoom/CELL+3;
+  const ey=sy+canvas.height/cam.zoom/CELL+3;
+
+  for(let y=sy;y<ey;y++)for(let x=sx;x<ex;x++){
+    if(x<0||y<0||x>=GW||y>=GH) continue;
+    const t=tiles[x+y*GW];
+
+    let col=[24,24,24];
+    if(t.type===T.ROAD) col=[160,160,160];
+    if(t.type===T.RES)  col=[0,200,0];
+    if(t.type===T.COM)  col=[255,140,0];
+    if(t.type===T.IND)  col=[192,0,192];
+    if(t.type===T.PARK) col=[0,128,0];
+
+    if(t.flood) col=[0,0,192];
+
+    ctx.fillStyle=a2(col);
+
+    const px=x*CELL + artifactX(y);
+    const py=y*CELL;
+
+    // stepped “rounded” look via inset
+    const inset=(1-morph)*2|0;
+    ctx.fillRect(px+inset,py+inset,CELL-2*inset,CELL-2*inset);
+
+    // grid outline
+    ctx.strokeStyle=a2([255,255,255]);
+    ctx.lineWidth=1;
+    ctx.strokeRect(px,py,CELL,CELL);
+
+    // building levels
+    if(t.lvl>0){
+      ctx.strokeStyle=a2([255,255,255]);
+      for(let i=0;i<t.lvl;i++){
+        ctx.beginPath();
+        ctx.moveTo(px+3,py+CELL-4-i*3);
+        ctx.lineTo(px+CELL-3,py+CELL-4-i*3);
+        ctx.stroke();
+      }
+    }
+  }
+
+  ctx.restore();
+}
+
+/* ---------------- Simulation ---------------- */
+function step(){
+  if(autoMorph) morph=Math.min(1,morph+0.0004);
+
+  updateFlood();
+
+  for(const t of tiles){
+    t.traffic*=0.95;
+    if(t.type===T.RES||t.type===T.COM||t.type===T.IND){
+      if(Math.random()<0.002) t.lvl=Math.min(3,t.lvl+1);
+    }
+  }
+}
+
+/* ---------------- Input ---------------- */
+addEventListener("wheel",e=>{
+  cam.zoom*=Math.exp(-e.deltaY*0.001);
+  cam.zoom=Math.max(0.3,Math.min(3,cam.zoom));
+});
+
+addEventListener("keydown",e=>{
+  if(e.key===" "){autoMorph=!autoMorph;}
+});
+
+/* ---------------- Loop ---------------- */
+function loop(){
+  step();
+  draw();
+  document.getElementById("hud").textContent=
+    `MORPH ${(morph*100)|0}%\nSPACE toggle auto`;
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
